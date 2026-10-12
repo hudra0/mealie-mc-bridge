@@ -1,7 +1,14 @@
 #!/bin/sh
 # Scan staged changes for secrets. Enable with: npm run hooks:install
+# Needs gitleaks 8.19 or newer (https://github.com/gitleaks/gitleaks).
+# Set SKIP_GITLEAKS=1 to commit without the scan; CI still scans every push.
 if command -v gitleaks >/dev/null 2>&1; then
-  exec gitleaks protect --staged --verbose
+  exec gitleaks git --staged --pre-commit --verbose
 fi
-echo "pre-commit: gitleaks not found on PATH, skipping secret scan (https://github.com/gitleaks/gitleaks)"
-exit 0
+if [ "${SKIP_GITLEAKS:-}" = "1" ]; then
+  echo "pre-commit: gitleaks not found, secret scan skipped (SKIP_GITLEAKS=1)"
+  exit 0
+fi
+echo "pre-commit: gitleaks not found on PATH, refusing to commit without a secret scan." >&2
+echo "Install gitleaks, or set SKIP_GITLEAKS=1 to skip the scan once." >&2
+exit 1

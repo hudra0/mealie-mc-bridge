@@ -1,14 +1,5 @@
 # Third-party notices
 
-## SmartRecipe
+No third-party source code is included yet.
 
-- Source: https://github.com/gerkensm/smart-recipe
-- License: MIT
-
-The recipe schema definitions and the device mode mappings in this project are derived from SmartRecipe.
-
-Nothing is ported yet. When code is ported, the file keeps a header comment naming its SmartRecipe source file, and the full license text below is filled in from the upstream repository.
-
-```text
-<MIT license text and copyright line of SmartRecipe, to be copied from upstream when code is ported>
-```
+When code is ported from another project, its file keeps a header comment naming the source file, and the project's license text and copyright line are added here in the same commit. The first planned source is SmartRecipe (https://github.com/gerkensm/smart-recipe, MIT).

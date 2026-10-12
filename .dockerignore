@@ -1,15 +1,7 @@
-node_modules
-dist
-.git
-.github
-.githooks
-local
-data
-coverage
-docs/research
-PLAN.md
-CLAUDE.md
-.env
-.env.*
-!.env.example
-*.log
+# Allowlist: only what the Dockerfile copies goes into the build context.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.build.json
+!src

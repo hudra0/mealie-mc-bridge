@@ -16,12 +16,20 @@ Early development, not usable yet. Only the HTTP skeleton with a `/health` endpo
 
 ## Requirements
 
+For development of the skeleton:
+
+- Node 22 or newer and npm
+
+For the finished service (planned):
+
 - Docker
 - A Mealie instance
 - A Monsieur Cuisine account
 - An API key for a supported LLM provider
 
 ## Run the skeleton
+
+With Node:
 
 ```sh
 cp .env.example .env
@@ -30,13 +38,26 @@ npm run dev
 curl http://127.0.0.1:3000/health
 ```
 
-Or with Docker, see `compose.example.yml`.
+`npm run dev` and `npm start` read `.env` from the working directory when `NODE_ENV` is not `production`.
+
+With Docker, build the image locally:
+
+```sh
+cp .env.example .env
+cp compose.example.yml compose.yml
+# in compose.yml, replace the image line with: build: .
+docker compose up -d --build
+curl http://127.0.0.1:3000/health
+```
+
+Prebuilt images are published to `ghcr.io/hudra0/mealie-mc-bridge` by the CI workflow after the first release. A newly pushed GHCR package is private until the maintainer makes it public in the package settings. The example compose file keeps its state in a named volume. If you switch `/data` to a bind mount, run `mkdir -p data && sudo chown 1000:1000 data` first, because the container runs as uid 1000.
 
 ## Development
 
 ```sh
-npm run format:check && npm run lint && npm run typecheck && npm test
-npm run hooks:install   # secret scan before every commit, needs gitleaks
+npm run check           # format, lint, typecheck, tests
+npm run build
+npm run hooks:install   # secret scan before every commit, needs gitleaks 8.19 or newer
 ```
 
 See `CONTRIBUTING.md` for the pull request format and the secrets policy. The architecture is described in `docs/ARCHITECTURE.md`.

@@ -1,12 +1,16 @@
 {
   "name": "mealie-mc-bridge",
   "version": "0.1.0",
-  "private": false,
+  "private": true,
   "description": "Send Mealie recipes to a Monsieur Cuisine Smart as guided-cooking drafts",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hudra0/mealie-mc-bridge"
+  },
   "type": "module",
   "engines": {
-    "node": ">=20.18"
+    "node": ">=22"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -16,8 +20,9 @@
     "test:watch": "vitest",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "format:check": "prettier --check .",
-    "format": "prettier --write .",
+    "format:check": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude",
+    "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {
@@ -27,7 +32,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
-    "@types/node": "^20.19.43",
+    "@types/node": "^22.0.0",
     "eslint": "^9.39.5",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",

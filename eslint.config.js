@@ -1,19 +1,13 @@
 import js from "@eslint/js";
+import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
-export default tseslint.config(
+export default defineConfig(
   {
-    ignores: [
-      "dist/**",
-      "node_modules/**",
-      "coverage/**",
-      "local/**",
-      "data/**",
-      "docs/research/**",
-    ],
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "local/**", "data/**"],
   },
   js.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
+  tseslint.configs.recommendedTypeChecked,
   {
     languageOptions: {
       parserOptions: {
@@ -24,6 +18,6 @@ export default tseslint.config(
   },
   {
     files: ["**/*.js"],
-    ...tseslint.configs.disableTypeChecked,
+    extends: [tseslint.configs.disableTypeChecked],
   },
 );

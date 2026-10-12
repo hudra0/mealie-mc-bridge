@@ -11,6 +11,14 @@ describe("loadConfig", () => {
     expect(config).toEqual({ PORT: 8080, HOST: "127.0.0.1", LOG_LEVEL: "debug" });
   });
 
+  it("treats empty values as unset", () => {
+    expect(loadConfig({ PORT: "", HOST: "", LOG_LEVEL: "" })).toEqual({
+      PORT: 3000,
+      HOST: "0.0.0.0",
+      LOG_LEVEL: "info",
+    });
+  });
+
   it("rejects an invalid port", () => {
     expect(() => loadConfig({ PORT: "not-a-number" })).toThrow(/Invalid configuration: PORT/);
   });

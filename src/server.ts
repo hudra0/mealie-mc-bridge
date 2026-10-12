@@ -4,7 +4,8 @@ import { version } from "./version.js";
 export function buildServer(options: FastifyServerOptions = {}): FastifyInstance {
   const app = Fastify(options);
 
-  app.get("/health", () => ({ status: "ok", version }));
+  // Silent, so the Docker healthcheck does not write two log lines every 30 seconds.
+  app.get("/health", { logLevel: "silent" }, () => ({ status: "ok", version }));
 
   return app;
 }

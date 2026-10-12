@@ -1,21 +1,34 @@
 node_modules/
 dist/
 coverage/
+
+# Environment and credentials
 .env
 .env.*
 !.env.example
+.envrc
+*.pem
+*.key
+*.p12
+secrets/
+
+# Browser sessions, recordings and cookie dumps
+*.har
+storage-state*.json
+storageState*.json
+auth*.json
+cookies*.json
+.playwright/
+browser-profile/
+
+# Local data and private working files
 data/
 local/
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
-PLAN.md
-CLAUDE.md
-.claude/
-docs/research/
+
 .DS_Store
 Thumbs.db
 *.log
-.playwright/
-browser-profile/

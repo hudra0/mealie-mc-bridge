@@ -1,6 +1,34 @@
-import { pino, type Logger, type LoggerOptions } from "pino";
+import { type LoggerOptions } from "pino";
+import type { Config } from "./config.js";
 
-// Never let credentials reach the logs, whatever shape the log call has.
+const censor = "[redacted]";
+
+// Key names whose values must never reach the logs, at any depth and in any letter case.
+// The Monsieur Cuisine session cookies are covered by name: wordpress_logged_in_<hash>
+// has a per-site suffix, which pino's path redaction cannot match.
+const sensitiveKey =
+  /^(wordpress_logged_in_.*|lidl_sso_id_token|authorization|cookie|set-cookie|x-api-key|.*(api[_-]?key|password|passwd|secret|token|cookies?))$/i;
+
+const maxDepth = 8;
+
+// Returns a copy with sensitive values masked. Only plain objects and arrays are walked,
+// so errors, buffers and other class instances pass through to their own serializers.
+export function maskSecrets(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
+  if (typeof value !== "object" || value === null || depth > maxDepth) return value;
+  if (seen.has(value)) return "[circular]";
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => maskSecrets(item, depth + 1, seen));
+  const proto: unknown = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      sensitiveKey.test(key) ? censor : maskSecrets(item, depth + 1, seen),
+    ]),
+  );
+}
+
+// Path redaction as a second layer for objects that are serialized after the mask runs.
 export const redactPaths = [
   "req.headers.authorization",
   "req.headers.cookie",
@@ -8,29 +36,37 @@ export const redactPaths = [
   'res.headers["set-cookie"]',
   "headers.authorization",
   "headers.cookie",
+  "headers.Authorization",
+  "headers.Cookie",
   'headers["set-cookie"]',
+  'headers["Set-Cookie"]',
   'headers["x-api-key"]',
   "authorization",
   "cookie",
   "cookies",
   "token",
+  "apiKey",
+  "api_key",
+  "password",
+  "lidl_sso_id_token",
   "*.token",
   "*.accessToken",
+  "*.idToken",
   "*.apiKey",
   "*.api_key",
   "*.password",
   "*.cookie",
   "*.cookies",
   "*.authorization",
+  "*.lidl_sso_id_token",
 ];
 
-export function loggerOptions(level: string): LoggerOptions {
+export function loggerOptions(level: Config["LOG_LEVEL"]): LoggerOptions {
   return {
     level,
-    redact: { paths: redactPaths, censor: "[redacted]" },
+    redact: { paths: redactPaths, censor },
+    formatters: {
+      log: (object) => maskSecrets(object) as Record<string, unknown>,
+    },
   };
-}
-
-export function createLogger(level: string): Logger {
-  return pino(loggerOptions(level));
 }

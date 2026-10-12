@@ -1,5 +1,7 @@
 # Architecture
 
+Status: target design. Only the HTTP skeleton with `/health` is implemented. Everything below describes what the finished service will do; see the README.
+
 The bridge turns a Mealie recipe into a private draft in a Monsieur Cuisine account. It runs as one container next to Mealie and keeps its state under `/data`.
 
 ## Components

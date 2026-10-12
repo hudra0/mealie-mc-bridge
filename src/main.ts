@@ -1,8 +1,15 @@
+import { existsSync } from "node:fs";
 import { loadConfig } from "./config.js";
 import { loggerOptions } from "./logger.js";
 import { buildServer } from "./server.js";
 
 async function main(): Promise<void> {
+  // Local runs read .env from the working directory. Variables that are already set win.
+  // Containers set NODE_ENV=production and get their settings from the environment.
+  if (process.env.NODE_ENV !== "production" && existsSync(".env")) {
+    process.loadEnvFile(".env");
+  }
+
   const config = loadConfig();
   const app = buildServer({ logger: loggerOptions(config.LOG_LEVEL) });
 

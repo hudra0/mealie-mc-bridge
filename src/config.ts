@@ -10,7 +10,9 @@ export const envSchema = z.object({
 export type Config = z.infer<typeof envSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const result = envSchema.safeParse(env);
+  // An empty value in an env file arrives as an empty string. Treat it as unset.
+  const present = Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ""));
+  const result = envSchema.safeParse(present);
   if (!result.success) {
     const details = result.error.issues
       .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)

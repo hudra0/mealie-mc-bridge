@@ -4,45 +4,44 @@
 
 - Branch from `main`.
 - Commit subjects are short and imperative ("Add ingredient parser"). The body explains why the change is needed, not what the diff already shows.
-- Before pushing, run `npm run format:check && npm run lint && npm run typecheck && npm test`.
+- Before pushing, run `npm run check`, `npm run build` and `gitleaks detect`.
 
 ## Pull requests
+
+The title is imperative and in sentence case, and names the change: `Add ingredient parser`.
 
 Use this body, in this shape:
 
 ```markdown
 ## Summary
 
-<diagram, diff-sketch, or tree>
+<the smallest view that shows the change, plus one or two sentences>
 
 ## Evidence
 
-- **Before:** <screenshot/output/failing test run>
-  **After:** <screenshot/output/passing test run>
+- **Before:** <output, failing check or observed behaviour>
+  **After:** <the same check now>
 
-## Merge Danger
+## Merge danger
 
-**Door:** <one-way or two-way>
-
-<optional: description>
-
-**Blast Radius:** <one-word description>
-
-<optional: potential ramifications of merge>
+**Door:** <one-way or two-way>, <optional: why>
+**Blast radius:** <who or what breaks if this is wrong>
 ```
 
 Rules:
 
 - Keep prose brief and skip preambles.
-- Pick the smallest visual that makes the point: pseudocode, a call tree, a file tree, a mermaid sequence diagram, or a diff of the shape.
-- Evidence is before/after output or tests.
+- Pick the smallest visual that makes the point: a short list of behaviour changes, a call tree, a file tree, or a diff of a structure.
+- Evidence names the exact command and what it printed. "Tests pass" is a claim. Say what was not tested.
+- Add a `Notes for reviewers` section only for something a reviewer has to act on, such as a merge order or a follow-up left out on purpose.
 
 ## Secrets
 
 - Never commit keys, cookies, tokens, passwords, or hostnames and addresses of private infrastructure.
 - Put every setting in `.env.example` with an empty or harmless value. Real values live in your own `.env`, which git ignores.
-- Install the pre-commit hook with `npm run hooks:install`. It runs gitleaks on staged changes when gitleaks is installed.
-- CI runs gitleaks on every push and pull request.
+- Install the pre-commit hook with `npm run hooks:install`. It runs gitleaks on staged changes and refuses to commit when gitleaks is missing. `SKIP_GITLEAKS=1` skips the scan once.
+- CI runs gitleaks on every push and pull request, and rescans the full history weekly.
+- Browser sessions, HAR files and cookie dumps belong under `local/`, which git ignores.
 
 ## Fixtures
 

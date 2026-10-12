@@ -1,0 +1,8 @@
+title = "mealie-mc-bridge"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholder files without real values"
+paths = ['''^\.env\.example$''']

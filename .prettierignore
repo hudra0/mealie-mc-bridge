@@ -1,0 +1,9 @@
+node_modules
+dist
+coverage
+package-lock.json
+local
+data
+docs/research
+PLAN.md
+CLAUDE.md

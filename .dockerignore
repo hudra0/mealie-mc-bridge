@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.github
+.githooks
+local
+data
+coverage
+docs/research
+PLAN.md
+CLAUDE.md
+.env
+.env.*
+!.env.example
+*.log

@@ -68,7 +68,7 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 
 ## Sautéing and roasting
 
-- Sauté onions, garlic or vegetables with the roasting program at 130 °C for 180-240 s (100-130 °C, 120-420 s), measuring cup out; it takes no speed. Official recipes do this in about three of four cases. Use manual mode at 100 °C (80-120 °C), speed 1, 300 s only when the food must stay pale or liquid is already in the bowl, with reverse when diced pieces must keep their shape.
+- Sauté onions, garlic or vegetables with the roasting program at 130 °C for 180-240 s, or at 120 °C for a lighter result, measuring cup out; it takes no speed. Official recipes do this in about three of four cases. Use manual mode at 100 °C (80-120 °C), speed 1, 300 s only when the food must stay pale or liquid is already in the bowl, with reverse when diced pieces must keep their shape.
 - Sear and brown meat or vegetables with the roasting program: 130 °C for 240 s (120-420 s). Roasting time does not depend on the mass.
 - Before sautéing: fat in a scale step and the chopped food pushed down with the spatula. After it: deglaze with liquid in a scale step.
 - Ground spices get one heat step only: sauté them with the onions or add them with the liquid. Tomato paste joins the sauté or goes in with the liquid; never add a second dry roasting step for it.
@@ -85,7 +85,7 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - Risotto and one-pot pasta at 100 °C, speed 1, always reverse. Pasta time is the package time plus about 2 minutes.
 - Jam at 100 °C (95-120), speed 2, 600 s (180-1500 s), measuring cup out, basket on the lid, at most 2500 g in the bowl.
 - Melt chocolate at 50 °C, speed 1, 90-150 s; butter tolerates up to 100 °C. Warm milk and other liquids at 90-100 °C, speed 1-2.
-- Settings of 105-130 °C with liquid in the bowl are normal: the contents stay at the boiling point and boil harder. Official recipes use 120 °C for steaming in manual mode and for jam.
+- Simmer, poach and cook pasta or rice at 100 °C, and set egg mixtures in a bowl in the basket at 100 °C. Settings of 105-130 °C with liquid in the bowl are for jam, reducing and steaming in manual mode while a sauce cooks below (120 °C): the contents stay at the boiling point and boil harder.
 
 ## Dough
 

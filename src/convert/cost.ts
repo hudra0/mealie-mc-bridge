@@ -15,6 +15,9 @@ export const PRICES_CHECKED = "2026-10";
 // Standard tier, prompts up to the long-context threshold. Anthropic cache writes are the
 // 5-minute rate (1.25 times input).
 export const DEFAULT_PRICES: PriceTable = {
+  // gpt-6.1-sol: standard tier, short context (up to 272K input tokens), as listed on the
+  // OpenAI API price page on 2026-10-13.
+  "gpt-6.1-sol": { input: 2, cachedInput: 0.1, output: 10 },
   "gpt-5.5": { input: 5, cachedInput: 0.5, output: 30 },
   "gpt-5.5-pro": { input: 30, output: 180 },
   "gpt-5.4": { input: 2.5, cachedInput: 0.25, output: 15 },

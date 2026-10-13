@@ -21,7 +21,7 @@ export const ANTHROPIC_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as co
 export type AnthropicEffort = (typeof ANTHROPIC_EFFORTS)[number];
 
 // Defaults; check them against the models your account offers.
-export const DEFAULT_OPENAI_MODEL = "gpt-5.5";
+export const DEFAULT_OPENAI_MODEL = "gpt-6.1-sol";
 export const DEFAULT_OPENAI_REASONING_EFFORT: OpenAIReasoningEffort = "medium";
 export const DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5";
 export const DEFAULT_ANTHROPIC_EFFORT: AnthropicEffort = "high";

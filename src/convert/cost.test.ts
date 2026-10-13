@@ -10,6 +10,7 @@ import {
 
 describe("price table", () => {
   it("prices the default models of both providers", () => {
+    expect(DEFAULT_PRICES["gpt-6.1-sol"]).toEqual({ input: 2, cachedInput: 0.1, output: 10 });
     expect(DEFAULT_PRICES["gpt-5.5"]).toEqual({ input: 5, cachedInput: 0.5, output: 30 });
     expect(DEFAULT_PRICES["claude-opus-5-5"]).toEqual({
       input: 4,

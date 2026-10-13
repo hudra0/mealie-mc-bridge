@@ -180,10 +180,10 @@ A language model turns the Mealie recipe into the recipe format of the device. T
 
 Two providers are supported. Pick one with `LLM_PROVIDER` and put its key into `.env`:
 
-| `LLM_PROVIDER` | Key                 | Model setting                                                                    | How it asks for JSON                                                                              |
-| -------------- | ------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `openai`       | `OPENAI_API_KEY`    | `OPENAI_MODEL` (default `gpt-5.5`), `OPENAI_REASONING_EFFORT` (default `medium`) | Responses API with a strict JSON schema                                                           |
-| `anthropic`    | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` (default `claude-opus-5-5`)                                    | structured output from the recipe schema, cached system prompt, server-side fallback on a refusal |
+| `LLM_PROVIDER` | Key                 | Model setting                                                                        | How it asks for JSON                                                                              |
+| -------------- | ------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `openai`       | `OPENAI_API_KEY`    | `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `medium`) | Responses API with a strict JSON schema                                                           |
+| `anthropic`    | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` (default `claude-opus-5-5`)                                        | structured output from the recipe schema, cached system prompt, server-side fallback on a refusal |
 
 The model defaults are the ones the bridge was written against. Check that your account offers them. Other settings: `LLM_MAX_CORRECTIONS` (default 3), `KNOWLEDGE_DIR` (default `./knowledge`) and `LLM_PRICES_JSON`, which overrides the price table used for the cost estimate.
 

@@ -13,7 +13,7 @@ const defaults = {
   LOG_LEVEL: "info",
   DEVICE_PROGRAMS_PATH: "./knowledge/device-programs.json",
   LLM_PROVIDER: "openai",
-  OPENAI_MODEL: "gpt-5.5",
+  OPENAI_MODEL: "gpt-6.1-sol",
   OPENAI_REASONING_EFFORT: "medium",
   ANTHROPIC_MODEL: "claude-opus-5-5",
   LLM_MAX_CORRECTIONS: 3,
@@ -190,7 +190,7 @@ describe("resolveLlmConfig", () => {
     expect(resolveLlmConfig(loadConfig({ OPENAI_API_KEY: "k1" }))).toEqual({
       provider: "openai",
       apiKey: "k1",
-      model: "gpt-5.5",
+      model: "gpt-6.1-sol",
       reasoningEffort: "medium",
     });
     const both = loadConfig({ OPENAI_API_KEY: "k1", ANTHROPIC_API_KEY: "k2" });

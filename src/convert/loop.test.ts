@@ -129,6 +129,12 @@ describe("createConverter", () => {
     expect(result.usage.inputTokens).toBe(40_000);
     expect(result.usage.outputTokens).toBe(10_000);
     expect(result.usage.costUsd).toBe(0.5);
+    expect(result.corrections).toEqual([
+      {
+        attempt: 1,
+        errors: [expect.objectContaining({ path: "servingSize.steps[4].speed" })],
+      },
+    ]);
   });
 
   it("reports plausibility errors and keeps warnings apart from the review hints", async () => {

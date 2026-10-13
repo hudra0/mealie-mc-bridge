@@ -32,10 +32,19 @@ export interface TokenUsage {
   costUsd?: number;
 }
 
+// The errors of one answer that went back to the model for a correction.
+export interface CorrectionRound {
+  // The generator call that gave the answer, 1 for the first one.
+  attempt: number;
+  errors: ValidationIssue[];
+}
+
 export interface ConversionResult {
   recipe: RecipeInput;
   // Generator calls, the first one included.
   attempts: number;
+  // The errors of every answer before the accepted one, for tuning and the job log.
+  corrections?: CorrectionRound[];
   usage: TokenUsage;
   // Plausibility warnings of the accepted recipe, in English, uncapped: for the bridge's
   // own report (log, Mealie note), not for the recipe.

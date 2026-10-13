@@ -653,6 +653,12 @@ async function runEval(
   };
   let cost = 0;
   let failures = 0;
+  const tokens = { input: 0, cached: 0, output: 0 };
+  const count = (usage: ConversionResult["usage"]) => {
+    tokens.input += usage.inputTokens;
+    tokens.cached += usage.cachedInputTokens ?? 0;
+    tokens.output += usage.outputTokens;
+  };
   const outputs: unknown[] = [];
   for (const id of command.ids) {
     const file = join(details, `${id}.json`);
@@ -674,6 +680,7 @@ async function runEval(
       for (const key of Object.keys(total) as (keyof StepComparison)[])
         total[key] += comparison[key];
       cost += result.usage.costUsd ?? 0;
+      count(result.usage);
       outputs.push({ id, result });
       rows.push(
         [
@@ -691,9 +698,15 @@ async function runEval(
     } catch (error) {
       failures++;
       const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof ConversionFailedError) cost += error.usage.costUsd ?? 0;
       rows.push(`${String(id).padStart(7)}  failed: ${message}`);
-      outputs.push({ id, error: message });
+      if (error instanceof ConversionFailedError) {
+        cost += error.usage.costUsd ?? 0;
+        count(error.usage);
+        const { usage, lastJson, corrections } = error;
+        outputs.push({ id, error: message, usage, corrections, lastJson });
+      } else {
+        outputs.push({ id, error: message });
+      }
     }
   }
   ctx.out(header);
@@ -715,6 +728,9 @@ async function runEval(
   );
   ctx.out(
     "mode: original program steps matched in order by the same program; temp: within 10 °C; time: within 30 % (of the matched steps).",
+  );
+  ctx.out(
+    `tokens: ${tokens.input} input (${tokens.cached} cached), ${tokens.output} output; ${cost.toFixed(4)} USD`,
   );
   if (command.out) await writeJson(command.out, outputs);
   return failures > 0 ? EXIT.failed : EXIT.ok;

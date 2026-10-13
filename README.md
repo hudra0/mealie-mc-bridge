@@ -199,7 +199,7 @@ npm run convert -- convert --mealie-json recipe.json --provider anthropic --out 
 
 `convert` prints the steps, the warnings, the review hints, the token usage and a cost estimate. The system prompt is about 9 000 tokens and the same for every recipe, so later recipes and correction rounds read it mostly from the provider's prompt cache; the user message adds about 3 000 tokens of techniques and recipe. The category list comes from `--categories <file>` or, without it, from the public Monsieur Cuisine API (no login needed); without a list the command stops, because the model cannot know category ids.
 
-`npm run convert:eval -- --ids 1234,5678` checks the converter against recipes of your own corpus crawl (see [Knowledge base](#knowledge-base)): it converts each recipe from its ingredients and instruction texts and compares the programs, temperatures and times with the original. It refuses to run without `local/corpus`.
+`npm run convert:eval -- --ids 1234,5678` checks the converter against recipes of your own corpus crawl (see [Knowledge base](#knowledge-base)): it converts each recipe from its ingredients and instruction texts and compares the programs, temperatures and times with the original. It prints the token usage and the cost of the run. `--out` writes each result with the errors of every correction round, and for a recipe that failed the errors, the usage and the last answer. It refuses to run without `local/corpus`.
 
 Exit codes: 0 done, 1 unreadable input or a recipe that still failed after the last correction, 3 provider error (refusal, cut-off answer, API failure), 64 usage error, 66 no corpus, 78 configuration (missing key, broken knowledge base).
 

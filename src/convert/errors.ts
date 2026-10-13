@@ -2,7 +2,7 @@
 // report the failure; none of them carries a key or a prompt.
 
 import type { ValidationIssue } from "../recipe/validate.js";
-import type { TokenUsage } from "./types.js";
+import type { CorrectionRound, TokenUsage } from "./types.js";
 
 // The correction rounds are used up and the last answer still has errors.
 export class ConversionFailedError extends Error {
@@ -13,6 +13,8 @@ export class ConversionFailedError extends Error {
   readonly model: string;
   // The last answer, for the job log.
   readonly lastJson: string;
+  // The errors of every answer, the last one included.
+  readonly corrections: CorrectionRound[];
 
   constructor(init: {
     errors: ValidationIssue[];
@@ -21,6 +23,7 @@ export class ConversionFailedError extends Error {
     provider: string;
     model: string;
     lastJson: string;
+    corrections?: CorrectionRound[];
   }) {
     const shown = init.errors
       .slice(0, 5)
@@ -37,6 +40,7 @@ export class ConversionFailedError extends Error {
     this.provider = init.provider;
     this.model = init.model;
     this.lastJson = init.lastJson;
+    this.corrections = init.corrections ?? [];
   }
 }
 

@@ -16,6 +16,7 @@ import type {
   ConversionRequest,
   ConversionResult,
   Converter,
+  CorrectionRound,
   GenerationFeedback,
   RecipeGenerator,
   TokenUsage,
@@ -124,6 +125,7 @@ export function createConverter(options: ConverterOptions): Converter {
       let model = generator.model;
       let lastErrors: ValidationIssue[] = [];
       let lastJson = "";
+      const corrections: CorrectionRound[] = [];
 
       for (let attempt = 1; attempt <= maxCorrections + 1; attempt++) {
         if (signal?.aborted) throw abortReason(signal);
@@ -185,6 +187,7 @@ export function createConverter(options: ConverterOptions): Converter {
             return {
               recipe: validation.recipe,
               attempts: attempt,
+              corrections,
               usage: total,
               warnings,
               reviewHints: [...(validation.recipe.reviewHints ?? [])],
@@ -194,6 +197,7 @@ export function createConverter(options: ConverterOptions): Converter {
           }
         }
         lastErrors = errors;
+        corrections.push({ attempt, errors });
         logger.warn(
           { provider: generator.provider, model, attempt, errors: errors.length },
           attempt <= maxCorrections
@@ -210,6 +214,7 @@ export function createConverter(options: ConverterOptions): Converter {
         provider: generator.provider,
         model,
         lastJson,
+        corrections,
       });
     },
   };

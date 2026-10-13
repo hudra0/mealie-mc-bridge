@@ -20,12 +20,14 @@ export interface ScaledIngredient extends NormalizedIngredient {
 
 // Used only when a recipe states neither servings nor a yield and was not scaled.
 export const DEFAULT_SERVINGS = 4;
-// The servings range a Monsieur Cuisine recipe accepts. Mirrors
-// recipeLimits.servings.amount.effective in knowledge/device-programs.json: official
-// recipes go up to 100 (counted in pieces or slices), so the older limit of 24 was too low.
-// scale.test.ts fails when the two drift apart.
-export const MIN_SERVINGS = 1;
-export const MAX_SERVINGS = 100;
+
+// The servings range a Monsieur Cuisine recipe accepts. The caller passes
+// `recipe.servings` of the loaded device limits (src/recipe/limits.ts), so the range lives
+// only in knowledge/device-programs.json.
+export interface ServingsRange {
+  min: number;
+  max: number;
+}
 
 const clean = (value: number): number => Math.round(value * 1000) / 1000;
 const toStep = (value: number, step: number): number => clean(Math.round(value / step) * step);
@@ -125,10 +127,10 @@ export function scalerBase(recipe: ServingsInfo): number | null {
 
 // Servings for the scaled recipe, as the user picked them in Mealie's scaler:
 // base × recipe_scale. A recipe without servings and yield that was not scaled counts as
-// DEFAULT_SERVINGS. The result is limited to the range the device accepts.
-export function servingsFor(recipe: ServingsInfo, factor: number): number {
+// DEFAULT_SERVINGS. The result is limited to `range`, the servings the device accepts.
+export function servingsFor(recipe: ServingsInfo, factor: number, range: ServingsRange): number {
   const scale = positive(factor) ? factor : 1;
   const base = scalerBase(recipe);
   const servings = base === null && scale === 1 ? DEFAULT_SERVINGS : (base ?? 1) * scale;
-  return Math.min(MAX_SERVINGS, Math.max(MIN_SERVINGS, Math.round(servings)));
+  return Math.min(range.max, Math.max(range.min, Math.round(servings)));
 }

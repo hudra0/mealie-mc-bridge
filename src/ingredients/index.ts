@@ -18,11 +18,9 @@ export {
   scalerBase,
   ROUNDING,
   DEFAULT_SERVINGS,
-  MIN_SERVINGS,
-  MAX_SERVINGS,
   PINCH_MIN_FACTOR,
 } from "./scale.js";
-export type { ScaledIngredient, ScaleFlag, ServingsInfo } from "./scale.js";
+export type { ScaledIngredient, ScaleFlag, ServingsInfo, ServingsRange } from "./scale.js";
 export {
   UNIT_CODES,
   UNITS,

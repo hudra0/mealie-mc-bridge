@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   normalizeIngredients,
@@ -6,6 +7,7 @@ import {
   servingsFor,
   type ScaledIngredient,
 } from "../ingredients/index.js";
+import { loadDeviceLimits } from "../recipe/limits.js";
 import { formatNumber, plainText, renderRecipeForLlm } from "./render.js";
 import { mealieRecipeSchema, type MealieRecipe } from "./types.js";
 
@@ -16,12 +18,16 @@ const fixture = (name: string): MealieRecipe =>
     ),
   );
 
+const limits = await loadDeviceLimits(
+  fileURLToPath(new URL("../../knowledge/device-programs.json", import.meta.url)),
+);
+
 // The pipeline the bridge runs before rendering: normalize, scale, count servings.
 function render(recipe: MealieRecipe, scale: number): string {
   const ingredients = scaleIngredients(normalizeIngredients(recipe), scale);
   return renderRecipeForLlm(recipe, {
     scale,
-    servings: servingsFor(recipe, scale),
+    servings: servingsFor(recipe, scale, limits.recipe.servings),
     ingredients,
   });
 }

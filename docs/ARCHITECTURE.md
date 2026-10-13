@@ -16,7 +16,7 @@ The bridge turns a Mealie recipe into a private draft in a Monsieur Cuisine acco
 1. Receive the webhook, check its token, read only the recipe id and the scale, store a job and answer 202. A second job for the same recipe is not started while one is running.
 2. Load the recipe and its image from Mealie.
 3. Hash the recipe content (name, ingredients, steps, notes, servings, scale). If a draft with the same hash exists, report it as unchanged instead of converting again. An admin can force a rebuild.
-4. Normalize ingredients and scale them. Use structured fields first, parse free-text amounts with deterministic rules, and hand only the remainder to the LLM. Servings follow Mealie's scaler (recipe servings, else the yield quantity, times the scale) and are limited to 1–100, the range the device accepts (`recipeLimits.servings` in `knowledge/device-programs.json`).
+4. Normalize ingredients and scale them. Use structured fields first, parse free-text amounts with deterministic rules, and hand only the remainder to the LLM. Servings follow Mealie's scaler (recipe servings, else the yield quantity, times the scale) and are limited to the range the device accepts, `recipeLimits.servings` in `knowledge/device-programs.json` (1–100), passed in from the loaded device limits.
 5. Convert with the LLM into the intermediate recipe structure. Validate against the schema, the device limits and plausibility rules (heating rates, fill levels, times). Feed validation errors back for up to three correction rounds.
 6. Convert the image, upload it and create the draft. The code sets the draft status, never the model.
 7. Write the result back to Mealie: a tag, a link to the draft and any review hints as a timeline entry.

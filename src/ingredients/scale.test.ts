@@ -1,16 +1,22 @@
-import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { loadDeviceLimits } from "../recipe/limits.js";
 import type { NormalizedIngredient } from "./normalize.js";
 import {
   DEFAULT_SERVINGS,
-  MAX_SERVINGS,
-  MIN_SERVINGS,
   PINCH_MIN_FACTOR,
   ROUNDING,
   scaleIngredients,
   scalerBase,
   servingsFor,
 } from "./scale.js";
+
+// The servings range from knowledge/device-programs.json, as the pipeline passes it.
+const device = (
+  await loadDeviceLimits(
+    fileURLToPath(new URL("../../knowledge/device-programs.json", import.meta.url)),
+  )
+).recipe.servings;
 
 const item = (overrides: Partial<NormalizedIngredient>): NormalizedIngredient => ({
   index: 0,
@@ -169,14 +175,14 @@ describe("servingsFor", () => {
     [2.5, 0, 1, 3],
     [4, 2, 2, 8],
     [20, 0, 3, 60],
-    [40, 0, 3, MAX_SERVINGS],
+    [40, 0, 3, 100],
     [Number.NaN, 0, 1, DEFAULT_SERVINGS],
     [4, 0, 0, 4],
     [4, 0, Number.NaN, 4],
   ])("turns %d servings and yield %d at factor %d into %d", (servings, yieldQty, factor, want) => {
-    expect(servingsFor({ recipeServings: servings, recipeYieldQuantity: yieldQty }, factor)).toBe(
-      want,
-    );
+    expect(
+      servingsFor({ recipeServings: servings, recipeYieldQuantity: yieldQty }, factor, device),
+    ).toBe(want);
   });
 
   it.each([
@@ -190,25 +196,27 @@ describe("servingsFor", () => {
     // Not scaled and nothing stated: the default stands in.
     [0, 1, DEFAULT_SERVINGS],
   ])("without servings, uses yield %d at factor %d for %d servings", (yieldQty, factor, want) => {
-    expect(servingsFor({ recipeServings: 0, recipeYieldQuantity: yieldQty }, factor)).toBe(want);
+    expect(servingsFor({ recipeServings: 0, recipeYieldQuantity: yieldQty }, factor, device)).toBe(
+      want,
+    );
   });
 
-  it("limits the servings to the device range", () => {
-    expect(MIN_SERVINGS).toBe(1);
-    expect(MAX_SERVINGS).toBe(100);
-    expect(servingsFor({ recipeServings: 12, recipeYieldQuantity: 0 }, 3)).toBe(36);
-    expect(servingsFor({ recipeServings: 50, recipeYieldQuantity: 0 }, 2)).toBe(100);
-    expect(servingsFor({ recipeServings: 50, recipeYieldQuantity: 0 }, 3)).toBe(100);
-    expect(servingsFor({ recipeServings: 24, recipeYieldQuantity: 0 }, 0.01)).toBe(1);
+  it("limits the servings to the device range from the knowledge file", () => {
+    // Official recipes go up to 100 servings, counted in pieces or slices.
+    expect(device).toMatchObject({ min: 1, max: 100 });
+    const at = (servings: number, factor: number): number =>
+      servingsFor({ recipeServings: servings, recipeYieldQuantity: 0 }, factor, device);
+    expect(at(12, 3)).toBe(36);
+    expect(at(50, 2)).toBe(100);
+    expect(at(50, 3)).toBe(100);
+    expect(at(24, 0.01)).toBe(1);
   });
 
-  it("uses the servings range from knowledge/device-programs.json", () => {
-    const file = new URL("../../knowledge/device-programs.json", import.meta.url);
-    const programs = JSON.parse(readFileSync(file, "utf8")) as {
-      recipeLimits: { servings: { amount: { effective: { min: number; max: number } } } };
-    };
-    const { min, max } = programs.recipeLimits.servings.amount.effective;
-    expect([MIN_SERVINGS, MAX_SERVINGS]).toEqual([min, max]);
+  it("limits the servings to the range it is given", () => {
+    const range = { min: 2, max: 6 };
+    expect(servingsFor({ recipeServings: 4, recipeYieldQuantity: 0 }, 0.25, range)).toBe(2);
+    expect(servingsFor({ recipeServings: 4, recipeYieldQuantity: 0 }, 1, range)).toBe(4);
+    expect(servingsFor({ recipeServings: 4, recipeYieldQuantity: 0 }, 2, range)).toBe(6);
   });
 });
 

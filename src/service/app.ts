@@ -7,6 +7,7 @@ import type { AppLogger } from "../app-logger.js";
 import type { McRecipeSink } from "../mc/index.js";
 import type { Notifier } from "../notify/email.js";
 import type { Converter } from "../pipeline/converter-port.js";
+import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
 import { runJob, type MealiePort, type PipelineConfig } from "../pipeline/run-job.js";
 import { Worker } from "../pipeline/worker.js";
 import type { DeviceLimits } from "../recipe/limits.js";
@@ -37,6 +38,8 @@ export interface ServiceParts {
   converter: Converter;
   limits: DeviceLimits;
   notifier: Notifier;
+  // Resolves the systemIngredientId of each ingredient; without it, none is set.
+  ingredients?: IngredientResolverPort;
   // The app logger is taken from Fastify once the server exists.
   logger?: AppLogger;
   server?: FastifyServerOptions;
@@ -100,6 +103,7 @@ export function buildService(parts: ServiceParts): Service {
           // No `session` here: McClient reports a rejected cookie to the session manager
           // itself, together with the cookie it used.
           store,
+          ...(parts.ingredients ? { ingredients: parts.ingredients } : {}),
         },
         options,
       ),

@@ -1,0 +1,41 @@
+{
+  "code": 0,
+  "data": {
+    "recipe": {
+      "id": 1,
+      "name": "Testrezept 1",
+      "source": "official",
+      "servingSizes": [
+        {
+          "amount": 4,
+          "ingredients": [
+            {
+              "order": 0,
+              "amount": "100",
+              "unit": "g",
+              "name": "Testzutat A",
+              "systemIngredientId": 9001,
+              "ingredientCategory": { "id": 1, "name": "Testkategorie" }
+            },
+            {
+              "order": 1,
+              "amount": "2",
+              "unit": "Stück",
+              "name": "Testzutat B",
+              "systemIngredientId": 9002,
+              "ingredientCategory": null
+            },
+            {
+              "order": 2,
+              "amount": "1",
+              "unit": "Prise",
+              "name": "Testzutat C",
+              "systemIngredientId": -1,
+              "ingredientCategory": null
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

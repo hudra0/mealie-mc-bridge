@@ -5,6 +5,7 @@
 // the live API on 2026-10-13: one serving size, ingredient order from 1, group and step
 // order from 0, amounts as strings, integer nutrients, empty descriptions on program steps.
 
+import { normalizeIngredientName } from "../ingredients/catalog.js";
 import {
   isWritableStatus,
   type McDeviceSetting,
@@ -45,6 +46,9 @@ export interface BuildPayloadOptions {
   thumbnailMediaId?: number | null;
   // Overrides input.categoryIds, for example after filtering against the live catalog.
   categoryIds?: readonly number[];
+  // systemIngredientId per ingredient, keyed by normalizeIngredientName(name). Names that
+  // are missing or map to null go out with systemIngredientId null.
+  ingredientIds?: ReadonlyMap<string, number | null>;
 }
 
 // The API keys per program, the steps that keep their description and the device type ids
@@ -85,7 +89,7 @@ export function buildMcPayload(
         preparationTime: serving.preparationTime,
         readyInTime: serving.readyInTime,
         ingredientGroups: serving.ingredientGroups.map((group, index) =>
-          toGroup(group, index, DEFAULT_GROUP_NAMES[input.locale]),
+          toGroup(group, index, DEFAULT_GROUP_NAMES[input.locale], options.ingredientIds),
         ),
         steps: serving.steps.map((step, order) => toStep(step, order, limits)),
         order: 0,
@@ -104,7 +108,12 @@ function mediaRef(mediaId: number | null | undefined): McMediaRef {
   };
 }
 
-function toGroup(group: IngredientGroup, index: number, defaultName: string) {
+function toGroup(
+  group: IngredientGroup,
+  index: number,
+  defaultName: string,
+  ingredientIds: ReadonlyMap<string, number | null> | undefined,
+) {
   return {
     name: group.name.trim() === "" ? defaultName : group.name,
     isDefault: index === 0,
@@ -114,7 +123,7 @@ function toGroup(group: IngredientGroup, index: number, defaultName: string) {
       isOptional: ingredient.isOptional,
       unit: ingredient.unit,
       amount: formatAmount(ingredient.amount),
-      systemIngredientId: null,
+      systemIngredientId: ingredientIds?.get(normalizeIngredientName(ingredient.name)) ?? null,
       order: position + 1,
       ingredientCategory: null,
       iconUrl: null,

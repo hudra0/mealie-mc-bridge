@@ -21,6 +21,7 @@ const defaults = {
   DATA_DIR: "./data",
   MEALIE_GROUP_SLUG: "home",
   MC_RECIPE_STATUS: "private-publish",
+  MC_RESOLVE_INGREDIENTS: "exact",
   SESSION_CHECK_MINUTES: 60,
   WORKER_POLL_SECONDS: 2,
   TAG_NAME: "Monsieur Cuisine",
@@ -143,6 +144,11 @@ describe("loadConfig", () => {
 
   it("rejects an unknown recipe status", () => {
     expect(() => loadConfig({ MC_RECIPE_STATUS: "pending" })).toThrow(/MC_RECIPE_STATUS/);
+  });
+
+  it("switches ingredient resolution off and rejects other modes", () => {
+    expect(loadConfig({ MC_RESOLVE_INGREDIENTS: "off" }).MC_RESOLVE_INGREDIENTS).toBe("off");
+    expect(() => loadConfig({ MC_RESOLVE_INGREDIENTS: "fuzzy" })).toThrow(/MC_RESOLVE_INGREDIENTS/);
   });
 });
 

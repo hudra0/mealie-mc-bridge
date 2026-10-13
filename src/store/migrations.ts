@@ -87,6 +87,19 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE jobs ADD COLUMN create_started_at TEXT;
     `,
   },
+  {
+    version: 3,
+    name: "ingredient id cache and resolution stats",
+    sql: `
+      CREATE TABLE ingredient_cache (
+        name_norm TEXT PRIMARY KEY,
+        system_ingredient_id INTEGER,
+        source TEXT NOT NULL CHECK (source IN ('catalog', 'search', 'none')),
+        resolved_at TEXT NOT NULL
+      );
+      ALTER TABLE jobs ADD COLUMN ingredients_json TEXT;
+    `,
+  },
 ];
 
 export interface MigrationResult {

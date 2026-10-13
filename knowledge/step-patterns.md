@@ -34,7 +34,7 @@ Terms used below:
 15. Scale steps come alone or in short runs: one (64.7 %), two (22.4 %), three (8.2 %).
 16. Amounts in spoons, pinches and pieces go into text steps with the amount written out. Units found in text steps: Tl 43.0 %, El 22.5 %, g 11.0 %, Prise 10.8 %, Msp 2.8 %.
 17. Amounts are restated when the ingredient goes in: 83.9 % of g amounts, 87.4 % of Tl amounts and 86.1 % of Stück amounts appear in some step. 89.8 % of g amounts in step text equal a listed amount; the rest are split portions.
-18. Steps use the list name without its qualifiers: catalog name verbatim 56.5 %, core name 21.7 %; names with parentheses appear verbatim in only 28.7 %, names with a comma qualifier in 3.8 %.
+18. Steps use the list name without its qualifiers: catalog name verbatim 56.5 %, core name 21.7 %; names with parentheses appear verbatim in only 28.7 %, names with a comma qualifier in 3.8 %. The ingredient list itself keeps the full catalog spelling (`ingredient-catalog.json`), which links each ingredient to its systemIngredientId.
 19. A scale step with a plate or bowl on the lid weighs something that does not go into the bowl (128 such steps). Use it only for that.
 
 ## 4. Titles and descriptions

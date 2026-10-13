@@ -33,6 +33,18 @@ export interface StoredConversion {
   result: unknown;
 }
 
+// How the ingredient names of the converted recipe got their systemIngredientId, counted
+// per distinct name. unresolvedNames go out without an id.
+export interface JobIngredientStats {
+  catalog: number;
+  cache: number;
+  search: number;
+  unresolved: number;
+  unresolvedNames: string[];
+  // False when MC_RESOLVE_INGREDIENTS=off.
+  enabled: boolean;
+}
+
 export interface Job {
   id: string;
   mealieRecipeId: string;
@@ -58,6 +70,7 @@ export interface Job {
   // Set right before the draft creation request goes out. A job interrupted after this
   // point may have left a draft behind and is never run again on its own.
   createStartedAt: string | null;
+  ingredients: JobIngredientStats | null;
 }
 
 export interface JobEvent {
@@ -101,6 +114,7 @@ export interface JobPatch {
   force?: boolean;
   conversion?: StoredConversion | null;
   createStartedAt?: string | null;
+  ingredients?: JobIngredientStats | null;
 }
 
 export interface ListJobsOptions {
@@ -148,6 +162,7 @@ interface JobRow {
   force: number;
   conversion_json: string | null;
   create_started_at: string | null;
+  ingredients_json: string | null;
 }
 
 interface EventRow {
@@ -176,6 +191,7 @@ const COLUMNS: Readonly<Record<keyof JobPatch, string>> = {
   force: "force",
   conversion: "conversion_json",
   createStartedAt: "create_started_at",
+  ingredients: "ingredients_json",
 };
 
 export const INTERRUPTED_CREATE =
@@ -477,7 +493,9 @@ export class JobStore {
 
 function toColumn(key: keyof JobPatch, value: unknown): unknown {
   if (value === null) return null;
-  if (key === "usage" || key === "conversion") return JSON.stringify(value);
+  if (key === "usage" || key === "conversion" || key === "ingredients") {
+    return JSON.stringify(value);
+  }
   if (key === "force") return value ? 1 : 0;
   return value;
 }
@@ -506,6 +524,7 @@ function toJob(row: JobRow): Job {
     force: row.force === 1,
     conversion: parseJson<StoredConversion>(row.conversion_json),
     createStartedAt: row.create_started_at,
+    ingredients: parseJson<JobIngredientStats>(row.ingredients_json),
   };
 }
 

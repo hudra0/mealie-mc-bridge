@@ -31,3 +31,19 @@ export {
   unitLabel,
 } from "./units.js";
 export type { UnitCode, UnitKind, UnitMatch } from "./units.js";
+export {
+  INGREDIENT_CATALOG_FILE,
+  IngredientCatalogError,
+  createIngredientCatalog,
+  ingredientCatalogSchema,
+  loadConfiguredCatalog,
+  loadIngredientCatalog,
+  lookupCatalog,
+  normalizeIngredientName,
+  parseIngredientCatalog,
+} from "./catalog.js";
+export type {
+  IngredientCatalog,
+  IngredientCatalogEntry,
+  IngredientCatalogFile,
+} from "./catalog.js";

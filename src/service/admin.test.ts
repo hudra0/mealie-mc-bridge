@@ -279,6 +279,38 @@ describe("jobs", () => {
     expect(body).not.toContain(">Cancel<");
   });
 
+  it("shows where the ingredient ids came from and the names without one", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    expect((await get(`/admin/jobs/${job.id}`)).body).not.toContain("Without id");
+    svc.store.jobs.finish(job.id, "done", {
+      ingredients: {
+        catalog: 7,
+        cache: 2,
+        search: 1,
+        unresolved: 2,
+        unresolvedNames: ["Testzutat <Z>", "Testzutat Y"],
+        enabled: true,
+      },
+    });
+    const body = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(body).toContain("7 catalog, 2 cache, 1 search, 2 without id");
+    expect(body).toContain("Without id");
+    expect(body).toContain("Testzutat &lt;Z&gt;, Testzutat Y");
+
+    svc.store.jobs.update(job.id, {
+      ingredients: {
+        catalog: 0,
+        cache: 0,
+        search: 0,
+        unresolved: 3,
+        unresolvedNames: [],
+        enabled: false,
+      },
+    });
+    expect((await get(`/admin/jobs/${job.id}`)).body).toContain("resolution off (3 without id)");
+  });
+
   it("answers 404 for an unknown job", async () => {
     svc = testService();
     expect((await get("/admin/jobs/unknown")).statusCode).toBe(404);

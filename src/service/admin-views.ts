@@ -314,6 +314,14 @@ export function jobDetailView(data: JobDetailData): SafeHtml {
           }
           ${job.costUsd === null ? "" : ` · $${job.costUsd.toFixed(4)}`}
         </dd>
+        <dt>Ingredient ids</dt>
+        <dd>${ingredientStats(job)}</dd>
+        ${
+          job.ingredients && job.ingredients.unresolvedNames.length > 0
+            ? html`<dt>Without id</dt>
+                <dd>${job.ingredients.unresolvedNames.join(", ")}</dd>`
+            : ""
+        }
         <dt>Error</dt>
         <dd>${job.error ? html`<span class="bad">${job.error}</span>` : "–"}</dd>
       </dl>
@@ -363,6 +371,14 @@ export function jobDetailView(data: JobDetailData): SafeHtml {
         </table>
       </div>
     </section>`;
+}
+
+// Where the systemIngredientIds of the draft came from.
+function ingredientStats(job: Job): string {
+  const stats = job.ingredients;
+  if (!stats) return "–";
+  if (!stats.enabled) return `resolution off (${stats.unresolved} without id)`;
+  return `${stats.catalog} catalog, ${stats.cache} cache, ${stats.search} search, ${stats.unresolved} without id`;
 }
 
 export function dryRunForm(recipe: string, scale: number): SafeHtml {

@@ -34,7 +34,7 @@ describe("main", () => {
   const outDir = path.join(import.meta.dirname, "no-such-knowledge");
 
   it("names every missing input, exits 1 and writes nothing", async () => {
-    expect(missingInputs(corpusDir)).toHaveLength(4);
+    expect(missingInputs(corpusDir)).toHaveLength(5);
     const errors: string[] = [];
     const code = await main(["--corpus-dir", corpusDir, "--out", outDir], {
       log: () => undefined,
@@ -43,6 +43,7 @@ describe("main", () => {
     expect(code).toBe(1);
     expect(errors.join("\n")).toContain(path.join(corpusDir, "derived", "steps.jsonl"));
     expect(errors.join("\n")).toContain("timing.json");
+    expect(errors.join("\n")).toContain(path.join(corpusDir, "derived", "recipes.jsonl"));
     expect(existsSync(outDir)).toBe(false);
   });
 

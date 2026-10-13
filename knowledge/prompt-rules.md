@@ -48,6 +48,11 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - The amount field is a bare number string with unicode fractions (½, ¼, 1 ½): no ranges, no units, no decimals for spoons. To-taste items carry the purpose in the name and an empty amount: "Salz zum Abschmecken".
 - Never invent or drop an ingredient or a quantity. Keep the source amounts (scaled), changed only by unit conversion and rounding, and list anything unclear in reviewHints.
 
+## Ingredient names
+
+- Write each ingredient list name the way Monsieur Cuisine recipes spell it, so the bridge can link it to the app's ingredient database. Only an exact match apart from case and spacing gets an id; a near miss gets none. Counted items in the plural: "Zwiebeln", "Knoblauchzehen", "Möhren", "Eier (Größe M)". Qualifiers in parentheses: "Mehl (Type 405)", "Sahne (30 % Fett)", "Joghurt natur (3,5 % Fett)". Form and state after a comma: "Hefe, frisch", "Pfeffer, schwarz, gemahlen". To-taste items as in the amounts rules: "Salz zum Abschmecken".
+- Keep the preparation out of the list name ("Zwiebeln", not "Zwiebeln, gewürfelt"); the step that cuts them says how. Steps then use the name without its qualifiers: "die Zwiebeln" for "Zwiebeln (rot)".
+
 ## Chopping
 
 - Chop in manual mode at 0 °C, forward rotation, measuring cup in. Onion and garlic: speed 6 for 6 s (5-10 s, speed 5-8). Vegetables: speed 6 for 6 s (4-10 s). Herbs: speed 6 for 8 s. Nuts: speed 6 for 8 s (4-15 s). Hard cheese and chocolate: speed 8 for 10 s.

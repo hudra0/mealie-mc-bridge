@@ -154,6 +154,29 @@ describe("buildMcPayload", () => {
     });
   });
 
+  it("sets the resolved systemIngredientId per ingredient, null where none is known", () => {
+    const ingredientIds = new Map<string, number | null>([
+      ["zwiebel", 9001],
+      ["salz", null],
+      ["mehl", 9002],
+    ]);
+    const input = sample();
+    input.servingSize.ingredientGroups[0]!.ingredients[3]!.name = "  MEHL ";
+    const ids = buildMcPayload(input, limits, {
+      status: "draft",
+      ingredientIds,
+    }).servingSizes[0].ingredientGroups[0]?.ingredients.map((item) => [
+      item.name,
+      item.systemIngredientId,
+    ]);
+    expect(ids).toEqual([
+      ["Wasser", null],
+      ["Zwiebel", 9001],
+      ["Salz", null],
+      ["  MEHL ", 9002],
+    ]);
+  });
+
   it("builds text steps without a mode", () => {
     expect(steps(sample())[0]).toEqual({
       title: "Wasser einfüllen",

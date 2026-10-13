@@ -2,7 +2,8 @@
 //
 // Input:  $CORPUS_DIR/derived/steps.jsonl, technique-steps.jsonl, timing.json and
 //         ingredients.json, written by `npm run corpus:analyze` (default CORPUS_DIR:
-//         local/corpus).
+//         local/corpus); for the ingredient catalog derived/recipes.jsonl, or the raw
+//         details/ when the normalizer has not run (categories always come from details/).
 // Output: knowledge/device-programs.json  hard device limits per program (hand-curated data
 //                                          in build-device-programs.ts, no corpus input)
 //         knowledge/device-limits.json    corpus, SmartRecipe and editor layers plus the
@@ -10,6 +11,7 @@
 //         knowledge/timing-model.json     time formulas, heat-up rules and mass limits
 //         knowledge/units.json            unit vocabulary, rounding grid and piece weights
 //         knowledge/techniques.json       cooking techniques with device settings
+//         knowledge/ingredient-catalog.json  ingredient names with their systemIngredientId
 // knowledge/prompt-rules.md and knowledge/step-patterns.md are written by hand.
 //
 // device-programs.json holds values transcribed from a logged-in capture of the recipe editor
@@ -33,6 +35,7 @@ import { fileURLToPath } from "node:url";
 import * as prettier from "prettier";
 import { buildDeviceLimits } from "./build-device-limits.js";
 import { buildDevicePrograms, formatDevicePrograms } from "./build-device-programs.js";
+import { buildIngredientCatalog, readCatalogSource } from "./build-ingredient-catalog.js";
 import { buildTechniques, type TechniqueStepRow } from "./build-techniques.js";
 import {
   buildTimingModel,
@@ -79,11 +82,15 @@ export function parseArgs(
   return options;
 }
 
-/** Paths of the required derived files that do not exist. */
+/** Paths of the required inputs that do not exist. */
 export function missingInputs(corpusDir: string): string[] {
-  return requiredInputs
+  const missing = requiredInputs
     .map((f) => path.join(corpusDir, "derived", f))
     .filter((f) => !existsSync(f));
+  const recipes = path.join(corpusDir, "derived", "recipes.jsonl");
+  const details = path.join(corpusDir, "details");
+  if (!existsSync(recipes) && !existsSync(details)) missing.push(`${recipes} (or ${details})`);
+  return missing;
 }
 
 function readJsonl<T>(file: string): T[] {
@@ -110,6 +117,9 @@ export async function buildAll(corpusDir: string, outDir: string): Promise<Map<s
   const techniqueSteps = readJsonl<TechniqueStepRow>(path.join(derived, "technique-steps.jsonl"));
   const timing = readJson<TimingAnalysis>(path.join(derived, "timing.json"));
   const ingredients = readJson<IngredientsAnalysis>(path.join(derived, "ingredients.json"));
+  const catalogSource = readCatalogSource(corpusDir);
+  if (!catalogSource) throw new Error(`no ingredient source in ${corpusDir}`);
+  const catalog = buildIngredientCatalog(catalogSource.recipes, catalogSource.categories);
 
   const programs = buildDevicePrograms();
   const docs: [string, string][] = [
@@ -118,6 +128,7 @@ export async function buildAll(corpusDir: string, outDir: string): Promise<Map<s
     ["timing-model.json", JSON.stringify(buildTimingModel({ steps, timing, ingredients })) + "\n"],
     ["units.json", JSON.stringify(buildUnits({ steps, timing, ingredients })) + "\n"],
     ["techniques.json", JSON.stringify(buildTechniques({ steps, techniqueSteps, timing })) + "\n"],
+    ["ingredient-catalog.json", JSON.stringify(catalog) + "\n"],
   ];
   const out = new Map<string, string>();
   for (const [name, text] of docs) out.set(name, await format(text, outDir, name));
@@ -156,6 +167,11 @@ export async function main(argv: readonly string[], log: Log = console): Promise
     if (state !== "unchanged") differing++;
     if (!options.check && state !== "unchanged") writeFileSync(target, text);
     log.log(`${target}: ${state}`);
+  }
+  const catalog = files.get("ingredient-catalog.json");
+  if (catalog !== undefined) {
+    const entries = (JSON.parse(catalog) as { entries: unknown[] }).entries.length;
+    log.log(`ingredient catalog: ${entries} entries`);
   }
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (options.check) {

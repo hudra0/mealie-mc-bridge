@@ -2,11 +2,13 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { pino } from "pino";
 import { loadServiceConfig } from "./config.js";
+import { loadConfiguredCatalog } from "./ingredients/catalog.js";
 import { loggerOptions } from "./logger.js";
 import { McClient, McTransport, StaticSessionProvider } from "./mc/index.js";
 import { MealieClient } from "./mealie/index.js";
 import { createNotifier } from "./notify/email.js";
 import { loadConverter } from "./pipeline/converter-port.js";
+import { IngredientResolver } from "./pipeline/ingredient-resolver.js";
 import { loadDeviceLimits } from "./recipe/limits.js";
 import { buildService, mealieRecipeLink } from "./service/app.js";
 import { requestLogSerializers } from "./service/security.js";
@@ -60,6 +62,14 @@ async function main(): Promise<void> {
   });
   const mc = new McClient(transport, session);
   const converter = await loadConverter({ env: process.env, limits, logger });
+  const catalog = await loadConfiguredCatalog(config);
+  const ingredients = new IngredientResolver({
+    mode: config.MC_RESOLVE_INGREDIENTS,
+    catalog,
+    cache: store.ingredientCache,
+    search: mc,
+    logger,
+  });
 
   const service = buildService({
     config,
@@ -70,6 +80,7 @@ async function main(): Promise<void> {
     converter,
     limits,
     notifier,
+    ingredients,
     logger,
     server: { loggerInstance: logger },
   });

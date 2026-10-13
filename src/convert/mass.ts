@@ -99,8 +99,38 @@ export function stem(word: string): string {
   return lower;
 }
 
+// Austrian and regional names and the name Monsieur Cuisine recipes use for the same food.
+// The prompt asks for the Monsieur Cuisine name, so "Topfen" in the source comes back as
+// "Quark" and "Karotten" as "Möhren"; both sides are read with the Monsieur Cuisine name.
+export const REGIONAL_NAMES: Readonly<Record<string, string>> = {
+  topfen: "quark",
+  karotte: "möhre",
+  karotten: "möhren",
+  schlagobers: "sahne",
+  obers: "sahne",
+  paradeiser: "tomaten",
+  erdapfel: "kartoffel",
+  erdäpfel: "kartoffeln",
+  karfiol: "blumenkohl",
+  kren: "meerrettich",
+  faschiertes: "hackfleisch",
+  faschierte: "hackfleisch",
+  eierschwammerl: "pfifferlinge",
+  marille: "aprikose",
+  marillen: "aprikosen",
+  kohlsprossen: "rosenkohl",
+  fisolen: "bohnen",
+  melanzani: "aubergine",
+  zucchetti: "zucchini",
+  staubzucker: "puderzucker",
+  germ: "hefe",
+  dotter: "eigelb",
+  porree: "lauch",
+  paniermehl: "semmelbrösel",
+};
+
 export function words(text: string): string[] {
-  return text.toLowerCase().match(/\p{L}+/gu) ?? [];
+  return (text.toLowerCase().match(/\p{L}+/gu) ?? []).map((word) => REGIONAL_NAMES[word] ?? word);
 }
 
 // The stems that identify an ingredient name.

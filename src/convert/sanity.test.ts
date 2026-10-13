@@ -522,6 +522,18 @@ describe("ingredient_listed", () => {
     });
   });
 
+  it("accepts the Monsieur Cuisine name for a regional name", () => {
+    const austrian = [ingredient("Topfen", 500, "g"), ingredient("Karotten", 2, null)];
+    const list = [entry("Quark (20 % Fett)"), entry("Möhren")];
+    expect(run(ingredientListedRule, [text("x")], austrian, { list })).toEqual({
+      errors: [],
+      warnings: [],
+    });
+    expect(
+      run(ingredientReferencedRule, [text("Möhren und Quark verrühren.")], austrian).warnings,
+    ).toEqual([]);
+  });
+
   it("only warns when most names differ, as in a translated recipe", () => {
     const english = [
       ingredient("vegetable stock", 1500, "g"),

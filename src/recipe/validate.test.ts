@@ -317,8 +317,94 @@ describe("validateRecipeInput", () => {
       "step title length",
       customized({ title: "x".repeat(81) }),
       "title",
-      /step title must be at most 80 characters/,
+      /^step title has 81 characters; at most 80 are allowed$/,
       customized({ title: "x".repeat(80) }),
+    ],
+    // The butterfly whisk caps the speed of manual cooking at 4 (official guide).
+    [
+      "speed with the butterfly whisk",
+      customized({ temperature: 0, minutes: 1, speed: 5, accessory: "butterfly_whisk" }),
+      "speed",
+      /^speed 5 is above the maximum of 4 for customized when the butterfly whisk is fitted$/,
+      customized({ temperature: 0, minutes: 1, speed: 4, accessory: "butterfly_whisk" }),
+    ],
+    [
+      "speed without the butterfly whisk",
+      customized({ temperature: 0, minutes: 1, speed: 11 }),
+      "speed",
+      /speed 11 is above the maximum of 10 for customized$/,
+      customized({ temperature: 0, minutes: 1, speed: 8 }),
+    ],
+    // Time ranges of the knowledge file, one step past and exactly on each bound.
+    [
+      "sous-vide minimum time",
+      heated("sous_vide", 60, 14),
+      "minutes",
+      /^time 14 min is below the minimum of 15 min for sous_vide$/,
+      heated("sous_vide", 60, 15),
+    ],
+    [
+      "sous-vide maximum time",
+      heated("sous_vide", 60, 721),
+      "minutes",
+      /^time 721 min is above the maximum of 720 min for sous_vide$/,
+      heated("sous_vide", 60, 720),
+    ],
+    [
+      "slow cooking minimum time",
+      heated("slow_cooking", 95, 14),
+      "minutes",
+      /^time 14 min is below the minimum of 15 min for slow_cooking$/,
+      heated("slow_cooking", 95, 15),
+    ],
+    [
+      "slow cooking maximum time",
+      heated("slow_cooking", 95, 481),
+      "minutes",
+      /^time 481 min is above the maximum of 480 min for slow_cooking$/,
+      heated("slow_cooking", 95, 480),
+    ],
+    [
+      "fermentation minimum time",
+      heated("fermentation", 40, 29),
+      "minutes",
+      /^time 29 min is below the minimum of 30 min for fermentation$/,
+      heated("fermentation", 40, 30),
+    ],
+    [
+      "fermentation maximum time",
+      heated("fermentation", 40, 721),
+      "minutes",
+      /^time 721 min is above the maximum of 720 min for fermentation$/,
+      heated("fermentation", 40, 720),
+    ],
+    [
+      "soft dough minimum time",
+      timed("kneading_soft_dough", 0, 44),
+      "minutes",
+      /^time 44 s is below the minimum of 45 s for kneading_soft_dough$/,
+      timed("kneading_soft_dough", 0, 45),
+    ],
+    [
+      "soft dough maximum time",
+      timed("kneading_soft_dough", 4, 1),
+      "minutes",
+      /^time 4 min 1 s is above the maximum of 4 min for kneading_soft_dough$/,
+      timed("kneading_soft_dough", 4, 0),
+    ],
+    [
+      "firm dough maximum time",
+      timed("kneading_solid_dough", 4, 1),
+      "minutes",
+      /^time 4 min 1 s is above the maximum of 4 min for kneading_solid_dough$/,
+      timed("kneading_solid_dough", 0, 45),
+    ],
+    [
+      "rice maximum time",
+      timed("rice_cooking", 40, 1),
+      "minutes",
+      /^time 40 min 1 s is above the maximum of 40 min for rice_cooking$/,
+      timed("rice_cooking", 20, 0),
     ],
     [
       "unknown program",
@@ -350,6 +436,24 @@ describe("validateRecipeInput", () => {
     expect(check(recipe, { attachments: ["food_processor_attachment"] }).ok).toBe(true);
   });
 
+  it.each<[number, number, string | null]>([
+    [0, 0, "time 0 s is below the minimum of 1 s for food_processor"],
+    [0, 1, null],
+    [5, 0, null],
+    [5, 1, "time 5 min 1 s is above the maximum of 5 min for food_processor"],
+  ])("checks the food processor time %i min %i s", (minutes, seconds, message) => {
+    const recipe = withStep(timed("food_processor", minutes, seconds));
+    const errors = check(recipe, { attachments: ["food_processor_attachment"] }).errors;
+    expect(errors).toEqual(message ? [{ path: `${PATH}.minutes`, message }] : []);
+  });
+
+  it("accepts the butterfly whisk only on manual cooking", () => {
+    const recipe = withStep({ ...timed("steaming", 5, 0), accessory: "butterfly_whisk" });
+    expect(check(recipe).errors).toEqual([
+      { path: `${PATH}.accessory`, message: "unknown field accessory" },
+    ]);
+  });
+
   it("checks categories against the live catalog when one is given", () => {
     expect(check(sample(), { knownCategoryIds: [228, 260] }).ok).toBe(true);
     expect(check(sample(), { knownCategoryIds: new Set([260, 220]) }).errors).toEqual([
@@ -366,10 +470,20 @@ describe("validateRecipeInput", () => {
     const result = check(recipe);
     expect(result.ok).toBe(false);
     expect(result.errors.map((error) => error.path)).toEqual([
-      "title",
       "servingSize.steps[0].description",
+      "title",
       `${PATH}.speed`,
       "servingSize.steps[4].temperature",
+    ]);
+  });
+
+  it("does not repeat a recipe limit on a field the schema already rejected", () => {
+    const recipe = sample();
+    serving(recipe).amount = 2.5;
+    steps(recipe)[0] = { kind: "text", title: "Leer" };
+    expect(check(recipe).errors.map((error) => error.path)).toEqual([
+      "servingSize.amount",
+      "servingSize.steps[0].description",
     ]);
   });
 
@@ -403,6 +517,126 @@ describe("validateRecipeInput", () => {
   it("reports several unknown fields together", () => {
     const recipe = withStep({ ...customized(), foo: 1, bar: 2 });
     expect(check(recipe).errors).toEqual([{ path: PATH, message: "unknown field foo, bar" }]);
+  });
+});
+
+describe("recipe limits of the knowledge file", () => {
+  const firstStep = (recipe: Json) => steps(recipe)[0] as Json;
+
+  // Each case breaks one limit and then sits exactly on it.
+  it.each<[string, (r: Json) => void, string, string, (r: Json) => void]>([
+    [
+      "empty title",
+      (r) => (r.title = ""),
+      "title",
+      "title must not be empty",
+      (r) => (r.title = "x"),
+    ],
+    [
+      "title over 86",
+      (r) => (r.title = "x".repeat(87)),
+      "title",
+      "title has 87 characters; at most 86 are allowed",
+      (r) => (r.title = "x".repeat(86)),
+    ],
+    [
+      "description over 240",
+      (r) => (r.description = "x".repeat(241)),
+      "description",
+      "description has 241 characters; at most 240 are allowed",
+      (r) => (r.description = "x".repeat(240)),
+    ],
+    [
+      "no category",
+      (r) => (r.categoryIds = []),
+      "categoryIds",
+      "pick 1 to 8 categories, not 0",
+      (r) => (r.categoryIds = [1]),
+    ],
+    [
+      "nine categories",
+      (r) => (r.categoryIds = [1, 2, 3, 4, 5, 6, 7, 8, 9]),
+      "categoryIds",
+      "pick 1 to 8 categories, not 9",
+      (r) => (r.categoryIds = [1, 2, 3, 4, 5, 6, 7, 8]),
+    ],
+    [
+      "unknown nutrient",
+      (r) => (r.nutrients = [{ name: "iron", amount: 1 }]),
+      "nutrients[0].name",
+      "nutrient iron is not supported; use one of calories, carbohydrate, fat, protein, saturates, sugar, salt, roughage",
+      (r) => (r.nutrients = [{ name: "sugar", amount: 1 }]),
+    ],
+    [
+      "nutrient amount",
+      (r) => (r.nutrients = [{ name: "fat", amount: 100000 }]),
+      "nutrients[0].amount",
+      "fat 100000 is above the maximum of 99999",
+      (r) => (r.nutrients = [{ name: "fat", amount: 99999 }]),
+    ],
+    [
+      "zero servings",
+      (r) => (serving(r).amount = 0),
+      "servingSize.amount",
+      "servings 0 is below the minimum of 1",
+      (r) => (serving(r).amount = 1),
+    ],
+    [
+      "101 servings",
+      (r) => (serving(r).amount = 101),
+      "servingSize.amount",
+      "servings 101 is above the maximum of 100",
+      (r) => (serving(r).amount = 100),
+    ],
+    [
+      "preparation 0",
+      (r) => (serving(r).preparationTime = 0),
+      "servingSize.preparationTime",
+      "preparationTime 0 min is below the minimum of 1 min",
+      (r) => (serving(r).preparationTime = 1),
+    ],
+    [
+      "preparation 1441",
+      (r) => Object.assign(serving(r), { preparationTime: 1441, readyInTime: 1441 }),
+      "servingSize.preparationTime",
+      "preparationTime 1441 min is above the maximum of 1440 min",
+      (r) => Object.assign(serving(r), { preparationTime: 1440, readyInTime: 1440 }),
+    ],
+    [
+      "ready 18001",
+      (r) => (serving(r).readyInTime = 18001),
+      "servingSize.readyInTime",
+      "readyInTime 18001 min is above the maximum of 18000 min",
+      (r) => (serving(r).readyInTime = 18000),
+    ],
+    [
+      "long step title",
+      (r) => (firstStep(r).title = "x".repeat(81)),
+      "servingSize.steps[0].title",
+      "step title has 81 characters; at most 80 are allowed",
+      (r) => (firstStep(r).title = "x".repeat(80)),
+    ],
+    [
+      "empty text step",
+      (r) => (firstStep(r).description = ""),
+      "servingSize.steps[0].description",
+      "step description must not be empty",
+      (r) => (firstStep(r).description = "x"),
+    ],
+    [
+      "long text step",
+      (r) => (firstStep(r).description = "x".repeat(241)),
+      "servingSize.steps[0].description",
+      "step description has 241 characters; at most 240 are allowed",
+      (r) => (firstStep(r).description = "x".repeat(240)),
+    ],
+  ])("%s", (_name, breakIt, path, message, fixIt) => {
+    const bad = sample();
+    breakIt(bad);
+    expect(check(bad).errors).toEqual([{ path, message }]);
+    const good = sample();
+    fixIt(good);
+    expect(check(good).errors).toEqual([]);
   });
 });
 
@@ -457,11 +691,13 @@ describe("limits come from the knowledge file", () => {
   });
 
   it("follows the steps that need a description", () => {
-    const textOnly = limitsWith((k) =>
+    const textOnly = limitsWith((k) => {
       Object.assign(k.recipeLimits.text!.stepDescription!.effective!, {
         requiredOn: ["text", "turbo", "roasting"],
-      }),
-    );
+      });
+      Object.assign(modeOf(k, "scale"), { stepDescription: "cleared" });
+      Object.assign(modeOf(k, "roasting"), { stepDescription: "required" });
+    });
     const errors = check(sample(), {}, textOnly).errors;
     expect(errors).toContainEqual({
       path: "servingSize.steps[1].description",

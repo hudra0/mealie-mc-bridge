@@ -2,8 +2,10 @@
 //
 // Ported from SmartRecipe src/recipes/modes.ts and src/recipes/constants.ts
 // (MIT, https://github.com/gerkensm/smart-recipe), with the step kinds renamed to the API's
-// own snake_case type strings and the key lists checked against the live API on
-// 2026-10-13. The numeric limits are not here: they live in knowledge/device-programs.json.
+// own snake_case type strings. Only what the knowledge file does not say lives here: the
+// API type string, the input granularity of the time and how input fields turn into API
+// settings. The API keys per program, which steps carry a description, the device type
+// id and every numeric limit are read from knowledge/device-programs.json.
 
 import type { MachineStep } from "./schema.js";
 
@@ -35,141 +37,30 @@ export type ModeSettingKey = "size" | "texture" | "duration";
 export interface ModeMapping {
   // The API's mode.type.
   apiType: string;
-  // Keys of the single deviceSettings entry, besides order. null: the mode sends
-  // deviceSettings null and a modeSetting instead.
-  deviceSettingsKeys: readonly DeviceSettingKey[] | null;
-  modeSettingKeys: readonly ModeSettingKey[] | null;
   // Input granularity of the time: "s" minutes and seconds, "min" whole minutes,
   // null no time. The API always stores seconds.
   timeUnit: "s" | "min" | null;
-  // Whether the device shows the step description. Only these steps carry one.
-  description: boolean;
 }
 
 export const MODES: Readonly<Record<MachineStepKind, ModeMapping>> = {
-  customized: {
-    apiType: "customized",
-    deviceSettingsKeys: ["temperature", "speed", "time", "clockwise"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  roasting: {
-    apiType: "roasting",
-    deviceSettingsKeys: ["temperature", "time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  steaming: {
-    apiType: "steaming",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  kneading_solid_dough: {
-    apiType: "kneading_solid_dough",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  kneading_soft_dough: {
-    apiType: "kneading_soft_dough",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  kneading_liquid_dough: {
-    apiType: "kneading_liquid_dough",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  puree: {
-    apiType: "puree",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  smoothie: {
-    apiType: "smoothie",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  turbo: {
-    apiType: "turbo",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: true,
-  },
-  scale: {
-    apiType: "scale",
-    deviceSettingsKeys: ["weight"],
-    modeSettingKeys: null,
-    timeUnit: null,
-    description: true,
-  },
-  slow_cooking: {
-    apiType: "slow_cooking",
-    deviceSettingsKeys: ["temperature", "time"],
-    modeSettingKeys: null,
-    timeUnit: "min",
-    description: false,
-  },
-  sous_vide: {
-    apiType: "sous_vide",
-    deviceSettingsKeys: ["temperature", "time"],
-    modeSettingKeys: null,
-    timeUnit: "min",
-    description: false,
-  },
-  fermentation: {
-    apiType: "fermentation",
-    deviceSettingsKeys: ["temperature", "time"],
-    modeSettingKeys: null,
-    timeUnit: "min",
-    description: false,
-  },
-  rice_cooking: {
-    apiType: "rice_cooking",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
-  cooking_eggs: {
-    apiType: "cooking_eggs",
-    deviceSettingsKeys: null,
-    modeSettingKeys: ["size", "texture"],
-    timeUnit: null,
-    description: false,
-  },
-  precleaning: {
-    apiType: "precleaning",
-    deviceSettingsKeys: null,
-    modeSettingKeys: ["duration"],
-    timeUnit: null,
-    description: false,
-  },
-  food_processor: {
-    apiType: "food_processor",
-    deviceSettingsKeys: ["time"],
-    modeSettingKeys: null,
-    timeUnit: "s",
-    description: false,
-  },
+  customized: { apiType: "customized", timeUnit: "s" },
+  roasting: { apiType: "roasting", timeUnit: "s" },
+  steaming: { apiType: "steaming", timeUnit: "s" },
+  kneading_solid_dough: { apiType: "kneading_solid_dough", timeUnit: "s" },
+  kneading_soft_dough: { apiType: "kneading_soft_dough", timeUnit: "s" },
+  kneading_liquid_dough: { apiType: "kneading_liquid_dough", timeUnit: "s" },
+  puree: { apiType: "puree", timeUnit: "s" },
+  smoothie: { apiType: "smoothie", timeUnit: "s" },
+  turbo: { apiType: "turbo", timeUnit: "s" },
+  scale: { apiType: "scale", timeUnit: null },
+  slow_cooking: { apiType: "slow_cooking", timeUnit: "min" },
+  sous_vide: { apiType: "sous_vide", timeUnit: "min" },
+  fermentation: { apiType: "fermentation", timeUnit: "min" },
+  rice_cooking: { apiType: "rice_cooking", timeUnit: "s" },
+  cooking_eggs: { apiType: "cooking_eggs", timeUnit: null },
+  precleaning: { apiType: "precleaning", timeUnit: null },
+  food_processor: { apiType: "food_processor", timeUnit: "s" },
 };
-
-// Device type id of the Monsieur Cuisine smart (code MC3.0).
-export const MC_SMART_DEVICE_TYPE_ID = 13;
 
 // Which input field carries each API setting. Used for error paths.
 export const INPUT_FIELD: Readonly<Record<DeviceSettingKey | ModeSettingKey, string>> = {

@@ -152,10 +152,72 @@ describe("mc-smoke", () => {
     ]);
   });
 
-  it("reports a broken device programs file", async () => {
-    const { run, err } = harness({ DEVICE_PROGRAMS_PATH: join(dir, "nowhere.json") });
-    expect(await run("dry-run", SAMPLE)).toBe(EXIT.api);
+  it("reports a missing device programs file as a configuration error", async () => {
+    const { run, err, fetch } = harness({ DEVICE_PROGRAMS_PATH: join(dir, "nowhere.json") });
+    expect(await run("dry-run", SAMPLE)).toBe(EXIT.config);
     expect(err[0]).toMatch(/^Cannot read the device programs file/);
+    expect(err[1]).toBe(
+      "Check DEVICE_PROGRAMS_PATH; it must point at knowledge/device-programs.json.",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("reports a malformed device programs file as a configuration error", async () => {
+    const file = join(dir, "programs.json");
+    await writeFile(file, JSON.stringify({ schemaVersion: 1 }));
+    const { run, err } = harness({ DEVICE_PROGRAMS_PATH: file });
+    expect(await run("dry-run", SAMPLE)).toBe(EXIT.config);
+    expect(err[0]).toMatch(/does not have the expected shape/);
+  });
+
+  it.each([
+    [500, { code: 1, message: "Internal", data: null }, EXIT.api],
+    [401, { code: 110002, message: "ExpiredAuthCookieException", data: null }, EXIT.session],
+  ])(
+    "names the draft it left behind when private-publish fails with HTTP %i",
+    async (status, body, exitCode) => {
+      const { run, out, err, endpoints } = harness({ MC_COOKIE: COOKIE }, [
+        json(200, await fixture("categories.json")),
+        json(201, await fixture("recipe-create.json")),
+        json(status, body),
+      ]);
+      expect(await run("create", SAMPLE, "--status", "private-publish")).toBe(exitCode);
+      expect(endpoints).toEqual([
+        "GET api/v1/categories",
+        "POST api/v3/auth/user/recipes/",
+        "PATCH api/v3/auth/user/recipes/900002",
+      ]);
+      expect(out).toEqual([]);
+      expect(err[1]).toMatch(
+        /^Created recipe 900002 as a draft, but setting private-publish failed: PATCH api\/v3\/auth\/user\/recipes\/900002: HTTP /,
+      );
+      expect(err[2]).toBe(
+        "Set the status in the editor instead of running create again: https://www.monsieur-cuisine.com/de/create-recipe?devices=mc-smart&recipe-id=900002",
+      );
+    },
+  );
+
+  it("says that uploaded images stay unused when the create fails", async () => {
+    const photo = join(dir, "photo-for-failed-create.png");
+    await writeFile(
+      photo,
+      await sharp({ create: { width: 64, height: 36, channels: 3, background: "#c83c14" } })
+        .png()
+        .toBuffer(),
+    );
+    const { run, err } = harness({ MC_COOKIE: COOKIE }, [
+      json(200, await fixture("categories.json")),
+      json(201, await fixture("media-upload-url-details.json")),
+      new Response(null, { status: 200 }),
+      json(201, await fixture("media-upload-url-thumbnail.json")),
+      new Response(null, { status: 200 }),
+      json(200, await fixture("media-ready.json")),
+      json(400, await fixture("error-validation.json")),
+    ]);
+    expect(await run("create", SAMPLE, "--image", photo)).toBe(EXIT.api);
+    expect(err).toContain(
+      "No recipe was created. The uploaded images are not attached to any recipe.",
+    );
   });
 
   it("creates a draft and saves it on the device", async () => {

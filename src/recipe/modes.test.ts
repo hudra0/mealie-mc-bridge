@@ -3,13 +3,14 @@ import { loadDeviceLimits, type DeviceLimits } from "./limits.js";
 import {
   INPUT_FIELD,
   MACHINE_STEP_KINDS,
-  MC_SMART_DEVICE_TYPE_ID,
   MODES,
   apiModeSettings,
   apiSettings,
   stepSeconds,
+  type DeviceSettingKey,
+  type ModeSettingKey,
 } from "./modes.js";
-import { SCHEMA_LIMITS, StepSchema } from "./schema.js";
+import { StepSchema } from "./schema.js";
 
 // The mode table, the schema and the knowledge file describe the same device. These tests
 // fail when one of them changes without the others.
@@ -27,11 +28,6 @@ describe("mode table against the knowledge file", () => {
     if (!mode) return;
     expect(mode.allowed).toBe(true);
     expect(mapping.apiType).toBe(mode.id);
-    expect(
-      mapping.deviceSettingsKeys ? ["order", ...mapping.deviceSettingsKeys].sort() : null,
-    ).toEqual(mode.deviceSettingsKeys ? [...mode.deviceSettingsKeys].sort() : null);
-    expect(mapping.modeSettingKeys).toEqual(mode.modeSettingKeys);
-    expect(mapping.description).toBe(mode.stepDescription === "required");
     const timeStep = mode.params.time?.step ?? null;
     expect(mapping.timeUnit).toBe(timeStep === null ? null : timeStep === 60 ? "min" : "s");
     for (const param of Object.keys(mode.params)) {
@@ -47,49 +43,38 @@ describe("mode table against the knowledge file", () => {
     for (const id of disallowed) expect(MACHINE_STEP_KINDS).not.toContain(id);
   });
 
-  it("uses the device type id of the knowledge file", () => {
-    expect(limits.recipe.deviceTypeIds).toEqual([MC_SMART_DEVICE_TYPE_ID]);
-  });
-
-  it("keeps the schema limits equal to the effective recipe limits", () => {
-    const r = limits.recipe;
-    expect(SCHEMA_LIMITS.title).toEqual(r.recipeTitle);
-    expect(SCHEMA_LIMITS.description.max).toBe(r.recipeDescription.max);
-    expect(SCHEMA_LIMITS.stepTitle).toEqual(r.stepTitle);
-    expect(SCHEMA_LIMITS.stepDescription).toEqual({
-      min: r.stepDescription.min,
-      max: r.stepDescription.max,
-    });
-    expect(SCHEMA_LIMITS.servings).toEqual({ min: r.servings.min, max: r.servings.max });
-    expect(SCHEMA_LIMITS.categories).toEqual(r.categories);
-    expect(SCHEMA_LIMITS.preparationTime).toEqual(r.preparationTime);
-    expect(SCHEMA_LIMITS.readyInTime).toEqual(r.readyInTime);
-    const longest = Math.max(
-      ...MACHINE_STEP_KINDS.map((kind) => limits.mode(kind)?.params.time?.max ?? 0),
-    );
-    expect(SCHEMA_LIMITS.stepMinutes.max).toBe(longest / 60);
-  });
-
+  // The payload builder reads the API keys from the knowledge file and the values from the
+  // step, so every key the file lists needs an input field in the schema, and no input
+  // field may go unused.
   it("gives every machine step kind exactly the inputs its API keys need", () => {
     for (const option of StepSchema.options) {
       const kind = option.shape.kind.value;
       if (kind === "text") continue;
-      const mapping = MODES[kind];
+      const mode = limits.mode(kind);
+      if (!mode) throw new Error(`no knowledge entry for ${kind}`);
+      // accessory only feeds the validator's conditions; it is not an API setting.
       const fields = Object.keys(option.shape).filter(
-        (key) => !["kind", "title", "description"].includes(key),
+        (key) => !["kind", "title", "description", "accessory"].includes(key),
       );
       const expected = new Set<string>();
-      for (const key of mapping.deviceSettingsKeys ?? []) {
+      for (const key of mode.deviceSettingsKeys ?? []) {
+        if (key === "order") continue;
         if (key === "time") {
           if (kind !== "turbo") expected.add("minutes");
           expected.add("seconds");
         } else {
-          expected.add(INPUT_FIELD[key]);
+          expect(INPUT_FIELD, `${kind}.${key}`).toHaveProperty(key);
+          expected.add(INPUT_FIELD[key as DeviceSettingKey]);
         }
       }
-      for (const key of mapping.modeSettingKeys ?? []) expected.add(INPUT_FIELD[key]);
+      for (const key of mode.modeSettingKeys ?? []) {
+        expect(INPUT_FIELD, `${kind}.${key}`).toHaveProperty(key);
+        expected.add(INPUT_FIELD[key as ModeSettingKey]);
+      }
       expect(fields.sort(), kind).toEqual([...expected].sort());
-      expect("description" in option.shape, kind).toBe(mapping.description);
+      expect("description" in option.shape, kind).toBe(
+        limits.recipe.stepDescription.requiredOn.includes(kind),
+      );
     }
   });
 });

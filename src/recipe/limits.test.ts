@@ -46,7 +46,7 @@ describe("loadDeviceLimits", () => {
           "roughage",
         ],
       },
-      speed: { min: 1, max: 10 },
+      coverPhotoAspect: { width: 16, height: 9 },
     });
   });
 
@@ -150,6 +150,37 @@ describe("rejecting a malformed knowledge file", () => {
     expect(() => parseDeviceLimits(knowledge)).toThrow(
       /conditions\.3\.when\.temperature: Unrecognized key: "between"/,
     );
+  });
+
+  // Same reason: the validator can only supply the step's API settings and the accessory.
+  it("rejects a condition on a field the validator cannot supply", async () => {
+    const knowledge = await readKnowledge();
+    const modes = knowledge.modes as {
+      id: string;
+      params: Record<string, { effective: { conditions: unknown[] } }>;
+    }[];
+    const speed = modes.find((mode) => mode.id === "customized")?.params.speed;
+    speed?.effective.conditions.push({ when: { altitude: { gt: 1000 } }, set: { max: 2 } });
+    expect(() => parseDeviceLimits(knowledge)).toThrow(
+      /conditions\.3\.when: Unrecognized key: "altitude"/,
+    );
+  });
+
+  it("rejects a step description rule that contradicts the program entry", async () => {
+    const knowledge = await readKnowledge();
+    const modes = knowledge.modes as { id: string; stepDescription: string }[];
+    const scale = modes.find((mode) => mode.id === "scale");
+    if (scale) scale.stepDescription = "cleared";
+    expect(() => parseDeviceLimits(knowledge, "test file")).toThrow(
+      "test file: mode scale has stepDescription cleared, but recipeLimits.text.stepDescription.requiredOn lists it",
+    );
+  });
+
+  it("rejects a cover photo aspect that is not width:height", async () => {
+    const knowledge = await readKnowledge();
+    const limits = knowledge.recipeLimits as { coverPhoto: { effective: { aspect: string } } };
+    limits.coverPhoto.effective.aspect = "wide";
+    expect(() => parseDeviceLimits(knowledge)).toThrow(/coverPhoto\.effective\.aspect/);
   });
 
   it("rejects a program listed twice", async () => {

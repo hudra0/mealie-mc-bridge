@@ -71,17 +71,19 @@ Put that value into `MC_COOKIE`. It is a secret: anyone who has it can change th
 
 ## Manual checks
 
-`npm run mc:smoke` checks the Monsieur Cuisine side against your own account:
+`npm run mc:smoke` checks the Monsieur Cuisine side against your own account. It reads `.env` when the file exists, so the cookie never has to be typed into the shell:
 
 ```sh
-export MC_COOKIE='...'   # or keep it in .env: npx tsx --env-file=.env scripts/mc-smoke.ts whoami
+cp .env.example .env                              # then paste the cookie after MC_COOKIE= in an editor
 npm run mc:smoke -- whoami                        # is the session valid?
 npm run mc:smoke -- categories                    # category ids for recipes
 npm run mc:smoke -- dry-run recipe.json           # validate and print the payload, offline, no cookie needed
 npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publish]
 ```
 
-`create` adds a real recipe to your account. It is created as a draft; `--status private-publish` then saves it on your device only. The tool never submits a recipe for publication. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
+`.env` is gitignored. If you prefer an environment variable, set it without echoing the value, for example `read -rs MC_COOKIE && export MC_COOKIE` in bash.
+
+`create` adds a real recipe to your account. It is created as a draft; `--status private-publish` then saves it on your device only. If that second step fails, the tool prints the id and editor link of the draft it left behind; set the status there instead of running `create` again. The tool never submits a recipe for publication. Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
 
 ## Development
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_DEVICE_PROGRAMS_PATH } from "./recipe/limits.js";
 
 // More settings (Mealie, LLM provider) arrive with later features.
 export const envSchema = z.object({
@@ -7,7 +8,7 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   // Device limits the validator enforces. A relative path resolves against the working
   // directory.
-  DEVICE_PROGRAMS_PATH: z.string().min(1).default("./knowledge/device-programs.json"),
+  DEVICE_PROGRAMS_PATH: z.string().min(1).default(DEFAULT_DEVICE_PROGRAMS_PATH),
   // Cookie header of a logged-in monsieur-cuisine.com session. A secret.
   MC_COOKIE: z.string().min(1).optional(),
 });

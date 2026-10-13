@@ -1,6 +1,10 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { UnsupportedImageError, prepareRecipeImage } from "./image.js";
+import { UnsupportedImageError, prepareRecipeImage as prepare } from "./image.js";
+
+// The cover photo aspect of the knowledge file.
+const WIDE = { width: 16, height: 9 };
+const prepareRecipeImage = (bytes: Uint8Array) => prepare(bytes, WIDE);
 
 const solid = (width: number, height: number, channels: 3 | 4 = 3) =>
   sharp({
@@ -22,11 +26,26 @@ describe("prepareRecipeImage", () => {
     expect(t).toMatchObject({ format: "jpeg", width: 800, height: 450 });
   });
 
-  it("limits the long side of a portrait image", async () => {
+  // The recipe has only landscape slots; the web editor crops every cover to 16:9.
+  it("crops a portrait image to 16:9", async () => {
     const input = await solid(1000, 2000).jpeg().toBuffer();
     const { details, thumbnail } = await prepareRecipeImage(input);
-    expect(await sharp(details).metadata()).toMatchObject({ width: 800, height: 1600 });
-    expect(await sharp(thumbnail).metadata()).toMatchObject({ width: 400, height: 800 });
+    expect(await sharp(details).metadata()).toMatchObject({ width: 1000, height: 563 });
+    expect(await sharp(thumbnail).metadata()).toMatchObject({ width: 800, height: 450 });
+  });
+
+  it("crops a square image and follows another aspect", async () => {
+    const input = await solid(2000, 2000).png().toBuffer();
+    const wide = await prepareRecipeImage(input);
+    expect(await sharp(wide.details).metadata()).toMatchObject({ width: 1600, height: 900 });
+    const square = await prepare(input, { width: 1, height: 1 });
+    expect(await sharp(square.details).metadata()).toMatchObject({ width: 1600, height: 1600 });
+    expect(await sharp(square.thumbnail).metadata()).toMatchObject({ width: 800, height: 800 });
+  });
+
+  it("refuses an aspect without a positive width and height", async () => {
+    const input = await solid(10, 10).png().toBuffer();
+    await expect(prepare(input, { width: 0, height: 9 })).rejects.toThrow(RangeError);
   });
 
   it("does not enlarge a small image", async () => {
@@ -35,9 +54,9 @@ describe("prepareRecipeImage", () => {
     expect(await sharp(details).metadata()).toMatchObject({
       format: "jpeg",
       width: 300,
-      height: 200,
+      height: 169,
     });
-    expect(await sharp(thumbnail).metadata()).toMatchObject({ width: 300, height: 200 });
+    expect(await sharp(thumbnail).metadata()).toMatchObject({ width: 300, height: 169 });
   });
 
   it("fills transparency with white", async () => {
@@ -57,7 +76,8 @@ describe("prepareRecipeImage", () => {
     });
     const { details } = await prepareRecipeImage(input);
     const meta = await sharp(details).metadata();
-    expect(meta).toMatchObject({ width: 200, height: 400 });
+    // Upright the photo is 200 wide; without the orientation the crop would be 400 wide.
+    expect(meta).toMatchObject({ width: 200, height: 113 });
     expect(meta.orientation).toBeUndefined();
     expect(meta.exif).toBeUndefined();
   });

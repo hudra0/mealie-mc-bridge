@@ -13,8 +13,8 @@ import {
   McApiError,
   McSessionError,
   type HttpMethod,
+  type McHttp,
   type McResponse,
-  type McTransport,
 } from "./transport.js";
 import { isWritableStatus, type McRecipePayload, type McWritableStatus } from "./types.js";
 
@@ -102,6 +102,28 @@ export class McResponseShapeError extends McApiError {
   }
 }
 
+// Neither the proxy nor the public API returned the categories. Both errors are kept, so
+// a caller can still tell a network problem from an API failure. A dead session is not
+// reported this way: getCategories rethrows the McSessionError instead.
+export class McCategoriesUnavailableError extends McApiError {
+  readonly proxyError: unknown;
+  readonly publicError: unknown;
+
+  constructor(proxyError: unknown, publicError: unknown) {
+    const fromPublic = publicError instanceof McApiError ? publicError : null;
+    super({
+      status: fromPublic?.status ?? 0,
+      code: fromPublic?.code ?? null,
+      serverMessage: fromPublic?.serverMessage ?? null,
+      endpoint: "categories",
+      message: `Categories are unavailable. Proxy: ${messageOf(proxyError)}. Public API: ${messageOf(publicError)}`,
+    });
+    this.name = "McCategoriesUnavailableError";
+    this.proxyError = proxyError;
+    this.publicError = publicError;
+  }
+}
+
 // Uploaded images were not processed in time.
 export class McMediaTimeoutError extends Error {
   readonly mediaIds: readonly number[];
@@ -171,7 +193,18 @@ const mediaSchema = z.object({
   ),
 });
 
-export class McClient {
+// The part of the client the conversion pipeline uses. Depend on this, not on McClient,
+// so pipeline tests can pass a plain fake instead of HTTP envelopes.
+export interface McRecipeSink {
+  getCurrentUser(): Promise<McUser>;
+  getCategories(): Promise<McCategoryList>;
+  createRecipe(payload: McRecipePayload): Promise<McRecipeRef>;
+  setStatus(recipeId: number, status: McWritableStatus): Promise<McRecipeRef>;
+  uploadImage(image: McImageInput): Promise<McUploadedImage>;
+  editorUrl(recipeId: number): string;
+}
+
+export class McClient implements McRecipeSink {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly now: () => number;
   private readonly uuid: () => string;
@@ -179,7 +212,7 @@ export class McClient {
   private readonly mediaPollIntervalMs: number;
 
   constructor(
-    private readonly transport: McTransport,
+    private readonly transport: McHttp,
     private readonly session: SessionProvider,
     readonly locale: string = DEFAULT_LOCALE,
     options: McClientOptions = {},
@@ -273,10 +306,9 @@ export class McClient {
       const data = parse(categoriesSchema, `public GET ${publicPath}`, response);
       return { source: "public", categories: data.categories.map(toCategory) };
     } catch (error) {
-      throw new Error(
-        `Categories are unavailable. Proxy: ${messageOf(proxyFailure)}. Public API: ${messageOf(error)}`,
-        { cause: error },
-      );
+      // A dead session needs a new cookie, whatever the public API did.
+      if (proxyFailure instanceof McSessionError) throw proxyFailure;
+      throw new McCategoriesUnavailableError(proxyFailure, error);
     }
   }
 

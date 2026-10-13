@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { McWritableStatus } from "../mc/types.js";
-import { MODES } from "./modes.js";
+import { parseDeviceLimits } from "./limits.js";
 import { buildMcPayload, formatAmount } from "./payload.js";
 import { RecipeInputSchema, type RecipeInput } from "./schema.js";
 
@@ -15,12 +15,18 @@ const sample = (): RecipeInput =>
     ),
   );
 
+const limits = parseDeviceLimits(
+  JSON.parse(
+    readFileSync(new URL("../../knowledge/device-programs.json", import.meta.url), "utf8"),
+  ),
+);
+
 const steps = (input: RecipeInput) =>
-  buildMcPayload(input, { status: "draft" }).servingSizes[0].steps;
+  buildMcPayload(input, limits, { status: "draft" }).servingSizes[0].steps;
 
 describe("buildMcPayload", () => {
   it("builds the all-modes sample", () => {
-    const payload = buildMcPayload(sample(), {
+    const payload = buildMcPayload(sample(), limits, {
       status: "draft",
       detailsMediaId: 700002,
       thumbnailMediaId: 700001,
@@ -29,7 +35,7 @@ describe("buildMcPayload", () => {
   });
 
   it("sets the constant fields the server expects", () => {
-    const payload = buildMcPayload(sample(), { status: "draft" });
+    const payload = buildMcPayload(sample(), limits, { status: "draft" });
     expect(payload).toMatchObject({
       source: "member",
       languageLocale: "de-DE",
@@ -46,26 +52,28 @@ describe("buildMcPayload", () => {
     ["medium", 99],
     ["hard", 104],
   ])("maps complexity %s to id %i", (complexity, id) => {
-    expect(buildMcPayload({ ...sample(), complexity }, { status: "draft" }).complexityId).toBe(id);
+    expect(
+      buildMcPayload({ ...sample(), complexity }, limits, { status: "draft" }).complexityId,
+    ).toBe(id);
   });
 
   it.each<McWritableStatus>(["draft", "private-publish"])(
     "takes the status %s from the caller",
     (status) => {
-      expect(buildMcPayload(sample(), { status }).status).toBe(status);
+      expect(buildMcPayload(sample(), limits, { status }).status).toBe(status);
     },
   );
 
   it("refuses statuses that would publish the recipe", () => {
     for (const status of ["pending", "publish", "rejected", undefined]) {
-      expect(() => buildMcPayload(sample(), { status: status as McWritableStatus })).toThrow(
-        `Refusing to build a payload with status "${String(status)}"`,
-      );
+      expect(() =>
+        buildMcPayload(sample(), limits, { status: status as McWritableStatus }),
+      ).toThrow(`Refusing to build a payload with status "${String(status)}"`);
     }
   });
 
   it("sets both orientations to the uploaded media ids", () => {
-    const payload = buildMcPayload(sample(), {
+    const payload = buildMcPayload(sample(), limits, {
       status: "draft",
       detailsMediaId: 11,
       thumbnailMediaId: 12,
@@ -85,21 +93,21 @@ describe("buildMcPayload", () => {
   });
 
   it("sends null media ids without an image", () => {
-    const payload = buildMcPayload(sample(), { status: "draft", detailsMediaId: null });
+    const payload = buildMcPayload(sample(), limits, { status: "draft", detailsMediaId: null });
     expect(payload.detailsImage).toMatchObject({ portraitMediaId: null, landscapeMediaId: null });
     expect(payload.thumbnail).toMatchObject({ portraitMediaId: null, landscapeMediaId: null });
   });
 
   it("uses the category ids from the options over those of the input", () => {
-    expect(buildMcPayload(sample(), { status: "draft" }).categoryIds).toEqual([228]);
+    expect(buildMcPayload(sample(), limits, { status: "draft" }).categoryIds).toEqual([228]);
     const ids = [260, 471];
-    const payload = buildMcPayload(sample(), { status: "draft", categoryIds: ids });
+    const payload = buildMcPayload(sample(), limits, { status: "draft", categoryIds: ids });
     expect(payload.categoryIds).toEqual([260, 471]);
     expect(payload.categoryIds).not.toBe(ids);
   });
 
   it("rounds nutrients to whole numbers and adds their units", () => {
-    expect(buildMcPayload(sample(), { status: "draft" }).nutrients).toEqual([
+    expect(buildMcPayload(sample(), limits, { status: "draft" }).nutrients).toEqual([
       { name: "calories", unit: "kCal", amount: 300 },
       { name: "carbohydrate", unit: "g", amount: 60 },
       { name: "fat", unit: "g", amount: 1 },
@@ -111,7 +119,7 @@ describe("buildMcPayload", () => {
     const input = sample();
     delete input.nutrients;
     delete input.servingSize.instruction;
-    const payload = buildMcPayload(input, { status: "draft" });
+    const payload = buildMcPayload(input, limits, { status: "draft" });
     expect(payload.nutrients).toEqual([]);
     expect(payload.servingSizes[0].instruction).toBe("");
   });
@@ -122,7 +130,8 @@ describe("buildMcPayload", () => {
       name: "  ",
       ingredients: [{ name: "Öl", amount: 0.1 + 0.2, unit: "EL", isOptional: false }],
     });
-    const groups = buildMcPayload(input, { status: "draft" }).servingSizes[0].ingredientGroups;
+    const groups = buildMcPayload(input, limits, { status: "draft" }).servingSizes[0]
+      .ingredientGroups;
     expect(groups.map(({ name, isDefault, order }) => ({ name, isDefault, order }))).toEqual([
       { name: "Zutaten", isDefault: true, order: 0 },
       { name: "Allgemeine Zutaten", isDefault: false, order: 1 },
@@ -160,8 +169,9 @@ describe("buildMcPayload", () => {
     for (const step of steps(sample())) {
       const kind = step.mode?.type;
       if (kind === undefined) expect(step.description).not.toBe("");
-      else if (MODES[kind as keyof typeof MODES].description) expect(step.description).not.toBe("");
-      else expect(step.description, kind).toBe("");
+      else if (limits.recipe.stepDescription.requiredOn.includes(kind)) {
+        expect(step.description).not.toBe("");
+      } else expect(step.description, kind).toBe("");
     }
   });
 
@@ -211,12 +221,12 @@ describe("buildMcPayload", () => {
     const input = sample();
     const broken = { kind: "customized", title: "Kochen", temperature: 0, minutes: 1, seconds: 0 };
     input.servingSize.steps = [broken as RecipeInput["servingSize"]["steps"][number]];
-    expect(() => buildMcPayload(input, { status: "draft" })).toThrow(
+    expect(() => buildMcPayload(input, limits, { status: "draft" })).toThrow(
       "customized has no value for speed",
     );
     const eggs = { kind: "cooking_eggs", title: "Eier", size: "small" };
     input.servingSize.steps = [eggs as RecipeInput["servingSize"]["steps"][number]];
-    expect(() => buildMcPayload(input, { status: "draft" })).toThrow(
+    expect(() => buildMcPayload(input, limits, { status: "draft" })).toThrow(
       "cooking_eggs has no value for texture",
     );
   });

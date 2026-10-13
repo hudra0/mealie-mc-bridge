@@ -14,7 +14,8 @@ import {
   type McStepPayload,
   type McWritableStatus,
 } from "../mc/types.js";
-import { MC_SMART_DEVICE_TYPE_ID, MODES, apiModeSettings, apiSettings } from "./modes.js";
+import type { DeviceLimits, ModeLimits } from "./limits.js";
+import { MODES, apiModeSettings, apiSettings } from "./modes.js";
 import type { IngredientGroup, MachineStep, RecipeInput, RecipeStep } from "./schema.js";
 
 // Complexity ids differ per locale.
@@ -46,7 +47,13 @@ export interface BuildPayloadOptions {
   categoryIds?: readonly number[];
 }
 
-export function buildMcPayload(input: RecipeInput, options: BuildPayloadOptions): McRecipePayload {
+// The API keys per program, the steps that keep their description and the device type ids
+// come from the knowledge file, the same limits the validator checked the input against.
+export function buildMcPayload(
+  input: RecipeInput,
+  limits: DeviceLimits,
+  options: BuildPayloadOptions,
+): McRecipePayload {
   if (!isWritableStatus(options.status)) {
     throw new TypeError(`Refusing to build a payload with status "${String(options.status)}"`);
   }
@@ -55,7 +62,7 @@ export function buildMcPayload(input: RecipeInput, options: BuildPayloadOptions)
     status: options.status,
     source: "member",
     languageLocale: input.locale,
-    deviceTypeIds: [MC_SMART_DEVICE_TYPE_ID],
+    deviceTypeIds: [...limits.recipe.deviceTypeIds],
     title: input.title,
     description: input.description,
     thumbnail: mediaRef(options.thumbnailMediaId),
@@ -80,7 +87,7 @@ export function buildMcPayload(input: RecipeInput, options: BuildPayloadOptions)
         ingredientGroups: serving.ingredientGroups.map((group, index) =>
           toGroup(group, index, DEFAULT_GROUP_NAMES[input.locale]),
         ),
-        steps: serving.steps.map(toStep),
+        steps: serving.steps.map((step, order) => toStep(step, order, limits)),
         order: 0,
       },
     ],
@@ -115,7 +122,7 @@ function toGroup(group: IngredientGroup, index: number, defaultName: string) {
   };
 }
 
-function toStep(step: RecipeStep, order: number): McStepPayload {
+function toStep(step: RecipeStep, order: number, limits: DeviceLimits): McStepPayload {
   if (step.kind === "text") {
     return {
       title: step.title,
@@ -126,23 +133,30 @@ function toStep(step: RecipeStep, order: number): McStepPayload {
       order,
     };
   }
+  const mode = limits.mode(step.kind);
+  if (!mode) throw new Error(`The knowledge file has no entry for ${step.kind}`);
   return {
     title: step.title,
-    description: MODES[step.kind].description && "description" in step ? step.description : "",
+    // Program steps the device does not show a description for go out with an empty one.
+    // The validator reads the same list.
+    description:
+      limits.recipe.stepDescription.requiredOn.includes(step.kind) && "description" in step
+        ? step.description
+        : "",
     duration: null,
-    mode: toMode(step),
+    mode: toMode(step, mode),
     videoMedia: null,
     order,
   };
 }
 
-function toMode(step: MachineStep): McStepMode {
-  const mapping = MODES[step.kind];
+function toMode(step: MachineStep, mode: ModeLimits): McStepMode {
   let deviceSettings: McDeviceSetting[] | null = null;
-  if (mapping.deviceSettingsKeys) {
-    const values = apiSettings(step);
+  if (mode.deviceSettingsKeys) {
+    const values: Record<string, number | boolean | undefined> = apiSettings(step);
     const setting: McDeviceSetting = { order: 0 };
-    for (const key of mapping.deviceSettingsKeys) {
+    for (const key of mode.deviceSettingsKeys) {
+      if (key === "order") continue;
       const value = values[key];
       if (value === undefined) throw new Error(`${step.kind} has no value for ${key}`);
       setting[key] = value;
@@ -150,16 +164,16 @@ function toMode(step: MachineStep): McStepMode {
     deviceSettings = [setting];
   }
   let modeSetting: Record<string, string> | null = null;
-  if (mapping.modeSettingKeys) {
-    const values = apiModeSettings(step);
+  if (mode.modeSettingKeys) {
+    const values: Record<string, string | undefined> = apiModeSettings(step);
     modeSetting = {};
-    for (const key of mapping.modeSettingKeys) {
+    for (const key of mode.modeSettingKeys) {
       const value = values[key];
       if (value === undefined) throw new Error(`${step.kind} has no value for ${key}`);
       modeSetting[key] = value;
     }
   }
-  return { type: mapping.apiType, modeSetting, deviceSettings };
+  return { type: MODES[step.kind].apiType, modeSetting, deviceSettings };
 }
 
 // Amounts travel as strings. Numbers lose floating point noise (0.1 + 0.2 becomes "0.3").

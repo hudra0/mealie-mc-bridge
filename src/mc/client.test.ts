@@ -1,14 +1,23 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
+  McCategoriesUnavailableError,
   McClient,
   McMediaTimeoutError,
   McResponseShapeError,
   mcEditorUrl,
   type McClientOptions,
+  type McRecipeSink,
 } from "./client.js";
 import { StaticSessionProvider, type SessionProvider } from "./session.js";
-import { McSessionError, McTransport, type FetchLike } from "./transport.js";
+import {
+  McApiError,
+  McSessionError,
+  McTransport,
+  type FetchLike,
+  type McHttp,
+  type ProxyRequest,
+} from "./transport.js";
 import type { McRecipePayload } from "./types.js";
 
 const COOKIE = "wordpress_logged_in_0123=synthetic; lidl_sso_id_token=synthetic";
@@ -48,6 +57,36 @@ const proxied = (calls: Call[], index: number) =>
   calls[index]?.body as { endpoint: string; method: string; payload?: unknown };
 
 const minimalPayload = { title: "x" } as unknown as McRecipePayload;
+
+describe("McClient with a fake transport", () => {
+  it("needs only the McHttp interface", async () => {
+    const requests: ProxyRequest[] = [];
+    const http: McHttp = {
+      proxy: (request) => {
+        requests.push(request);
+        return Promise.resolve({
+          status: 200,
+          code: 0,
+          message: "",
+          data: { user: { id: 42, displayName: null } },
+        });
+      },
+      publicGet: () => Promise.reject(new Error("not used")),
+      putSignedUrl: () => Promise.reject(new Error("not used")),
+    };
+    const sink: McRecipeSink = new McClient(http, new StaticSessionProvider(COOKIE));
+    await expect(sink.getCurrentUser()).resolves.toEqual({ id: 42, displayName: null });
+    expect(requests).toEqual([
+      {
+        endpoint: "api/v1/users",
+        method: "GET",
+        payload: undefined,
+        cookie: COOKIE,
+        lang: "de-DE",
+      },
+    ]);
+  });
+});
 
 describe("McClient session handling", () => {
   it("refuses to call without a cookie and reports an invalid session", async () => {
@@ -279,14 +318,37 @@ describe("McClient.getCategories", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("names both failures when neither source answers", async () => {
+  it("keeps both failures when neither source answers", async () => {
     const { client } = setup([
-      json(401, fixture("error-invalid-cookie.json")),
+      json(500, { code: 1, message: "Internal", data: null }),
       json(503, { code: 1, message: "Unavailable", data: null }),
     ]);
-    await expect(client.getCategories()).rejects.toThrow(
-      /^Categories are unavailable\. Proxy: GET api\/v1\/categories: HTTP 401.*Public API: public GET \/api\/v1\/categories: HTTP 503/,
+    const error = await client.getCategories().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(McCategoriesUnavailableError);
+    expect(error).toBeInstanceOf(McApiError);
+    expect((error as Error).message).toMatch(
+      /^Categories are unavailable\. Proxy: GET api\/v1\/categories: HTTP 500.*Public API: public GET \/api\/v1\/categories: HTTP 503/,
     );
+    const { proxyError, publicError } = error as McCategoriesUnavailableError;
+    expect(proxyError).toMatchObject({ name: "McApiError", status: 500 });
+    expect(publicError).toMatchObject({ name: "McApiError", status: 503 });
+    expect(error).toMatchObject({ status: 503, code: 1 });
+  });
+
+  it("rethrows a dead session when the public API fails as well", async () => {
+    const listener = vi.fn();
+    const { client } = setup(
+      [
+        json(401, fixture("error-invalid-cookie.json")),
+        json(503, { code: 1, message: "Unavailable", data: null }),
+      ],
+      {},
+      new StaticSessionProvider(COOKIE, listener),
+    );
+    const error = await client.getCategories().catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(McSessionError);
+    expect(error).toMatchObject({ kind: "invalid", endpoint: "GET api/v1/categories" });
+    expect(listener).toHaveBeenCalledWith("invalid");
   });
 });
 

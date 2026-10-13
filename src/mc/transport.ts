@@ -72,20 +72,31 @@ export class McSessionError extends McApiError {
   }
 }
 
-// No response: DNS, connection or TLS failure, or the timeout fired.
+// The exchange broke off: DNS, connection or TLS failure, the timeout fired, or the
+// connection dropped while the response body was being read. In the last case responded
+// is true and status holds the HTTP status: the server has answered, so it has handled
+// the request.
 export class McNetworkError extends McApiError {
   readonly timedOut: boolean;
+  readonly responded: boolean;
 
-  constructor(init: { endpoint: string; timedOut: boolean; reason: string }) {
+  constructor(init: { endpoint: string; timedOut: boolean; reason: string; status?: number }) {
+    const status = init.status ?? 0;
+    const what = init.timedOut
+      ? "timed out"
+      : status > 0
+        ? `network error while reading the HTTP ${status} response`
+        : "network error";
     super({
-      status: 0,
+      status,
       code: null,
       serverMessage: null,
       endpoint: init.endpoint,
-      message: `${init.endpoint}: ${init.timedOut ? "timed out" : "network error"} (${init.reason})`,
+      message: `${init.endpoint}: ${what} (${init.reason})`,
     });
     this.name = "McNetworkError";
     this.timedOut = init.timedOut;
+    this.responded = status > 0;
   }
 }
 
@@ -122,6 +133,21 @@ export interface ProxyRequest {
   payload?: unknown;
   cookie?: string | null;
   lang?: string;
+  // Whether sending the call twice has the same effect as sending it once. Only such calls
+  // are retried after a network error. Defaults to true for every method but POST.
+  idempotent?: boolean;
+}
+
+// What McClient needs from a transport. McTransport implements it; tests can pass a fake.
+export interface McHttp {
+  proxy(request: ProxyRequest): Promise<McResponse>;
+  publicGet(path: string, lang?: string): Promise<McResponse>;
+  putSignedUrl(
+    url: string,
+    bytes: Uint8Array,
+    contentType: string,
+    extraHeaders?: Record<string, string>,
+  ): Promise<void>;
 }
 
 export interface McResponse {
@@ -146,7 +172,7 @@ interface Exchange {
   text: string;
 }
 
-export class McTransport {
+export class McTransport implements McHttp {
   readonly locale: string;
   private readonly fetchImpl: FetchLike;
   private readonly baseUrl: string;
@@ -190,28 +216,38 @@ export class McTransport {
     }
     const body: Record<string, unknown> = { endpoint: request.endpoint, method, lang };
     if (method !== "GET" && request.payload !== undefined) body.payload = request.payload;
-    const exchange = await this.exchange(label, `${this.baseUrl}/proxy-api`, () => ({
-      method: "POST",
-      headers: this.proxyHeaders(lang, cookie),
-      body: JSON.stringify(body),
-    }));
+    const exchange = await this.exchange(
+      label,
+      `${this.baseUrl}/proxy-api`,
+      () => ({
+        method: "POST",
+        headers: this.proxyHeaders(lang, cookie),
+        body: JSON.stringify(body),
+      }),
+      request.idempotent ?? method !== "POST",
+    );
     return this.unwrap(label, exchange);
   }
 
   // GET on the public read API, which needs no login.
   async publicGet(path: string, lang: string = this.locale): Promise<McResponse> {
     const label = `public GET ${path}`;
-    const exchange = await this.exchange(label, `${this.publicApiUrl}${path}`, () => ({
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        "Accept-Language": lang,
-        "User-Agent": this.userAgent,
-        "X-Request-ID": this.requestId(),
-        "x-bypass-cdn": this.proxyBypass,
-        "device-type": "web",
-      },
-    }));
+    const exchange = await this.exchange(
+      label,
+      `${this.publicApiUrl}${path}`,
+      () => ({
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "Accept-Language": lang,
+          "User-Agent": this.userAgent,
+          "X-Request-ID": this.requestId(),
+          "x-bypass-cdn": this.proxyBypass,
+          "device-type": "web",
+        },
+      }),
+      true,
+    );
     return this.unwrap(label, exchange);
   }
 
@@ -224,11 +260,17 @@ export class McTransport {
     extraHeaders: Record<string, string> = {},
   ): Promise<void> {
     const label = `PUT signed upload URL on ${safeHost(url)}`;
-    const exchange = await this.exchange(label, url, () => ({
-      method: "PUT",
-      headers: { ...extraHeaders, "Content-Type": contentType },
-      body: bytes,
-    }));
+    // The same bytes to the same URL: safe to send twice.
+    const exchange = await this.exchange(
+      label,
+      url,
+      () => ({
+        method: "PUT",
+        headers: { ...extraHeaders, "Content-Type": contentType },
+        body: bytes,
+      }),
+      true,
+    );
     if (exchange.status < 200 || exchange.status >= 300) {
       // The storage error body can echo the signed request, so it is not kept.
       throw new McApiError({
@@ -254,13 +296,22 @@ export class McTransport {
     return headers;
   }
 
-  // Sends the request, retrying once when no response arrived. A timeout is not retried:
-  // the server may still be working on the first request.
-  private async exchange(label: string, url: string, init: () => RequestInit): Promise<Exchange> {
+  // Sends the request. An idempotent call is retried once when it failed before any
+  // response arrived. Nothing else is retried: after a timeout the server may still be
+  // working on the first request, and once a status line has arrived the server has
+  // handled it. Retrying a create in either case could leave two drafts in the account.
+  private async exchange(
+    label: string,
+    url: string,
+    init: () => RequestInit,
+    idempotent: boolean,
+  ): Promise<Exchange> {
     try {
       return await this.once(label, url, init());
     } catch (error) {
-      if (!(error instanceof McNetworkError) || error.timedOut) throw error;
+      if (!idempotent || !(error instanceof McNetworkError) || error.timedOut || error.responded) {
+        throw error;
+      }
       this.logger?.warn({ endpoint: label, reason: error.message }, "MC request failed, retrying");
       return await this.once(label, url, init());
     }
@@ -270,21 +321,34 @@ export class McTransport {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     const started = Date.now();
+    const failure = (error: unknown, status?: number) => {
+      const timedOut = controller.signal.aborted;
+      return new McNetworkError({
+        endpoint: label,
+        timedOut,
+        reason: timedOut ? `no response within ${this.timeoutMs} ms` : describeCause(error),
+        ...(status === undefined ? {} : { status }),
+      });
+    };
     try {
-      const response = await this.fetchImpl(url, { ...init, signal: controller.signal });
-      const text = await response.text();
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, { ...init, signal: controller.signal });
+      } catch (error) {
+        throw failure(error);
+      }
+      let text: string;
+      try {
+        text = await response.text();
+      } catch (error) {
+        // The status line has arrived: the server has handled the request.
+        throw failure(error, response.status);
+      }
       this.logger?.debug(
         { endpoint: label, status: response.status, ms: Date.now() - started },
         "MC request",
       );
       return { status: response.status, text };
-    } catch (error) {
-      const timedOut = controller.signal.aborted;
-      throw new McNetworkError({
-        endpoint: label,
-        timedOut,
-        reason: timedOut ? `no response within ${this.timeoutMs} ms` : describeCause(error),
-      });
     } finally {
       clearTimeout(timer);
     }
@@ -294,6 +358,19 @@ export class McTransport {
     const { status, text } = exchange;
     const parsed = envelopeSchema.safeParse(parseJson(text));
     if (!parsed.success) {
+      // A 401 is about the session whatever the body: WordPress or the load balancer may
+      // answer with an HTML page or with nothing at all.
+      if (status === 401) {
+        throw new McSessionError({
+          kind: "unauthorized",
+          status,
+          code: null,
+          serverMessage: null,
+          endpoint: label,
+          data: snippet(text),
+          message: `${label}: HTTP 401, the response is not a JSON envelope (session unauthorized)`,
+        });
+      }
       throw new McApiError({
         status,
         code: null,

@@ -12,7 +12,7 @@ export type ConditionOp = "eq" | "ne" | "gt" | "gte" | "lt" | "lte";
 export type LimitValue = number | string | boolean;
 
 export interface LimitCondition {
-  when: Readonly<Record<string, Partial<Record<ConditionOp, LimitValue>>>>;
+  when: Readonly<Partial<Record<ConditionField, Partial<Record<ConditionOp, LimitValue>>>>>;
   set: Readonly<Record<string, LimitValue>>;
   kind: string | null;
 }
@@ -54,7 +54,8 @@ export interface RecipeLimits {
   preparationTime: Range;
   readyInTime: Range;
   nutrients: Range & { names: readonly string[] };
-  speed: Range;
+  // The crop the web editor applies to the cover photo, for example 16:9.
+  coverPhotoAspect: { width: number; height: number };
 }
 
 export interface DeviceLimits {
@@ -70,11 +71,27 @@ export class DeviceLimitsError extends Error {
   }
 }
 
+// The fields a condition may test: the API settings of a step plus the fitted accessory.
+// The validator supplies exactly these. A condition on any other field could never match,
+// so the limit it sets would silently not apply; the loader refuses such a file instead.
+export const CONDITION_FIELDS = [
+  "temperature",
+  "speed",
+  "time",
+  "clockwise",
+  "weight",
+  "size",
+  "texture",
+  "duration",
+  "accessory",
+] as const;
+export type ConditionField = (typeof CONDITION_FIELDS)[number];
+
 const limitValue = z.union([z.number(), z.string(), z.boolean()]);
 const op = z.enum(["eq", "ne", "gt", "gte", "lt", "lte"]);
 
 const conditionSchema = z.looseObject({
-  when: z.record(z.string(), z.partialRecord(op, limitValue)),
+  when: z.partialRecord(z.enum(CONDITION_FIELDS), z.partialRecord(op, limitValue)),
   set: z.record(z.string(), limitValue),
   kind: z.string().optional(),
 });
@@ -110,7 +127,9 @@ const fileSchema = z.looseObject({
   schemaVersion: z.literal(1),
   recipeLimits: z.looseObject({
     deviceTypeIds: effective(z.looseObject({ values: z.array(z.number().int()).min(1) })),
-    speedRules: z.looseObject({ range: effective(range) }),
+    coverPhoto: effective(
+      z.looseObject({ aspect: z.string().regex(/^[1-9]\d*:[1-9]\d*$/, 'expected "width:height"') }),
+    ),
     text: z.looseObject({
       recipeTitle: effective(z.looseObject({ minLength: z.number(), maxLength: z.number() })),
       recipeDescription: effective(z.looseObject({ maxLength: z.number() })),
@@ -194,7 +213,7 @@ function toDeviceLimits(file: DeviceProgramsFile, source: string): DeviceLimits 
     preparationTime: pick(r.times.preparationTime.effective),
     readyInTime: pick(r.times.readyInTime.effective),
     nutrients: { ...pick(r.nutrients.effective), names: r.nutrients.effective.names },
-    speed: pick(r.speedRules.range.effective),
+    coverPhotoAspect: aspect(r.coverPhoto.effective.aspect),
   };
 
   const modes = new Map<string, ModeLimits>();
@@ -217,6 +236,13 @@ function toDeviceLimits(file: DeviceProgramsFile, source: string): DeviceLimits 
         })),
       };
     }
+    // The file says twice which steps carry a description; the two must agree.
+    const listed = recipe.stepDescription.requiredOn.includes(mode.id);
+    if (listed !== (mode.stepDescription === "required")) {
+      throw new DeviceLimitsError(
+        `${source}: mode ${mode.id} has stepDescription ${mode.stepDescription}, but recipeLimits.text.stepDescription.requiredOn ${listed ? "lists" : "does not list"} it`,
+      );
+    }
     modes.set(mode.id, {
       id: mode.id,
       allowed: mode.effective.allowed,
@@ -234,6 +260,11 @@ function toDeviceLimits(file: DeviceProgramsFile, source: string): DeviceLimits 
 
 function lengths(value: { minLength: number; maxLength: number }): Range {
   return { min: value.minLength, max: value.maxLength };
+}
+
+function aspect(value: string): { width: number; height: number } {
+  const [width, height] = value.split(":").map(Number);
+  return { width: width ?? 1, height: height ?? 1 };
 }
 
 function pick(value: { min: number; max: number }): Range {

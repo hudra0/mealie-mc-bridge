@@ -3,41 +3,33 @@
 //
 // Ported from SmartRecipe RecipeInputSchema in src/recipes/schema.ts
 // (MIT, https://github.com/gerkensm/smart-recipe) and changed: every step is one flat object
-// discriminated by "kind" (the API mode type, or "text"), the recipe limits are the
-// effective layer of knowledge/device-programs.json, the status is not part of the format
-// (the code sets it), and reviewHints carry notes for the human reviewer.
+// discriminated by "kind" (the API mode type, or "text"), the status is not part of the
+// format (the code sets it), and reviewHints carry notes for the human reviewer.
 //
-// The schema checks structure, types and the recipe-level limits. Device limits per
-// program (temperature grids, time ranges, speed rules) live in the knowledge file and are
-// checked by validate.ts.
+// The schema checks structure and types. Every limit that knowledge/device-programs.json
+// states (text lengths, servings, times, categories, nutrients, and the device limits per
+// program) is checked by validate.ts against the loaded file, so the file is the only
+// source for them. The schema keeps only the format limits the file does not cover.
 
 import { z } from "zod";
+import type { DeviceLimits } from "./limits.js";
 import { MACHINE_STEP_KINDS } from "./modes.js";
 
 export const RECIPE_LOCALES = ["de-DE"] as const;
 export const COMPLEXITIES = ["easy", "medium", "hard"] as const;
-export const NUTRIENT_NAMES = ["calories", "carbohydrate", "fat", "protein"] as const;
 export const STEP_KINDS = ["text", ...MACHINE_STEP_KINDS] as const;
+// Accessories that change what a program may do. The knowledge file caps the speed of
+// manual cooking while the butterfly whisk is fitted.
+export const ACCESSORIES = ["butterfly_whisk"] as const;
 
-// Recipe-level limits. They match the effective layer of the knowledge file; a test keeps
-// the two in step.
+// Format limits of fields the knowledge file says nothing about.
 export const SCHEMA_LIMITS = {
-  title: { min: 1, max: 86 },
-  description: { max: 240 },
-  categories: { min: 1, max: 8 },
-  servings: { min: 1, max: 100 },
   servingUnit: { min: 1, max: 40 },
   instruction: { max: 4000 },
-  preparationTime: { min: 1, max: 1440 },
-  readyInTime: { min: 1, max: 18000 },
   groupName: { max: 80 },
   ingredientName: { min: 1, max: 120 },
   ingredientAmount: { max: 30 },
   ingredientUnit: { max: 30 },
-  stepTitle: { min: 1, max: 80 },
-  stepDescription: { min: 1, max: 240 },
-  // The longest program (sous-vide, fermentation) runs 720 minutes.
-  stepMinutes: { max: 720 },
   reviewHints: { max: 20, itemMax: 200 },
 } as const;
 
@@ -53,13 +45,10 @@ const text = (field: string, min: number, max: number) =>
 
 const int = (field: string) => z.number().int(`${field} must be a whole number`);
 
-const stepTitle = text("step title", L.stepTitle.min, L.stepTitle.max).describe(
-  "Short step title shown on the device",
-);
-const stepDescription = text("step description", L.stepDescription.min, L.stepDescription.max);
+const stepTitle = z.string().describe("Short step title shown on the device");
+const stepDescription = z.string();
 const minutes = int("minutes")
   .min(0, "minutes must not be negative")
-  .max(L.stepMinutes.max, `minutes must be at most ${L.stepMinutes.max}`)
   .describe("Whole minutes of the program time");
 const seconds = int("seconds")
   .min(0, "seconds must not be negative")
@@ -86,6 +75,12 @@ export const CustomizedStepSchema = z
     seconds,
     speed: int("speed").describe("Speed 1-10"),
     rotation: z.enum(["right", "left"]).describe("right: normal; left: reverse, gentle stirring"),
+    accessory: z
+      .enum(ACCESSORIES)
+      .optional()
+      .describe(
+        "Set to butterfly_whisk while the whisk (Rühraufsatz) is fitted; the speed limit drops. Not sent to the device.",
+      ),
   })
   .describe("Manual cooking: temperature, time, speed and rotation");
 
@@ -194,29 +189,21 @@ export const IngredientGroupSchema = z.strictObject({
 });
 
 export const NutrientSchema = z.strictObject({
-  name: z.enum(NUTRIENT_NAMES),
+  name: z.string().describe("Nutrient name, for example calories, carbohydrate, fat, protein"),
   amount: z.number().nonnegative("nutrient amount must not be negative"),
 });
 
 export const ServingSizeSchema = z
   .strictObject({
-    amount: int("servings")
-      .min(L.servings.min, `servings must be at least ${L.servings.min}`)
-      .max(L.servings.max, `servings must be at most ${L.servings.max}`),
+    amount: int("servings"),
     unit: text("serving unit", L.servingUnit.min, L.servingUnit.max).describe(
       'Serving unit, for example "Portionen" or "Stück"',
     ),
     instruction: text("instruction", 0, L.instruction.max)
       .optional()
       .describe("The whole recipe as plain text, for reading without the device"),
-    preparationTime: int("preparationTime")
-      .min(L.preparationTime.min, `preparationTime must be at least ${L.preparationTime.min}`)
-      .max(L.preparationTime.max, `preparationTime must be at most ${L.preparationTime.max}`)
-      .describe("Active preparation time in minutes"),
-    readyInTime: int("readyInTime")
-      .min(L.readyInTime.min, `readyInTime must be at least ${L.readyInTime.min}`)
-      .max(L.readyInTime.max, `readyInTime must be at most ${L.readyInTime.max}`)
-      .describe("Total time until the dish is ready, in minutes"),
+    preparationTime: int("preparationTime").describe("Active preparation time in minutes"),
+    readyInTime: int("readyInTime").describe("Total time until the dish is ready, in minutes"),
     ingredientGroups: z
       .array(IngredientGroupSchema)
       .min(1, "the recipe needs at least one ingredient group"),
@@ -233,18 +220,15 @@ export const ServingSizeSchema = z
   });
 
 export const RecipeInputSchema = z.strictObject({
-  title: text("title", L.title.min, L.title.max),
-  description: text("description", 0, L.description.max),
+  title: z.string(),
+  description: z.string(),
   locale: z.enum(RECIPE_LOCALES),
   complexity: z.enum(COMPLEXITIES),
   categoryIds: z
     .array(int("category id").positive("category ids are positive"))
-    .min(L.categories.min, `pick at least ${L.categories.min} category`)
-    .max(L.categories.max, `pick at most ${L.categories.max} categories`)
     .refine((ids) => new Set(ids).size === ids.length, "category ids must be unique"),
   nutrients: z
     .array(NutrientSchema)
-    .max(NUTRIENT_NAMES.length)
     .refine(
       (list) => new Set(list.map((nutrient) => nutrient.name)).size === list.length,
       "each nutrient may appear only once",
@@ -272,9 +256,44 @@ export type IngredientGroup = z.infer<typeof IngredientGroupSchema>;
 export type Nutrient = z.infer<typeof NutrientSchema>;
 export type ServingSize = z.infer<typeof ServingSizeSchema>;
 
-// JSON Schema (draft 2020-12) of the input side, for structured LLM output. Refinements
-// (unique ids, readyInTime >= preparationTime) are not expressible there; the validator
-// still checks them.
-export function recipeInputJsonSchema(): Record<string, unknown> {
-  return z.toJSONSchema(RecipeInputSchema, { target: "draft-2020-12", io: "input" });
+type JsonNode = Record<string, unknown>;
+
+// JSON Schema (draft 2020-12) of the input side, for structured LLM output. With limits,
+// the recipe-level bounds of the knowledge file are written into it as well, so the model
+// sees them up front. Refinements (unique ids, readyInTime >= preparationTime) and the
+// device limits per program are not expressible there; the validator still checks them.
+export function recipeInputJsonSchema(limits?: DeviceLimits): JsonNode {
+  const schema = z.toJSONSchema(RecipeInputSchema, {
+    target: "draft-2020-12",
+    io: "input",
+  }) as JsonNode;
+  if (!limits) return schema;
+  const r = limits.recipe;
+  const props = (node: unknown): Record<string, JsonNode> =>
+    ((node as JsonNode | undefined)?.properties ?? {}) as Record<string, JsonNode>;
+  const set = (node: JsonNode | undefined, bounds: JsonNode) => {
+    if (node) Object.assign(node, bounds);
+  };
+  const top = props(schema);
+  set(top.title, { minLength: r.recipeTitle.min, maxLength: r.recipeTitle.max });
+  set(top.description, { maxLength: r.recipeDescription.max });
+  set(top.categoryIds, { minItems: r.categories.min, maxItems: r.categories.max });
+  const nutrientItem = (top.nutrients?.items ?? undefined) as JsonNode | undefined;
+  set(props(nutrientItem).name, { enum: [...r.nutrients.names] });
+  set(props(nutrientItem).amount, { minimum: r.nutrients.min, maximum: r.nutrients.max });
+  const serving = props(top.servingSize);
+  set(serving.amount, {
+    minimum: r.servings.min,
+    maximum: r.servings.max,
+    multipleOf: r.servings.step,
+  });
+  set(serving.preparationTime, { minimum: r.preparationTime.min, maximum: r.preparationTime.max });
+  set(serving.readyInTime, { minimum: r.readyInTime.min, maximum: r.readyInTime.max });
+  const stepItems = (serving.steps?.items ?? {}) as { oneOf?: JsonNode[]; anyOf?: JsonNode[] };
+  for (const variant of stepItems.oneOf ?? stepItems.anyOf ?? []) {
+    const step = props(variant);
+    set(step.title, { minLength: r.stepTitle.min, maxLength: r.stepTitle.max });
+    set(step.description, { minLength: r.stepDescription.min, maxLength: r.stepDescription.max });
+  }
+  return schema;
 }

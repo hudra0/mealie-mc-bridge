@@ -1,11 +1,19 @@
-// Checks a RecipeInput against the schema and the device limits from the knowledge file.
+// Checks a RecipeInput against the schema and the limits from the knowledge file.
 //
-// Every error names the path of the offending field and says in plain words what is
-// wrong and what is allowed, so the converter can hand the list back to the language model
-// for a correction round.
+// The schema checks structure and types; every limit the knowledge file states is checked
+// here, against the loaded file. Every error names the path of the offending field and
+// says in plain words what is wrong and what is allowed, so the converter can hand the
+// list back to the language model for a correction round.
 
-import type { z } from "zod";
-import type { DeviceLimits, LimitCondition, LimitValue, ParamLimit, Range } from "./limits.js";
+import { z } from "zod";
+import type {
+  ConditionField,
+  DeviceLimits,
+  LimitCondition,
+  LimitValue,
+  ParamLimit,
+  Range,
+} from "./limits.js";
 import {
   INPUT_FIELD,
   MODES,
@@ -37,6 +45,25 @@ export interface ValidateOptions {
 
 type ZodIssue = z.core.$ZodIssue;
 
+// The recipe-level fields the knowledge file limits, read leniently: a field of the wrong
+// type becomes undefined (the schema reports it), so the limits of the other fields can
+// still be checked when the recipe as a whole does not parse.
+const optional = <T extends z.ZodType>(schema: T) => schema.optional().catch(undefined);
+const RecipeFieldsSchema = z.object({
+  title: optional(z.string()),
+  description: optional(z.string()),
+  categoryIds: optional(z.array(z.number())),
+  nutrients: optional(z.array(z.object({ name: z.string(), amount: z.number() }))),
+  servingSize: optional(
+    z.object({
+      amount: optional(z.number()),
+      preparationTime: optional(z.number()),
+      readyInTime: optional(z.number()),
+    }),
+  ),
+});
+type RecipeFields = z.infer<typeof RecipeFieldsSchema>;
+
 export function validateRecipeInput(
   input: unknown,
   limits: DeviceLimits,
@@ -55,80 +82,107 @@ export function validateRecipeInput(
   }
 
   const errors = parsed.error.issues.map((issue) => formatIssue(issue, input));
-  // Device rules still run on every step that is well-formed on its own, so one round
-  // reports as much as possible.
+  // The knowledge file's limits still run on every field and every step that is
+  // well-formed on its own, so one round reports as much as possible.
+  const fields = RecipeFieldsSchema.safeParse(input);
+  if (fields.success) {
+    const schemaPaths = errors.map((error) => error.path);
+    for (const issue of checkRecipe(fields.data, limits, options)) {
+      if (!schemaPaths.some((path) => overlaps(path, issue.path))) errors.push(issue);
+    }
+  }
   rawSteps(input).forEach((raw, index) => {
     const path = stepPath(index);
-    if (errors.some((error) => error.path === path || error.path.startsWith(`${path}.`))) return;
+    if (errors.some((error) => overlaps(error.path, path))) return;
     const step = StepSchema.safeParse(raw);
     if (step.success) errors.push(...checkStep(step.data, path, limits, options));
   });
   return { ok: false, errors, recipe: null };
 }
 
+// Whether one path is the other or lies inside it.
+function overlaps(a: string, b: string): boolean {
+  const inside = (outer: string, inner: string) =>
+    inner === outer || inner.startsWith(`${outer}.`) || inner.startsWith(`${outer}[`);
+  return inside(a, b) || inside(b, a);
+}
+
 function checkRecipe(
-  recipe: RecipeInput,
+  recipe: RecipeFields,
   limits: DeviceLimits,
   options: ValidateOptions,
 ): ValidationIssue[] {
   const r = limits.recipe;
-  const serving = recipe.servingSize;
+  const serving = recipe.servingSize ?? {};
   const errors: ValidationIssue[] = [];
   const push = (issue: ValidationIssue | null) => {
     if (issue) errors.push(issue);
   };
 
-  push(checkLength("title", "title", recipe.title, r.recipeTitle));
-  push(
-    checkLength("description", "description", recipe.description, {
-      min: 0,
-      ...r.recipeDescription,
-    }),
-  );
-  push(checkRange("servingSize.amount", "servings", serving.amount, r.servings, ""));
-  if (serving.amount % r.servings.step !== 0) {
-    errors.push({
-      path: "servingSize.amount",
-      message: `servings must be a multiple of ${r.servings.step}`,
-    });
+  if (recipe.title !== undefined) {
+    push(checkLength("title", "title", recipe.title, r.recipeTitle));
   }
-  push(
-    checkRange(
-      "servingSize.preparationTime",
-      "preparationTime",
-      serving.preparationTime,
-      r.preparationTime,
-      " min",
-    ),
-  );
+  if (recipe.description !== undefined) {
+    push(
+      checkLength("description", "description", recipe.description, {
+        min: 0,
+        ...r.recipeDescription,
+      }),
+    );
+  }
+  if (serving.amount !== undefined) {
+    push(checkRange("servingSize.amount", "servings", serving.amount, r.servings, ""));
+    if (serving.amount % r.servings.step !== 0) {
+      errors.push({
+        path: "servingSize.amount",
+        message: `servings must be a multiple of ${r.servings.step}`,
+      });
+    }
+  }
+  if (serving.preparationTime !== undefined) {
+    push(
+      checkRange(
+        "servingSize.preparationTime",
+        "preparationTime",
+        serving.preparationTime,
+        r.preparationTime,
+        " min",
+      ),
+    );
+  }
   // readyInTime >= preparationTime is a schema rule, so it is not repeated here.
-  push(
-    checkRange(
-      "servingSize.readyInTime",
-      "readyInTime",
-      serving.readyInTime,
-      r.readyInTime,
-      " min",
-    ),
-  );
-
-  const count = recipe.categoryIds.length;
-  if (count < r.categories.min || count > r.categories.max) {
-    errors.push({
-      path: "categoryIds",
-      message: `pick ${r.categories.min} to ${r.categories.max} categories, not ${count}`,
-    });
+  if (serving.readyInTime !== undefined) {
+    push(
+      checkRange(
+        "servingSize.readyInTime",
+        "readyInTime",
+        serving.readyInTime,
+        r.readyInTime,
+        " min",
+      ),
+    );
   }
-  if (options.knownCategoryIds) {
-    const known = new Set(options.knownCategoryIds);
-    recipe.categoryIds.forEach((id, index) => {
-      if (!known.has(id)) {
-        errors.push({
-          path: `categoryIds[${index}]`,
-          message: `category ${id} does not exist; known ids: ${[...known].sort((a, b) => a - b).join(", ")}`,
-        });
-      }
-    });
+
+  const categoryIds = recipe.categoryIds;
+  if (categoryIds !== undefined) {
+    const count = categoryIds.length;
+    if (count < r.categories.min || count > r.categories.max) {
+      errors.push({
+        path: "categoryIds",
+        message: `pick ${r.categories.min} to ${r.categories.max} categories, not ${count}`,
+      });
+    }
+    if (options.knownCategoryIds) {
+      const known = new Set(options.knownCategoryIds);
+      categoryIds.forEach((id, index) => {
+        if (!known.has(id)) {
+          errors.push({
+            path: `categoryIds[${index}]`,
+            message: `category ${id} does not exist; known ids: ${[...known].sort((a, b) => a - b).join(", ")}`,
+          });
+        }
+      });
+    }
   }
 
   (recipe.nutrients ?? []).forEach((nutrient, index) => {
@@ -206,9 +260,12 @@ function checkStep(
     }
   }
 
-  const values: Partial<Record<DeviceSettingKey | ModeSettingKey, LimitValue>> = {
+  // What the knowledge file's conditions can test: the API settings plus the fitted
+  // accessory, which is not sent to the device.
+  const values: ConditionContext = {
     ...apiSettings(step),
     ...apiModeSettings(step),
+    ...("accessory" in step && step.accessory !== undefined ? { accessory: step.accessory } : {}),
   };
   for (const [name, limit] of Object.entries(mode.params)) {
     if (!(name in INPUT_FIELD)) continue;
@@ -221,12 +278,14 @@ function checkStep(
   return errors;
 }
 
+type ConditionContext = Partial<Record<ConditionField, LimitValue>>;
+
 function checkParam(
   kind: string,
   key: DeviceSettingKey | ModeSettingKey,
   value: LimitValue,
   limit: ParamLimit,
-  context: Partial<Record<string, LimitValue>>,
+  context: ConditionContext,
   path: string,
   stepPathPrefix: string,
 ): ValidationIssue[] {
@@ -289,12 +348,23 @@ function checkParam(
   return errors;
 }
 
-function matches(condition: LimitCondition, context: Partial<Record<string, LimitValue>>) {
-  return Object.entries(condition.when).every(([field, ops]) => {
+// A condition on a field the step does not have (no accessory fitted, no temperature on a
+// steaming step) does not apply.
+function matches(condition: LimitCondition, context: ConditionContext) {
+  return conditionEntries(condition).every(([field, ops]) => {
     const actual = context[field];
     if (actual === undefined) return false;
     return Object.entries(ops).every(([op, expected]) => compare(actual, op, expected));
   });
+}
+
+function conditionEntries(condition: LimitCondition) {
+  return (
+    Object.entries(condition.when) as [
+      ConditionField,
+      Partial<Record<string, LimitValue>> | undefined,
+    ][]
+  ).flatMap(([field, ops]) => (ops ? [[field, ops] as const] : []));
 }
 
 function compare(actual: LimitValue, op: string, expected: LimitValue | undefined): boolean {
@@ -320,10 +390,13 @@ const opWords: Record<string, string> = {
 
 function because(condition: LimitCondition | null): string {
   if (!condition) return "";
-  const parts = Object.entries(condition.when).flatMap(([field, ops]) =>
+  const parts = conditionEntries(condition).flatMap(([field, ops]) =>
     Object.entries(ops).map(([op, expected]) => {
       if (field === "clockwise" && op === "eq") {
         return `rotation is ${expected === false ? "left" : "right"}`;
+      }
+      if (field === "accessory" && op === "eq") {
+        return `the ${String(expected).replace(/_/g, " ")} is fitted`;
       }
       const name = field in INPUT_FIELD ? INPUT_FIELD[field as DeviceSettingKey] : field;
       const shown =

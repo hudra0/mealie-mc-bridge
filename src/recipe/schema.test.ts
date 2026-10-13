@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { loadDeviceLimits } from "./limits.js";
 import { MACHINE_STEP_KINDS } from "./modes.js";
 import { RecipeInputSchema, STEP_KINDS, StepSchema, recipeInputJsonSchema } from "./schema.js";
 
@@ -47,35 +48,14 @@ describe("RecipeInputSchema", () => {
 
   // Each case breaks exactly one limit.
   it.each<[string, (recipe: Json) => void, string, RegExp]>([
-    ["empty title", (r) => (r.title = ""), "title", /title must not be empty/],
-    ["title over 86", (r) => (r.title = "x".repeat(87)), "title", /at most 86/],
-    [
-      "description over 240",
-      (r) => (r.description = "x".repeat(241)),
-      "description",
-      /at most 240/,
-    ],
     ["other locale", (r) => (r.locale = "en-US"), "locale", /expected "de-DE"/],
     ["unknown complexity", (r) => (r.complexity = "extreme"), "complexity", /Invalid option/],
-    ["no category", (r) => (r.categoryIds = []), "categoryIds", /at least 1 category/],
-    [
-      "nine categories",
-      (r) => (r.categoryIds = [1, 2, 3, 4, 5, 6, 7, 8, 9]),
-      "categoryIds",
-      /at most 8/,
-    ],
     ["duplicate category", (r) => (r.categoryIds = [228, 228]), "categoryIds", /unique/],
     [
       "fractional category",
       (r) => (r.categoryIds = [2.5]),
       "categoryIds.0",
       /category id must be a whole number/,
-    ],
-    [
-      "unknown nutrient",
-      (r) => (r.nutrients = [{ name: "sugar", amount: 1 }]),
-      "nutrients.0.name",
-      /Invalid option/,
     ],
     [
       "duplicate nutrient",
@@ -93,8 +73,6 @@ describe("RecipeInputSchema", () => {
       "nutrients.0.amount",
       /negative/,
     ],
-    ["zero servings", (r) => (serving(r).amount = 0), "servingSize.amount", /at least 1/],
-    ["101 servings", (r) => (serving(r).amount = 101), "servingSize.amount", /at most 100/],
     ["fractional servings", (r) => (serving(r).amount = 2.5), "servingSize.amount", /whole number/],
     ["empty serving unit", (r) => (serving(r).unit = ""), "servingSize.unit", /must not be empty/],
     [
@@ -102,25 +80,6 @@ describe("RecipeInputSchema", () => {
       (r) => (serving(r).instruction = "x".repeat(4001)),
       "servingSize.instruction",
       /4000/,
-    ],
-    [
-      "preparation 0",
-      (r) => (serving(r).preparationTime = 0),
-      "servingSize.preparationTime",
-      /at least 1/,
-    ],
-    [
-      "preparation 1441",
-      (r) => (serving(r).preparationTime = 1441),
-      "servingSize.preparationTime",
-      /at most 1440/,
-    ],
-    ["ready 0", (r) => (serving(r).readyInTime = 0), "servingSize.readyInTime", /at least 1/],
-    [
-      "ready 18001",
-      (r) => (serving(r).readyInTime = 18001),
-      "servingSize.readyInTime",
-      /at most 18000/,
     ],
     [
       "ready before preparation",
@@ -172,24 +131,6 @@ describe("RecipeInputSchema", () => {
     ],
     ["no steps", (r) => (serving(r).steps = []), "servingSize.steps", /at least one step/],
     [
-      "long step title",
-      (r) => (step(r, 0).title = "x".repeat(81)),
-      "servingSize.steps.0.title",
-      /at most 80/,
-    ],
-    [
-      "empty text step",
-      (r) => (step(r, 0).description = ""),
-      "servingSize.steps.0.description",
-      /must not be empty/,
-    ],
-    [
-      "long text step",
-      (r) => (step(r, 0).description = "x".repeat(241)),
-      "servingSize.steps.0.description",
-      /at most 240/,
-    ],
-    [
       "scale without description",
       (r) => delete step(r, 1).description,
       "servingSize.steps.1.description",
@@ -218,12 +159,6 @@ describe("RecipeInputSchema", () => {
       (r) => (step(r, 2).seconds = 60),
       "servingSize.steps.2.seconds",
       /at most 59/,
-    ],
-    [
-      "minutes over 720",
-      (r) => (step(r, 15).minutes = 721),
-      "servingSize.steps.15.minutes",
-      /at most 720/,
     ],
     [
       "fractional speed",
@@ -261,6 +196,22 @@ describe("RecipeInputSchema", () => {
     expect(issues).toContainEqual({ path, message: expect.stringMatching(message) as unknown });
   });
 
+  // These limits come from the knowledge file; validate.test.ts checks them.
+  it("leaves the limits of the knowledge file to the validator", () => {
+    expect(
+      issuesOf((r) => {
+        r.title = "x".repeat(200);
+        r.categoryIds = [];
+        r.nutrients = [{ name: "sugar", amount: 1 }];
+        serving(r).amount = 0;
+        serving(r).preparationTime = 0;
+        serving(r).readyInTime = 99999;
+        step(r, 0).description = "";
+        step(r, 15).minutes = 721;
+      }),
+    ).toEqual([]);
+  });
+
   it("knows every step kind", () => {
     expect(STEP_KINDS).toEqual(["text", ...MACHINE_STEP_KINDS]);
     expect([...StepSchema.options.map((option) => option.shape.kind.value)].sort()).toEqual(
@@ -290,12 +241,37 @@ describe("recipeInputJsonSchema", () => {
       ]),
     );
     expect(schema.required).not.toContain("reviewHints");
-    expect(schema.properties.title).toMatchObject({ type: "string", minLength: 1, maxLength: 86 });
+    expect(schema.properties.title).toEqual({ type: "string" });
     const steps = (
       schema.properties.servingSize as {
         properties: { steps: { items: { oneOf?: unknown[]; anyOf?: unknown[] } } };
       }
     ).properties.steps.items;
     expect((steps.oneOf ?? steps.anyOf ?? []).length).toBe(STEP_KINDS.length);
+  });
+
+  it("writes the recipe limits of the knowledge file into the schema", async () => {
+    const limits = await loadDeviceLimits();
+    const schema = recipeInputJsonSchema(limits) as { properties: Record<string, Json> };
+    const p = schema.properties;
+    expect(p.title).toMatchObject({ minLength: 1, maxLength: 86 });
+    expect(p.description).toMatchObject({ maxLength: 240 });
+    expect(p.categoryIds).toMatchObject({ minItems: 1, maxItems: 8 });
+    const nutrient = (p.nutrients as { items: { properties: Record<string, Json> } }).items;
+    expect(nutrient.properties.name).toMatchObject({ enum: limits.recipe.nutrients.names });
+    expect(nutrient.properties.amount).toMatchObject({ minimum: 0, maximum: 99999 });
+    const servingProps = (p.servingSize as { properties: Record<string, Json> }).properties;
+    expect(servingProps.amount).toMatchObject({ minimum: 1, maximum: 100, multipleOf: 1 });
+    expect(servingProps.preparationTime).toMatchObject({ minimum: 1, maximum: 1440 });
+    expect(servingProps.readyInTime).toMatchObject({ minimum: 1, maximum: 18000 });
+    const items = (servingProps.steps as { items: { oneOf?: Json[]; anyOf?: Json[] } }).items;
+    const variants = (items.oneOf ?? items.anyOf ?? []) as { properties: Record<string, Json> }[];
+    for (const variant of variants) {
+      expect(variant.properties.title).toMatchObject({ minLength: 1, maxLength: 80 });
+      if (variant.properties.description) {
+        expect(variant.properties.description).toMatchObject({ minLength: 1, maxLength: 240 });
+      }
+    }
+    expect(variants.filter((variant) => variant.properties.description)).toHaveLength(3);
   });
 });

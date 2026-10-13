@@ -15,9 +15,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { loadConfig } from "../src/config.js";
 import {
-  McApiError,
   McClient,
-  McMediaTimeoutError,
   McSessionError,
   McTransport,
   StaticSessionProvider,
@@ -27,7 +25,7 @@ import {
   type FetchLike,
   type McWritableStatus,
 } from "../src/mc/index.js";
-import { DeviceLimitsError, loadDeviceLimits } from "../src/recipe/limits.js";
+import { DeviceLimitsError, loadDeviceLimits, type DeviceLimits } from "../src/recipe/limits.js";
 import { buildMcPayload } from "../src/recipe/payload.js";
 import type { RecipeInput } from "../src/recipe/schema.js";
 import { validateRecipeInput, type ValidateOptions } from "../src/recipe/validate.js";
@@ -38,6 +36,8 @@ export const EXIT = {
   session: 2,
   api: 3,
   usage: 64,
+  // A missing or malformed device limits file (EX_CONFIG).
+  config: 78,
 } as const;
 
 export const USAGE = `Usage: mc-smoke <command> [options]
@@ -122,9 +122,10 @@ async function dispatch(args: readonly string[], ctx: SmokeContext): Promise<num
       return EXIT.ok;
     }
     case "dry-run": {
-      const recipe = await validated(file as string, config.DEVICE_PROGRAMS_PATH, {}, ctx);
+      const limits = await loadDeviceLimits(config.DEVICE_PROGRAMS_PATH);
+      const recipe = await validated(file as string, limits, {}, ctx);
       if (!recipe) return EXIT.invalidInput;
-      ctx.out(JSON.stringify(buildMcPayload(recipe, { status: "draft" }), null, 2));
+      ctx.out(JSON.stringify(buildMcPayload(recipe, limits, { status: "draft" }), null, 2));
       return EXIT.ok;
     }
     case "create":
@@ -144,29 +145,48 @@ async function create(
   if (!isWritableStatus(status)) {
     throw new UsageError(`--status must be draft or private-publish, not ${status}`);
   }
+  const limits = await loadDeviceLimits(config.DEVICE_PROGRAMS_PATH);
   const mc = client(config.MC_COOKIE, ctx);
   // Only the live catalog says which category ids exist.
   const { categories } = await mc.getCategories();
   const known = { knownCategoryIds: categories.map((category) => category.id) };
-  const recipe = await validated(file, config.DEVICE_PROGRAMS_PATH, known, ctx);
+  const recipe = await validated(file, limits, known, ctx);
   if (!recipe) return EXIT.invalidInput;
 
   let media: { detailsMediaId: number; thumbnailMediaId: number } | null = null;
   if (options.image !== undefined) {
-    const image = await prepareRecipeImage(await readInput(options.image, "image"));
+    const bytes = await readInput(options.image, "image");
+    const image = await prepareRecipeImage(bytes, limits.recipe.coverPhotoAspect);
     media = await mc.uploadImage(image);
     ctx.err(`Image uploaded: details ${media.detailsMediaId}, thumbnail ${media.thumbnailMediaId}`);
   }
   // The server creates every recipe as a draft; the status change is a second call.
-  const payload = buildMcPayload(recipe, {
+  const payload = buildMcPayload(recipe, limits, {
     status: "draft",
     detailsMediaId: media?.detailsMediaId ?? null,
     thumbnailMediaId: media?.thumbnailMediaId ?? null,
   });
-  const created = await mc.createRecipe(payload);
+  let created;
+  try {
+    created = await mc.createRecipe(payload);
+  } catch (error) {
+    if (media) {
+      ctx.err("No recipe was created. The uploaded images are not attached to any recipe.");
+    }
+    throw error;
+  }
   let finalStatus: string = created.status;
   if (status === "private-publish") {
-    finalStatus = (await mc.setStatus(created.id, status satisfies McWritableStatus)).status;
+    try {
+      finalStatus = (await mc.setStatus(created.id, status satisfies McWritableStatus)).status;
+    } catch (error) {
+      // The draft exists. Say so, or a second run would create another one.
+      ctx.err(
+        `Created recipe ${created.id} as a draft, but setting private-publish failed: ${messageOf(error)}`,
+      );
+      ctx.err(`Set the status in the editor instead of running create again: ${created.editorUrl}`);
+      return exitCodeOf(error);
+    }
   }
   ctx.out(`Created recipe ${created.id} with status ${finalStatus}.`);
   ctx.out(`Review it before cooking: ${created.editorUrl}`);
@@ -177,7 +197,7 @@ async function create(
 // Reads and validates a recipe file. Prints the errors and returns null when it is invalid.
 async function validated(
   file: string,
-  limitsPath: string,
+  limits: DeviceLimits,
   options: ValidateOptions,
   ctx: SmokeContext,
 ): Promise<RecipeInput | null> {
@@ -188,7 +208,7 @@ async function validated(
   } catch {
     throw new InputError(`${file} is not valid JSON`);
   }
-  const result = validateRecipeInput(input, await loadDeviceLimits(limitsPath), options);
+  const result = validateRecipeInput(input, limits, options);
   if (!result.recipe) {
     ctx.err(`${file} has ${result.errors.length} problem(s):`);
     for (const error of result.errors) ctx.err(`  ${error.path}: ${error.message}`);
@@ -240,20 +260,25 @@ function report(error: unknown, ctx: SmokeContext): number {
     );
     return EXIT.session;
   }
+  ctx.err(messageOf(error));
+  if (error instanceof DeviceLimitsError) {
+    ctx.err("Check DEVICE_PROGRAMS_PATH; it must point at knowledge/device-programs.json.");
+  }
+  return exitCodeOf(error);
+}
+
+function exitCodeOf(error: unknown): number {
+  if (error instanceof McSessionError) return EXIT.session;
   if (error instanceof InputError || error instanceof UnsupportedImageError) {
-    ctx.err(error.message);
     return EXIT.invalidInput;
   }
-  if (
-    error instanceof McApiError ||
-    error instanceof McMediaTimeoutError ||
-    error instanceof DeviceLimitsError
-  ) {
-    ctx.err(error.message);
-    return EXIT.api;
-  }
-  ctx.err(error instanceof Error ? error.message : String(error));
+  if (error instanceof DeviceLimitsError) return EXIT.config;
+  // API failures, image processing timeouts and anything unexpected.
   return EXIT.api;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const invokedPath = process.argv[1];

@@ -266,6 +266,25 @@ describe("McTransport.proxy", () => {
     });
   });
 
+  it.each([
+    ["an HTML page", "<html><body>401 Unauthorized</body></html>"],
+    ["an empty body", ""],
+  ])("maps a 401 with %s to an unauthorized session", async (_name, body) => {
+    const { fetch } = mockFetch(new Response(body, { status: 401 }));
+    const error = await rejectionOf(
+      new McTransport({ fetch }).proxy({ endpoint: "api/v1/users", cookie: COOKIE }),
+    );
+    expect(error).toBeInstanceOf(McSessionError);
+    expect(error).toMatchObject({
+      kind: "unauthorized",
+      status: 401,
+      code: null,
+      data: body,
+      message:
+        "GET api/v1/users: HTTP 401, the response is not a JSON envelope (session unauthorized)",
+    });
+  });
+
   it("retries once after a network error", async () => {
     const failure = new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
     const { fetch, calls } = mockFetch(failure, json(200, { code: 0, data: "ok" }));
@@ -321,6 +340,82 @@ describe("McTransport.proxy", () => {
     });
     expectNoCookie(error);
   });
+
+  it.each(["GET", "PUT", "PATCH", "DELETE"] as const)(
+    "retries an idempotent %s after a network error",
+    async (method) => {
+      const failure = new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
+      const { fetch, calls } = mockFetch(failure, json(200, { code: 0, data: "ok" }));
+      await new McTransport({ fetch }).proxy({ endpoint: "x", method, cookie: COOKIE });
+      expect(calls).toHaveLength(2);
+    },
+  );
+
+  // A create that reached the server before the connection dropped would leave a second
+  // draft behind if it were sent again.
+  it("does not retry a POST create after a connection reset", async () => {
+    const failure = new TypeError("fetch failed", { cause: { code: "ECONNRESET" } });
+    const { fetch, calls } = mockFetch(failure, json(201, fixture("recipe-create.json")));
+    const error = await rejectionOf(
+      new McTransport({ fetch }).proxy({
+        endpoint: "api/v3/auth/user/recipes/",
+        method: "POST",
+        cookie: COOKIE,
+        payload: {},
+      }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(error).toMatchObject({
+      name: "McNetworkError",
+      responded: false,
+      message: "POST api/v3/auth/user/recipes/: network error (TypeError ECONNRESET)",
+    });
+  });
+
+  it("retries a POST the caller marks as idempotent", async () => {
+    const { fetch, calls } = mockFetch(
+      new TypeError("fetch failed"),
+      json(200, { code: 0, data: [] }),
+    );
+    await new McTransport({ fetch }).proxy({
+      endpoint: "x",
+      method: "POST",
+      idempotent: true,
+      cookie: COOKIE,
+    });
+    expect(calls).toHaveLength(2);
+  });
+
+  it.each(["POST", "GET"] as const)(
+    "does not retry a %s whose response body breaks off",
+    async (method) => {
+      const broken = () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError("terminated", { cause: { code: "UND_ERR_SOCKET" } }));
+            },
+          }),
+          { status: 201 },
+        );
+      const { fetch, calls } = mockFetch(broken(), json(201, fixture("recipe-create.json")));
+      const error = await rejectionOf(
+        new McTransport({ fetch }).proxy({
+          endpoint: "api/v3/auth/user/recipes/",
+          method,
+          cookie: COOKIE,
+        }),
+      );
+      expect(calls).toHaveLength(1);
+      expect(error).toBeInstanceOf(McNetworkError);
+      expect(error).toMatchObject({
+        status: 201,
+        responded: true,
+        timedOut: false,
+        message: `${method} api/v3/auth/user/recipes/: network error while reading the HTTP 201 response (TypeError UND_ERR_SOCKET)`,
+      });
+    },
+  );
 
   it("never puts the cookie into error messages", async () => {
     // A fetch implementation that quotes the request headers in its error text.

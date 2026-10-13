@@ -380,7 +380,7 @@ export function buildTimingModel(input: TimingUnitsInput) {
     ],
     temperatureNotes: [
       "Settings of 105-130 °C with water-based contents are normal practice and not a fault: the contents stay at their boiling point and the setting drives harder boiling and evaporation. Official recipes use them for steaming in manual mode (120 °C, speed 1, steamer fitted), for jam and for reducing with the basket on the lid.",
-      "Starch thickens only at 95 °C or more for at least 120 s; yeast at most 37 °C; egg yolk at most 80 °C; milk at most 95 °C (bridge and SmartRecipe rules).",
+      "Starch thickens only at 95 °C or more for at least 120 s; yeast at most 37 °C; egg-yolk mixtures at 70-80 °C (bridge and SmartRecipe rules). Official recipes heat milk and cream at 100 °C; mind the foaming limit.",
     ],
     massEstimation: {
       method:
@@ -547,6 +547,7 @@ export function buildUnits(input: TimingUnitsInput) {
         target: "g",
         fallback: "El",
         gramsPerUnit: 15,
+        note: "15 g is the default; weigh by food where it differs: seeds, poppy seeds, flour and starch about 10 g, ground nuts about 8 g, oil about 12 g, sugar and salt about 15 g, honey and syrup about 20 g",
         evidence:
           "Member El rows with an official counterpart: g 88.2 %, Tl 7.6 %, El 2.3 %. 15 g per El from only 7 stated weights; liquids and powders differ (oil about 12 g, flour about 10 g, honey about 20 g).",
       },
@@ -648,7 +649,7 @@ export function buildUnits(input: TimingUnitsInput) {
         input: ["Tasse", "cup"],
         target: "g",
         gramsPerUnit: "240 ml * density",
-        note: "US cup; not in the corpus. Dry goods: flour about 125 g, sugar about 200 g, rice about 185 g per cup.",
+        note: "US cup; not in the corpus. 240 ml × density holds for liquids only; for solids use: flour about 125 g, sugar about 200 g, rice about 185 g, grated hard cheese about 90 g, whole cherry tomatoes about 150 g per cup.",
       },
       { input: ["oz", "ounce"], target: "g", gramsPerUnit: 28.35 },
       { input: ["lb", "pound"], target: "g", gramsPerUnit: 453.6 },

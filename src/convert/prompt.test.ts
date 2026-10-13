@@ -6,6 +6,7 @@ import { STEP_KINDS } from "../recipe/schema.js";
 import { loadKnowledge, selectTechniques, techniqueById } from "./knowledge.js";
 import {
   SYSTEM_SECTIONS,
+  MIN_FORMULA_R2,
   buildSystemPrompt,
   buildUserMessage,
   compactValues,
@@ -79,7 +80,8 @@ describe("buildSystemPrompt", () => {
     expect(system).not.toContain("### puree_hot_soup");
     expect(system).toContain("about 457 s per kg");
     expect(system).toContain("at least 0.87 × tMin; below 0.5 × tMin the recipe is rejected");
-    expect(system).toContain("Official recipes give about 2.3 × tMin");
+    expect(system).toContain("Official first heatings of cold contents run about 2.3 × tMin");
+    expect(system).toContain("do not pad them");
     expect(system).toContain(
       "Gram grid for weighed amounts (under 5 g nothing is weighed): 5-10 g",
     );
@@ -153,15 +155,25 @@ describe("prompt helpers", () => {
       "- Alternative: customized, 120 °C (100-120), 600 s (180-1500), speed 1 (max 1)",
     );
     expect(steam).toContain("- Time by load: vegetables 900 s (372-3600)");
-    const soup = techniqueById(knowledge, "puree_hot_soup")!;
-    expect(techniqueDetail(soup)).toContain(
-      "- Time formula: clamp(30, 120, 33 + 0.009 * massGrams)",
+    const boil = techniqueById(knowledge, "bring_to_boil")!;
+    expect(techniqueDetail(boil)).toContain(
+      "- Time formula: max(tMinSeconds(massGrams, 100), 300)",
     );
+    const soup = techniqueById(knowledge, "puree_hot_soup")!;
     expect(techniqueDetail(soup)).toContain("- Alternative: ramp");
     expect(techniqueDetail(soup, usable)).not.toContain("- Alternative: ramp");
-    expect(techniqueDetail(techniqueById(knowledge, "saute_onions")!)).toContain(
-      "reverse: true when diced vegetables",
-    );
+    const saute = techniqueDetail(techniqueById(knowledge, "saute_onions")!);
+    expect(saute).toContain("- Program: roasting; temperature 130 °C (100-130)");
+    expect(saute).toContain("- Alternative: customized, 100 °C (80-120)");
+    expect(saute).toContain("reverse when diced vegetables must keep their shape");
+  });
+
+  it("leaves out fitted time formulas without predictive power", () => {
+    for (const id of ["simmer_cook", "puree_hot_soup", "knead_yeast_dough"]) {
+      const technique = techniqueById(knowledge, id)!;
+      expect(technique.device.timeSeconds?.formulaR2).toBeLessThan(MIN_FORMULA_R2);
+      expect(techniqueDetail(technique)).not.toContain("- Time formula");
+    }
   });
 });
 

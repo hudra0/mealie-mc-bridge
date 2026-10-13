@@ -14,7 +14,7 @@
   "fields": {
     "device.mode": "Recommended mode for an uploaded draft. Official practice that differs is listed under alternatives and notes.",
     "device.temperature": "°C; typical = median, range = [p10, p90] of the basis group in the recommended mode (nearest rank, so every value is one the device used).",
-    "device.timeSeconds": "Seconds; typical = median, range = [p10, p90]. formula, when present, is an expression in massGrams (bowl content), flourGrams or temperature, using tMinSeconds() from timing-model.json; clamp(lo, hi, x) limits x to [lo, hi].",
+    "device.timeSeconds": "Seconds; typical = median, range = [p10, p90]. formula, when present, is an expression in massGrams (bowl content), flourGrams or temperature, using tMinSeconds() from timing-model.json; clamp(lo, hi, x) limits x to [lo, hi]. formulaR2 is the R² of a fitted formula; the converter's prompt leaves out formulas below 0.3.",
     "device.speed": "typical = median, max = p90 of the basis group, capped by the rules in device-limits.json (3 when heated or in reverse, 4 with the whisk). null for program modes, which store no speed.",
     "device.reverse": "true, false, or a condition the converter decides per recipe.",
     "device.accessory.measuringCup": "in, out, either (the recipe decides) or n/a.",
@@ -84,7 +84,7 @@
       "alternatives": [
         {
           "mode": "turbo",
-          "note": "Turbo for 2-3 s chops onions coarsely (229 turbo steps work on onion or garlic)."
+          "note": "Turbo for 2 s (1-5 s) is an equal choice before sautéing: official recipes chop onion or garlic with turbo in about a third of cases (98 of 290 chops before the first heated step). Turbo needs contents at room temperature, no whisk and at most 2500 g in the bowl."
         }
       ],
       "structure": [
@@ -631,7 +631,8 @@
           "typical": 35,
           "range": [30, 90],
           "formula": "clamp(30, 120, 33 + 0.009 * massGrams)",
-          "formulaNote": "puree program time vs bowl mass, R² 0.13 (n 76): the time is nearly fixed at 30-60 s"
+          "formulaNote": "puree program time vs bowl mass, R² 0.13 (n 76): the time is nearly fixed at 30-60 s",
+          "formulaR2": 0.13
         },
         "speed": null,
         "reverse": false,
@@ -769,11 +770,11 @@
         "speed": { "typical": 4, "max": 4 },
         "reverse": false,
         "turbo": false,
-        "accessory": { "measuringCup": "out", "attachment": null }
+        "accessory": { "measuringCup": "in", "attachment": null }
       },
       "structure": [
-        "The oil goes in slowly through the lid opening while the blade runs (\"durch die Deckelöffnung\", 98 text steps; the next step is the working step in 94 %).",
-        "Two-step pattern: a short step (about 10 s) mixes the base, then a long step at speed 4 (top setting 240 s) runs while the oil is poured onto the lid."
+        "The oil is poured slowly onto the lid while the measuring cup stays in, so it runs in along the cup in a thin stream (\"das Öl langsam auf den Deckel gießen, sodass es am Messbecher entlang in den Mixbehälter läuft\"); 16 of 17 official oil emulsions pour the oil onto the lid, none through the lid opening.",
+        "Two-step pattern: a short step (about 10 s) mixes the base, then a long step at speed 4 (top setting 240 s, 13 of 17 official oil emulsions) runs while the oil is poured onto the lid."
       ],
       "evidence": {
         "steps": 43,
@@ -896,7 +897,8 @@
           "typical": 120,
           "range": [45, 120],
           "formula": "min(240, max(60, round((95 + 0.091 * flourGrams) / 30) * 30))",
-          "formulaNote": "kneading time vs flour in the bowl, R² 0.10: the time is a plateau at 120 s up to 1250 g flour"
+          "formulaNote": "kneading time vs flour in the bowl, R² 0.10: the time is a plateau at 120 s up to 1250 g flour",
+          "formulaR2": 0.1
         },
         "speed": null,
         "reverse": false,
@@ -1076,7 +1078,7 @@
         "accessory": { "measuringCup": "either", "attachment": null }
       },
       "structure": [
-        "Milk at most 95 °C (SmartRecipe rule) so it does not boil over; stir at speed 1-2."
+        "Official recipes heat milk at 100 °C (32 of 48 official heated manual steps on milk without egg or starch, 3 at 95 °C); stir at speed 1-2 and keep foaming contents below the foaming limit."
       ],
       "notes": [
         "Mostly a member-recipe label (23 official steps); official recipes fold warming into simmer steps."
@@ -1097,47 +1099,50 @@
     },
     {
       "id": "saute_onions",
-      "label": "Sauté onions, garlic or vegetables in fat without browning (anschwitzen, dünsten)",
+      "label": "Sauté onions, garlic or vegetables in fat (anschwitzen, andünsten)",
       "aliases": {
         "de": ["anschwitzen", "andünsten", "dünsten", "glasig dünsten"],
         "en": ["sauté", "sweat", "soften"]
       },
       "ingredientClasses": ["onion_garlic", "vegetables"],
       "device": {
-        "mode": "customized",
-        "temperature": { "typical": 100, "range": [80, 120] },
-        "timeSeconds": { "typical": 300, "range": [120, 900] },
-        "speed": { "typical": 1, "max": 2 },
-        "reverse": "true when diced vegetables must keep their shape (52.6 % of official manual sauté steps)",
+        "mode": "roasting",
+        "temperature": { "typical": 130, "range": [100, 130] },
+        "timeSeconds": { "typical": 180, "range": [120, 420] },
+        "speed": null,
+        "reverse": false,
         "turbo": false,
         "accessory": { "measuringCup": "out", "attachment": null }
       },
       "alternatives": [
         {
-          "mode": "roasting",
-          "steps": 158,
-          "officialSteps": 51,
-          "temperature": { "typical": 120, "range": [100, 130] },
-          "timeSeconds": { "typical": 180, "range": [120, 300] },
-          "note": "The roasting program at 120-130 °C for 180 s does the same job (official top setting roasting 130 °C, 180 s)."
+          "mode": "customized",
+          "steps": 178,
+          "officialSteps": 97,
+          "temperature": { "typical": 100, "range": [80, 120] },
+          "timeSeconds": { "typical": 300, "range": [120, 900] },
+          "speed": { "typical": 1, "max": 2 },
+          "reverseShare": 0.526,
+          "note": "Manual mode when the food must stay pale or liquid is already in the bowl; reverse when diced vegetables must keep their shape (52.6 % of official manual sauté steps)."
         }
       ],
       "structure": [
+        "Official recipes sauté chopped onion with the roasting program in about three of four cases (213 of 290 first heated steps after chopping onion or garlic); the roasting program stirs on its own and takes no speed.",
         "Text step before: add the fat (oil is named in 37 %) and push the chopped onions down with the spatula (the spatula is named in 50 % of the text before official sauté steps).",
         "Measuring cup out so the steam escapes (state at manual steps of 105-130 °C: removed 148, inserted 67).",
         "Spices bloom at the end of this step; deglaze afterwards with liquid in a scale step."
       ],
       "evidence": {
-        "steps": 336,
-        "recipes": 275,
-        "officialSteps": 148,
-        "officialRecipes": 129,
-        "modes": { "customized": 178, "roasting": 158 },
+        "steps": 531,
+        "recipes": 440,
+        "officialSteps": 300,
+        "officialRecipes": 257,
+        "modes": { "roasting": 353, "customized": 178 },
         "basis": "official",
-        "basisSteps": 97,
-        "statsMode": "customized",
-        "reverseShare": 0.526,
-        "selection": "technique \"anschwitzen\"",
+        "basisSteps": 203,
+        "statsMode": "roasting",
+        "reverseShare": 0,
+        "selection": "technique \"anschwitzen\", plus roasting steps right after chopping onion, shallot, garlic or ginger",
         "source": "corpus 2026-10"
       }
     },
@@ -1285,7 +1290,8 @@
           "typical": 420,
           "range": [120, 1200],
           "formula": "max(tMinSeconds(massGrams, temperature), 421 + 0.252 * massGrams)",
-          "formulaNote": "100 °C fit over all steps (R² 0.07, residual p10/p90 -526/+623 s); the cooking goal sets the time, the mass only the lower bound"
+          "formulaNote": "100 °C fit over all steps (R² 0.07, residual p10/p90 -526/+623 s); the cooking goal sets the time, the mass only the lower bound",
+          "formulaR2": 0.07
         },
         "speed": { "typical": 1, "max": 3 },
         "reverse": "true when pieces must stay whole (vegetable chunks, meat, legumes); false for liquids that are puréed afterwards",
@@ -1367,7 +1373,7 @@
       "structure": [
         "Starch thickens only at 95 °C or more for at least 2 minutes (bridge sanity rule).",
         "Add thickeners in the last 2-3 minutes (SmartRecipe rule) or stir them cold into the liquid first.",
-        "Egg yolk at most 80 °C, dairy at most 95 °C (SmartRecipe rules); custard runs at 80-90 °C, speed 2-3."
+        "Egg-yolk mixtures (custard, sabayon, egg liqueur) at 70-80 °C, speed 2-4, and 70 °C when alcohol is in the bowl (official heated egg-yolk steps: 70 °C in 9 of 25); milk and cream up to 100 °C."
       ],
       "notes": [
         "The temperature range starts at 95 °C because starch binds only near the boil; the corpus p10 is 90 °C."
@@ -1475,7 +1481,7 @@
         "accessory": { "measuringCup": "in", "attachment": null }
       },
       "structure": [
-        "Milk at most 95 °C (SmartRecipe rule); long milk rice steps run at 90-100 °C with reverse."
+        "Milk rice and pudding at 90-100 °C (official recipes heat milk at 100 °C); long milk rice steps run with reverse, and foaming contents stay below the foaming limit."
       ],
       "evidence": {
         "steps": 61,
@@ -1575,7 +1581,16 @@
     {
       "id": "steam_in_steamer",
       "label": "Steam in the steamer attachment (vegetables, fish, meat, dumplings)",
-      "aliases": { "de": ["dämpfen", "dampfgaren", "im Dampfgaraufsatz garen"], "en": ["steam"] },
+      "aliases": {
+        "de": [
+          "dämpfen",
+          "dampfgaren",
+          "im Dampfgaraufsatz garen",
+          "Dampfgaraufsatz",
+          "Dampfgareinsatz"
+        ],
+        "en": ["steam"]
+      },
       "ingredientClasses": ["vegetables", "fish", "meat", "potatoes", "flour_dough"],
       "device": {
         "mode": "steaming",

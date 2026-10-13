@@ -191,6 +191,18 @@ describe("selectTechniques", () => {
     expect(ids).not.toContain("chop_fruit");
   });
 
+  it("ranks an alias hit above techniques that only share common ingredient classes", () => {
+    // Milk, water and flour give stir_cold and activate_yeast three class hits each; one
+    // shared verb plus the carrots still wins the only free slot.
+    const ids = select("Suppe", "Alles zerkleinern.", ["Milch", "Wasser", "Mehl", "Karotten"], 5);
+    expect(ids).toContain("chop_vegetables");
+    expect(ids).not.toContain("activate_yeast");
+  });
+
+  it("finds steaming from the name of the steamer", () => {
+    expect(select("Hähnchen", "Den Dampfgaraufsatz aufsetzen.")).toContain("steam_in_steamer");
+  });
+
   it("respects the maximum and keeps the knowledge-file order", () => {
     const ids = select(
       "Alles",

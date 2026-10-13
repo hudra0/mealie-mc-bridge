@@ -37,7 +37,7 @@ describe("createGenerator", () => {
       provider: "anthropic",
       clients: { anthropic: { beta: { messages: { parse } } } as never },
     });
-    await generator.generate({ system: "s", user: "u", jsonSchema: {} });
+    await generator.generate({ system: "s", user: "u", jsonSchema: { type: "object" } });
     expect(parse).toHaveBeenCalledTimes(1);
   });
 

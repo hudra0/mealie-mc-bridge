@@ -8,7 +8,8 @@
 // The Mealie file is a recipe as GET /api/recipes/{slug} returns it. The API key of the
 // selected provider comes from the environment (.env is read when it exists), never from
 // an argument. The category list comes from --categories (a JSON file), else from the
-// Monsieur Cuisine API (the public endpoint needs no login).
+// Monsieur Cuisine API (the public endpoint needs no login); without a list the command
+// stops, because the model must not guess category ids.
 
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -26,7 +27,9 @@ import {
   createConverter,
   createGenerator,
   loadKnowledge,
+  priceTable,
   selectTechniques,
+  usableModes,
   type Category,
   type ConversionRequest,
   type ConversionResult,
@@ -73,8 +76,9 @@ Commands:
       --out <file>               write the converted recipes as JSON
 
 Every command takes --categories <file>: a JSON list of {id, name}, or a category
-response of the Monsieur Cuisine API. Without it the list is fetched from the API.
-The provider's API key is read from OPENAI_API_KEY or ANTHROPIC_API_KEY.`;
+response of the Monsieur Cuisine API. Without it the list is fetched from the API;
+when that fails, the command stops. The provider's API key is read from
+OPENAI_API_KEY or ANTHROPIC_API_KEY, the price table from LLM_PRICES_JSON.`;
 
 export interface ConvertContext {
   env: Readonly<Record<string, string | undefined>>;
@@ -214,10 +218,11 @@ export async function runConvert(args: readonly string[], ctx: ConvertContext): 
     const request = await mealieRequest(command.mealieJson, command.scale, limits);
     const categories = await loadCategories(command.categories, ctx);
     if (command.name === "prompt") {
-      const techniques = selectTechniques(request, knowledge);
-      ctx.out(buildSystemPrompt(knowledge, limits, { techniques }));
+      const usable = usableModes(limits);
+      const { techniques } = selectTechniques(request, knowledge, undefined, usable);
+      ctx.out(buildSystemPrompt(knowledge, limits));
       ctx.out("\n---- user message ----\n");
-      ctx.out(buildUserMessage(request, categories));
+      ctx.out(buildUserMessage(request, categories, { techniques, usable }));
       return EXIT.ok;
     }
     const generator = (ctx.generator ?? defaultGenerator)(
@@ -230,6 +235,7 @@ export async function runConvert(args: readonly string[], ctx: ConvertContext): 
       limits,
       categories,
       maxCorrections: config.LLM_MAX_CORRECTIONS,
+      prices: priceTable(config.LLM_PRICES_JSON),
     });
     ctx.err(`Converting "${request.title}" with ${generator.provider} ${generator.model} ...`);
     try {
@@ -326,10 +332,9 @@ async function loadCategories(file: string | undefined, ctx: ConvertContext): Pr
     const response = await transport.publicGet("/api/v1/categories", "de-DE");
     return parseCategories({ data: response.data });
   } catch (error) {
-    ctx.err(
-      `Could not load the categories (${error instanceof Error ? error.message : String(error)}); continuing without a list.`,
+    throw new InputError(
+      `Could not load the categories (${error instanceof Error ? error.message : String(error)}). Pass --categories <file> with a list of {id, name}; the model must not guess category ids.`,
     );
-    return [];
   }
 }
 
@@ -633,6 +638,7 @@ async function runEval(
     limits,
     categories,
     maxCorrections: config.LLM_MAX_CORRECTIONS,
+    prices: priceTable(config.LLM_PRICES_JSON),
   });
   const header = "     id  orig  conv  mode  temp  time  tries  cost USD  status";
   const rows: string[] = [];

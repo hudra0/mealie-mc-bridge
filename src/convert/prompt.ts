@@ -1,9 +1,9 @@
-// Builds the prompts. The system prompt carries everything that is the same for every
-// recipe (role, device limits, structure rules, conversion rules, technique table, timing
-// and unit rules, output contract) plus the techniques picked for this recipe; the user
-// message carries the category list, the servings and the recipe, and on a correction
-// round the errors and the previous answer. Both are deterministic for the same input, so
-// the providers' prompt caches can reuse the long static prefix.
+// Builds the prompts. The system prompt carries only what is the same for every recipe of
+// an installation (role, device limits, conversion rules, technique table, timing and unit
+// rules, output contract), so the providers' prompt caches reuse all of it across recipes.
+// The user message carries the category list, the servings, the full entries of the
+// techniques picked for this recipe and the recipe, and on a correction round the errors
+// and the previous answer.
 
 import { z } from "zod";
 import type {
@@ -14,7 +14,7 @@ import type {
   ParamLimit,
 } from "../recipe/limits.js";
 import { StepSchema } from "../recipe/schema.js";
-import type { Knowledge, Technique, TechniqueSelection } from "./knowledge.js";
+import { techniqueSummary, type Knowledge, type ModeFilter, type Technique } from "./knowledge.js";
 import type { ConversionRequest, GenerationFeedback } from "./types.js";
 
 export interface Category {
@@ -23,16 +23,23 @@ export interface Category {
 }
 
 export interface SystemPromptOptions {
-  techniques: TechniqueSelection;
   // Attachments this installation has, for example "food_processor_attachment".
   attachments?: readonly string[];
+}
+
+export interface UserMessageOptions {
+  // Techniques picked for this recipe (selectTechniques), printed in full.
+  techniques?: readonly Technique[];
+  // The modes this installation can run (usableModes); alternatives in other modes are
+  // left out of the technique entries.
+  usable?: ModeFilter;
+  feedback?: GenerationFeedback;
 }
 
 // Section headings of the system prompt, in their fixed order.
 export const SYSTEM_SECTIONS = [
   "Role and goal",
   "Device limits",
-  "Recipe structure",
   "Conversion rules",
   "Techniques",
   "Timing",
@@ -56,6 +63,43 @@ function roleSection(): string {
     ].join("\n"),
   );
 }
+
+// The modes a recipe for this installation may use: allowed by the device limits and with
+// every attachment they need.
+export function usableModes(limits: DeviceLimits, attachments: readonly string[] = []): ModeFilter {
+  return (id) => {
+    const mode = limits.modes.get(id);
+    return (
+      mode !== undefined &&
+      mode.allowed &&
+      mode.requires.every((required) => attachments.includes(required))
+    );
+  };
+}
+
+// The knowledge files name their sources and each other; the model sees only the prompt.
+// These rewrites point file names to prompt sections and drop provenance remarks.
+export const PROMPT_REWRITES: readonly (readonly [RegExp, string])[] = [
+  [/\s*\((?:bridge and )?SmartRecipe (?:rules?|flag [^)]*)\)/g, ""],
+  [/SmartRecipe rules?: /g, ""],
+  [/;\s*SmartRecipe rule [^;)]*/g, ""],
+  [/;?\s*the device limits come from SmartRecipe/g, ""],
+  [/`?units\.json`? pieceWeights/g, "the piece weights of the Units section"],
+  [/\(`?techniques\.json`?\)/g, "(see the Techniques section)"],
+  [/`?techniques\.json`?/g, "the Techniques section"],
+  [/`?timing-model\.json`?/g, "the Timing section"],
+  [/`?device-(?:limits|programs)\.json`?/g, "the Device limits section"],
+  [/`?units\.json`?/g, "the Units section"],
+];
+
+export function promptText(text: string): string {
+  return PROMPT_REWRITES.reduce(
+    (result, [pattern, replacement]) => result.replace(pattern, replacement),
+    text,
+  );
+}
+
+const anyMode: ModeFilter = () => true;
 
 // "0, 37, 40-130 in steps of 5": runs of three or more equally spaced values are shortened.
 export function compactValues(values: readonly number[]): string {
@@ -236,7 +280,7 @@ function rangeText(value: { typical: number; range?: [number, number] | undefine
   return low === high ? `${value.typical} ${unit}` : `${value.typical} ${unit} (${low}-${high})`;
 }
 
-export function techniqueDetail(technique: Technique): string {
+export function techniqueDetail(technique: Technique, usable: ModeFilter = anyMode): string {
   const d = technique.device;
   const lines = [`### ${technique.id}: ${technique.label}`, ""];
   if (technique.aliases.de.length > 0)
@@ -270,6 +314,7 @@ export function techniqueDetail(technique: Technique): string {
     );
   }
   for (const alternative of technique.alternatives ?? []) {
+    if (!usable(alternative.mode)) continue;
     const parts = [alternative.mode];
     if (alternative.temperature) parts.push(rangeText(alternative.temperature, "°C"));
     if (alternative.timeSeconds) parts.push(rangeText(alternative.timeSeconds, "s"));
@@ -290,22 +335,16 @@ export function techniqueDetail(technique: Technique): string {
   }
   for (const rule of technique.structure) lines.push(`- ${rule}`);
   for (const note of technique.notes ?? []) lines.push(`- Note: ${note}`);
-  return lines.join("\n");
+  return promptText(lines.join("\n"));
 }
 
-function techniquesSection(selection: TechniqueSelection): string {
+function techniquesSection(knowledge: Knowledge, usable: ModeFilter): string {
   return section(
     "Techniques",
     [
-      "All techniques of the knowledge base, one line each (id: label | program, typical value with the p10-p90 range of official recipes in parentheses):",
+      "The techniques this installation can run, one line each (id: label | program, typical value with the p10-p90 range of official recipes in parentheses). The user message adds the full entries of the techniques the recipe probably needs; prefer their programs and values. The cooking goal sets the time, not the mass.",
       "",
-      ...selection.summary.map((line) => `- ${line}`),
-      "",
-      "## Techniques for this recipe",
-      "",
-      "Full entries for the techniques this recipe probably needs. Prefer their programs and values; the cooking goal sets the time, not the mass.",
-      "",
-      selection.techniques.map(techniqueDetail).join("\n\n"),
+      ...techniqueSummary(knowledge, usable).map((line) => `- ${line}`),
     ].join("\n"),
   );
 }
@@ -323,7 +362,7 @@ function timingSection(knowledge: Knowledge): string {
   const c = t.constants;
   const h = knowledge.heatUp;
   const lines = [
-    `- Heat-up: tMin = grams / 1000 × ${c.heatCapacityJoulePerKgKelvin} × (min(T, 100) − ${c.startTemperatureC}) / (${c.heaterWatts} × ${c.efficiency}) seconds, about ${t.functions.tMinSeconds.secondsPerKgToBoil} s per kg of watery contents to the boil. The first heated manual step at ${h.minTemperature} °C or more after the bowl is filled must last at least ${h.warningFactor} × tMin; below ${h.errorFactor} × tMin the recipe is rejected. Later heated steps start hot and may be shorter. Roasting does not follow this model.`,
+    `- Heat-up: tMin = grams / 1000 × ${c.heatCapacityJoulePerKgKelvin} × (min(T, 100) − ${c.startTemperatureC}) / (${c.heaterWatts} × ${c.efficiency}) seconds, about ${t.functions.tMinSeconds.secondsPerKgToBoil} s per kg of watery contents to the boil. A heated manual step at ${h.minTemperature} °C or more on contents below that temperature must last at least ${h.warningFactor} × tMin; below ${h.errorFactor} × tMin the recipe is rejected.${h.typicalFactor !== undefined ? ` Official recipes give about ${h.typicalFactor} × tMin.` : ""} Cold ingredients added to hot contents cool them to the mixing temperature, and tMin then counts from there for the whole bowl: sautéed onions plus a litre of cold stock need nearly the full heat-up again. Steps on contents that are still hot may be shorter. Roasting does not follow this model.`,
   ];
   if (t.manualCooking.note) lines.push(`- Manual cooking: ${t.manualCooking.note}`);
   lines.push(
@@ -386,7 +425,7 @@ function unitsSection(knowledge: Knowledge): string {
   const grid = u.roundingGrid.grams
     .map(
       ({ band: [from, to], step }) =>
-        `${to === null ? `from ${from} g` : `${from}-${to} g`}: steps of ${step} g`,
+        `${to === null ? `from ${from} g` : `${Math.max(from, step)}-${to} g`}: steps of ${step} g`,
     )
     .join("; ");
   const densities = Object.entries(u.densities)
@@ -403,7 +442,7 @@ function unitsSection(knowledge: Knowledge): string {
     "",
     ...u.notAllowed.map((rule) => `- Not allowed: ${rule}`),
     ...u.amountFormat.rules.map((rule) => `- ${rule}`),
-    `- Gram grid: ${grid}.${u.roundingGrid.spoons ? ` ${u.roundingGrid.spoons}` : ""}`,
+    `- Gram grid for weighed amounts (under 5 g nothing is weighed): ${grid}.${u.roundingGrid.spoons ? ` ${u.roundingGrid.spoons}` : ""}`,
     "",
     "Converting units of the source recipe:",
     "",
@@ -441,19 +480,21 @@ function outputSection(limits: DeviceLimits): string {
 export function buildSystemPrompt(
   knowledge: Knowledge,
   limits: DeviceLimits,
-  options: SystemPromptOptions,
+  options: SystemPromptOptions = {},
 ): string {
   const attachments = options.attachments ?? [];
-  return [
-    roleSection(),
-    limitsSection(limits, attachments),
-    section("Recipe structure", documentBody(knowledge.stepPatterns)),
-    section("Conversion rules", documentBody(knowledge.promptRules)),
-    techniquesSection(options.techniques),
-    timingSection(knowledge),
-    unitsSection(knowledge),
-    outputSection(limits),
-  ].join("\n\n");
+  const usable = usableModes(limits, attachments);
+  return promptText(
+    [
+      roleSection(),
+      limitsSection(limits, attachments),
+      section("Conversion rules", documentBody(knowledge.promptRules)),
+      techniquesSection(knowledge, usable),
+      timingSection(knowledge),
+      unitsSection(knowledge),
+      outputSection(limits),
+    ].join("\n\n"),
+  );
 }
 
 export function formatFeedback(feedback: GenerationFeedback): string {
@@ -482,20 +523,25 @@ export function withFeedback(user: string, feedback?: GenerationFeedback): strin
   return feedback ? `${user.trimEnd()}\n\n${formatFeedback(feedback)}\n` : user;
 }
 
+// Throws when the category list is empty: the model cannot know category ids, so it must
+// never be asked to guess them.
 export function buildUserMessage(
   request: ConversionRequest,
   categories: readonly Category[],
-  feedback?: GenerationFeedback,
+  options: UserMessageOptions = {},
 ): string {
+  if (categories.length === 0) {
+    throw new RangeError("buildUserMessage needs a category list; the model must not guess ids");
+  }
   const list = [...categories].sort((a, b) => a.id - b.id).map((c) => `- ${c.id}: ${c.name}`);
   const hints = (request.categoryHints ?? []).filter((hint) => hint.trim() !== "");
+  const techniques = options.techniques ?? [];
   const parts = [
     "# Categories",
     "",
-    list.length > 0
-      ? "Pick categoryIds only from this list (id: name):"
-      : "No category list is available; pick the ids you are sure of and add a review hint.",
-    ...(list.length > 0 ? ["", ...list] : []),
+    "Pick categoryIds only from this list (id: name):",
+    "",
+    ...list,
     "",
     "# Servings",
     "",
@@ -504,6 +550,16 @@ export function buildUserMessage(
   if (hints.length > 0) {
     parts.push("", "# Mealie categories", "", hints.join(", "));
   }
+  if (techniques.length > 0) {
+    parts.push(
+      "",
+      "# Techniques for this recipe",
+      "",
+      "Full entries for the techniques this recipe probably needs:",
+      "",
+      techniques.map((technique) => techniqueDetail(technique, options.usable)).join("\n\n"),
+    );
+  }
   parts.push("", "# Recipe", "", request.rendered.trim(), "");
-  return withFeedback(parts.join("\n"), feedback);
+  return withFeedback(parts.join("\n"), options.feedback);
 }

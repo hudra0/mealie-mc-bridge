@@ -12,8 +12,10 @@ import {
   documentBody,
   formatDuration,
   formatFeedback,
+  promptText,
   stepFields,
   techniqueDetail,
+  usableModes,
   withFeedback,
 } from "./prompt.js";
 import type { ConversionRequest } from "./types.js";
@@ -38,9 +40,9 @@ const request: ConversionRequest = {
   categoryHints: ["Suppe", " "],
 };
 
-const system = buildSystemPrompt(knowledge, limits, {
-  techniques: selectTechniques(request, knowledge),
-});
+const system = buildSystemPrompt(knowledge, limits);
+const usable = usableModes(limits);
+const { techniques } = selectTechniques(request, knowledge, undefined, usable);
 
 describe("buildSystemPrompt", () => {
   it("has the sections in their fixed order", () => {
@@ -71,26 +73,49 @@ describe("buildSystemPrompt", () => {
 
   it("carries the rule documents, the technique table and the timing and unit rules", () => {
     expect(system).toContain(documentBody(knowledge.promptRules));
-    expect(system).toContain("## 2. A text or scale step before every working step");
+    expect(system).toContain("## Typical sequences");
     expect(system).not.toContain("# Prompt rules for the converter");
     expect(system).toContain("- simmer_cook: Simmer or cook in liquid");
-    expect(system).toContain("### puree_hot_soup: Purée a hot soup");
+    expect(system).not.toContain("### puree_hot_soup");
     expect(system).toContain("about 457 s per kg");
     expect(system).toContain("at least 0.87 × tMin; below 0.5 × tMin the recipe is rejected");
+    expect(system).toContain("Official recipes give about 2.3 × tMin");
+    expect(system).toContain(
+      "Gram grid for weighed amounts (under 5 g nothing is weighed): 5-10 g",
+    );
     expect(system).toContain("- bowl_max (error): at most 3000 g");
     expect(system).toContain("- Densities in g per ml: water 1, milk 1.03");
     expect(system).toContain("- EL, El, Esslöffel, tbsp, tablespoon → g, 15 g each");
     expect(system).toContain("Answer with exactly one JSON object");
   });
 
-  it("is deterministic and allows the food processor when the attachment is there", () => {
-    const options = { techniques: selectTechniques(request, knowledge) };
-    expect(buildSystemPrompt(knowledge, limits, options)).toBe(system);
+  it("is the same for every recipe and allows the food processor with the attachment", () => {
+    expect(buildSystemPrompt(knowledge, limits, {})).toBe(system);
+    expect(system).not.toContain("Kürbis");
+    expect(system).not.toContain("food_processor_slice");
     const withAttachment = buildSystemPrompt(knowledge, limits, {
-      ...options,
       attachments: ["food_processor_attachment"],
     });
     expect(withAttachment).toContain("- food_processor: time (minutes + seconds) 1 s to 5 min");
+    expect(withAttachment).toContain("- food_processor_slice:");
+  });
+
+  it("names no knowledge file, no source project and no forbidden mode in a technique", () => {
+    const user = buildUserMessage(request, categories, {
+      techniques: knowledge.techniques,
+      usable,
+    });
+    for (const text of [system, user]) {
+      expect(text).not.toMatch(/\.json|\.md\b|SmartRecipe/);
+    }
+    expect(system).not.toMatch(/^- preclean:/m);
+    expect(user).not.toContain("- Alternative: ramp");
+    expect(promptText("never on hot contents (SmartRecipe rule: at most 60 °C)")).toBe(
+      "never on hot contents (at most 60 °C)",
+    );
+    expect(promptText("see timing-model.json and units.json pieceWeights")).toBe(
+      "see the Timing section and the piece weights of the Units section",
+    );
   });
 });
 
@@ -128,9 +153,12 @@ describe("prompt helpers", () => {
       "- Alternative: customized, 120 °C (100-120), 600 s (180-1500), speed 1 (max 1)",
     );
     expect(steam).toContain("- Time by load: vegetables 900 s (372-3600)");
-    expect(techniqueDetail(techniqueById(knowledge, "puree_hot_soup")!)).toContain(
+    const soup = techniqueById(knowledge, "puree_hot_soup")!;
+    expect(techniqueDetail(soup)).toContain(
       "- Time formula: clamp(30, 120, 33 + 0.009 * massGrams)",
     );
+    expect(techniqueDetail(soup)).toContain("- Alternative: ramp");
+    expect(techniqueDetail(soup, usable)).not.toContain("- Alternative: ramp");
     expect(techniqueDetail(techniqueById(knowledge, "saute_onions")!)).toContain(
       "reverse: true when diced vegetables",
     );
@@ -138,8 +166,11 @@ describe("prompt helpers", () => {
 });
 
 describe("buildUserMessage", () => {
-  it("lists the categories, the servings and the recipe, recipe last", () => {
-    const user = buildUserMessage(request, categories);
+  it("lists the categories, the servings, the techniques and the recipe, recipe last", () => {
+    const user = buildUserMessage(request, categories, { techniques, usable });
+    expect(user).toContain("# Techniques for this recipe");
+    expect(user).toContain("### simmer_cook: Simmer or cook in liquid");
+    expect(user.indexOf("# Techniques for this recipe")).toBeLessThan(user.indexOf("# Recipe"));
     expect(user.startsWith("# Categories\n")).toBe(true);
     expect(user).toContain("- 228: Suppen & Eintöpfe");
     const ids = [...user.matchAll(/^- (\d+): /gm)].map((match) => Number(match[1]));
@@ -149,10 +180,11 @@ describe("buildUserMessage", () => {
     expect(user.trimEnd().endsWith(request.rendered.trim())).toBe(true);
   });
 
-  it("says when no category list is available", () => {
-    const user = buildUserMessage({ ...request, categoryHints: [] }, []);
-    expect(user).toContain("No category list is available");
+  it("refuses to ask for category ids without a list", () => {
+    expect(() => buildUserMessage(request, [])).toThrow(RangeError);
+    const user = buildUserMessage({ ...request, categoryHints: [] }, categories);
     expect(user).not.toContain("# Mealie categories");
+    expect(user).not.toContain("# Techniques for this recipe");
   });
 
   it("appends the errors and the previous answer on a correction round", () => {
@@ -163,7 +195,7 @@ describe("buildUserMessage", () => {
       ],
       previousJson: '{"title":""}\n',
     };
-    const user = buildUserMessage(request, categories, feedback);
+    const user = buildUserMessage(request, categories, { feedback });
     expect(user).toContain(formatFeedback(feedback));
     expect(formatFeedback(feedback)).toMatchInlineSnapshot(`
       "# Correction

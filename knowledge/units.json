@@ -271,7 +271,6 @@
       { "name": "Äpfel, säuerlich", "unit": "Stück", "grams": 150, "range": [128, 188], "n": 5 },
       { "name": "Bananen, reif", "unit": "Stück", "grams": 150, "range": [104, 180], "n": 5 },
       { "name": "Auberginen", "unit": "Stück", "grams": 250, "range": [132, 300], "n": 5 },
-      { "name": "Zwiebel", "unit": "Stück", "grams": 100, "range": [88, 112], "n": 5 },
       { "name": "Fenchel", "unit": "Stück", "grams": 250, "range": [150, 385], "n": 4 },
       { "name": "Zwiebeln, rot", "unit": "Stück", "grams": 71, "range": [55, 79], "n": 4 },
       { "name": "Spitzkohl", "unit": "Stück", "grams": 775, "range": [645, 940], "n": 4 },

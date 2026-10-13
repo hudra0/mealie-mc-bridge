@@ -16,6 +16,7 @@ import {
   pieceWeight,
   stem,
   stepTemperature,
+  mixedTemperature,
   traceBowl,
 } from "./mass.js";
 
@@ -255,7 +256,30 @@ describe("traceBowl", () => {
       knowledge,
     );
     expect(traces.map((trace) => trace.after.whisk)).toEqual([true, true, false, false]);
-    expect(traces.map((trace) => trace.after.hotTemperature)).toEqual([0, 90, 0, 100]);
+    expect(traces.map((trace) => trace.after.temperature)).toEqual([20, 90, 20, 100]);
+  });
+
+  it("lowers the temperature to the mixing temperature when cold contents go in", () => {
+    const traces = traceBowl(
+      recipeWith([
+        scale(100, "Wasser"),
+        {
+          kind: "customized",
+          title: "Kochen",
+          temperature: 100,
+          minutes: 5,
+          seconds: 0,
+          speed: 1,
+          rotation: "right",
+        },
+        scale(300, "Wasser"),
+      ]),
+      [],
+      knowledge,
+    );
+    expect(traces.map((trace) => trace.after.temperature)).toEqual([20, 100, 40]);
+    expect(mixedTemperature(0, 100, 50, 20)).toBe(20);
+    expect(mixedTemperature(100, 90, 0, 20)).toBe(90);
   });
 
   it("reports the temperature a step heats to", () => {

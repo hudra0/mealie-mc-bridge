@@ -1,5 +1,7 @@
 // Loads the knowledge base the prompt and the plausibility checks use: cooking techniques,
-// the timing model, unit rules, recommended device ranges and the two rule documents.
+// the timing model, unit rules, recommended device ranges, the converter's own tables and
+// the prompt rules. step-patterns.md stays in the directory as the evidence behind the
+// prompt rules; the converter does not read it.
 // Each JSON file is checked leniently: only the fields this module reads must be present,
 // everything else passes through. A missing file or a missing field fails the load, so a
 // broken knowledge base never reaches a conversion.
@@ -7,17 +9,18 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { DEFAULT_KNOWLEDGE_DIR } from "./settings.js";
 import type { ConversionRequest } from "./types.js";
 
-export const DEFAULT_KNOWLEDGE_DIR = "./knowledge";
+export { DEFAULT_KNOWLEDGE_DIR } from "./settings.js";
 
 export const KNOWLEDGE_FILES = {
   techniques: "techniques.json",
   timing: "timing-model.json",
   units: "units.json",
   recommended: "device-limits.json",
+  converterRules: "converter-rules.json",
   promptRules: "prompt-rules.md",
-  stepPatterns: "step-patterns.md",
 } as const;
 
 export class KnowledgeError extends Error {
@@ -114,6 +117,7 @@ const timingFileSchema = z.looseObject({
       appliesTo: z.string(),
       condition: z.string(),
       severity: z.string().optional(),
+      typicalFactor: z.number().positive().optional(),
     }),
   ),
   manualCooking: z.looseObject({
@@ -177,6 +181,13 @@ const recommendedFileSchema = z.looseObject({
   ),
 });
 
+const converterRulesFileSchema = z.looseObject({
+  ingredientClassWords: z.looseObject({
+    classes: z.record(z.string(), z.array(z.string().min(1)).min(1)),
+  }),
+  amountBalance: z.looseObject({ tolerance: z.number().min(0).max(1) }),
+});
+
 export type Technique = z.infer<typeof techniqueSchema>;
 export type TimingModel = z.infer<typeof timingFileSchema>;
 export type UnitsKnowledge = z.infer<typeof unitsFileSchema>;
@@ -190,6 +201,8 @@ export interface HeatUpThresholds {
   warningFactor: number;
   // The check applies from this temperature up.
   minTemperature: number;
+  // Median time over tMin of official first heatings, when the timing model states it.
+  typicalFactor?: number;
 }
 
 export interface Knowledge {
@@ -197,11 +210,15 @@ export interface Knowledge {
   timing: TimingModel;
   units: UnitsKnowledge;
   recommended: RecommendedLimits;
-  // The rule documents as written, Markdown.
+  // The prompt rules as written, Markdown.
   promptRules: string;
-  stepPatterns: string;
   heatUp: HeatUpThresholds;
   massLimits: ReadonlyMap<string, MassLimit>;
+  // German words per ingredient class of techniques.json (converter-rules.json). A word
+  // matches the start of a word in the recipe, so "zwiebel" also finds "Zwiebeln".
+  ingredientClassWords: Readonly<Record<string, readonly string[]>>;
+  // Share by which an amount may exceed or fall short of the input (converter-rules.json).
+  amountTolerance: number;
 }
 
 // Techniques every prompt carries: the scale step, chopping, sautéing and simmering cover
@@ -281,11 +298,13 @@ function heatUpThresholds(timing: TimingModel): HeatUpThresholds {
       'timing-model.json: heat-up rule heatup_too_short needs "temperature >= N" in appliesTo',
     );
   }
-  return {
+  const thresholds: HeatUpThresholds = {
     errorFactor: factorOf(error?.condition, "heatup_too_short"),
     warningFactor: factorOf(warning?.condition, "heatup_short"),
     minTemperature,
   };
+  if (warning?.typicalFactor !== undefined) thresholds.typicalFactor = warning.typicalFactor;
+  return thresholds;
 }
 
 export interface KnowledgeTexts {
@@ -293,8 +312,8 @@ export interface KnowledgeTexts {
   timing: string;
   units: string;
   recommended: string;
+  converterRules: string;
   promptRules: string;
-  stepPatterns: string;
 }
 
 // Checks the file contents and builds the knowledge object.
@@ -304,6 +323,11 @@ export function buildKnowledge(files: KnowledgeTexts): Knowledge {
   const timing = parseJson(timingFileSchema, files.timing, F.timing);
   const units = parseJson(unitsFileSchema, files.units, F.units);
   const recommended = parseJson(recommendedFileSchema, files.recommended, F.recommended);
+  const converterRules = parseJson(
+    converterRulesFileSchema,
+    files.converterRules,
+    F.converterRules,
+  );
 
   const ids = new Set<string>();
   for (const technique of techniques) {
@@ -335,9 +359,10 @@ export function buildKnowledge(files: KnowledgeTexts): Knowledge {
     units,
     recommended,
     promptRules: markdown(files.promptRules, F.promptRules),
-    stepPatterns: markdown(files.stepPatterns, F.stepPatterns),
     heatUp: heatUpThresholds(timing),
     massLimits,
+    ingredientClassWords: converterRules.ingredientClassWords.classes,
+    amountTolerance: converterRules.amountBalance.tolerance,
   };
 }
 
@@ -346,15 +371,10 @@ export function buildKnowledge(files: KnowledgeTexts): Knowledge {
 export async function loadKnowledge(dir: string = DEFAULT_KNOWLEDGE_DIR): Promise<Knowledge> {
   const absolute = resolve(dir);
   const F = KNOWLEDGE_FILES;
-  const [techniques, timing, units, recommended, promptRules, stepPatterns] = await Promise.all([
-    readText(absolute, F.techniques),
-    readText(absolute, F.timing),
-    readText(absolute, F.units),
-    readText(absolute, F.recommended),
-    readText(absolute, F.promptRules),
-    readText(absolute, F.stepPatterns),
-  ]);
-  return buildKnowledge({ techniques, timing, units, recommended, promptRules, stepPatterns });
+  const names = Object.keys(F) as (keyof typeof F)[];
+  const contents = await Promise.all(names.map((name) => readText(absolute, F[name])));
+  const files = Object.fromEntries(names.map((name, i) => [name, contents[i] ?? ""]));
+  return buildKnowledge(files as unknown as KnowledgeTexts);
 }
 
 // A mass limit the loader guaranteed to exist, with its gram value.
@@ -379,125 +399,31 @@ export function techniqueById(knowledge: Knowledge, id: string): Technique | und
   return knowledge.techniques.find((technique) => technique.id === id);
 }
 
-// German words that point to an ingredient class of techniques.json. A word matches the
-// start of a word in the recipe, so "zwiebel" also finds "Zwiebeln" and "Zwiebelwürfel".
-export const INGREDIENT_CLASS_WORDS: Readonly<Record<string, readonly string[]>> = {
-  onion_garlic: ["zwiebel", "schalotte", "knoblauch", "ingwer", "frühlingszwiebel", "lauchzwiebel"],
-  vegetables: [
-    "möhre",
-    "karotte",
-    "paprika",
-    "zucchini",
-    "tomate",
-    "sellerie",
-    "lauch",
-    "porree",
-    "brokkoli",
-    "blumenkohl",
-    "kohl",
-    "aubergine",
-    "gurke",
-    "kürbis",
-    "spinat",
-    "erbse",
-    "bohne",
-    "champignon",
-    "pilz",
-    "fenchel",
-    "spargel",
-    "gemüse",
-    "linse",
-    "kichererbse",
-  ],
-  herbs: [
-    "petersilie",
-    "basilikum",
-    "schnittlauch",
-    "dill",
-    "koriander",
-    "minze",
-    "thymian",
-    "rosmarin",
-    "oregano",
-    "salbei",
-    "kräuter",
-  ],
-  nuts_seeds: [
-    "nuss",
-    "nüsse",
-    "mandel",
-    "haselnuss",
-    "walnuss",
-    "cashew",
-    "pinienkern",
-    "sesam",
-    "kürbiskern",
-    "sonnenblumenkern",
-    "leinsamen",
-    "pistazie",
-  ],
-  hard_cheese: ["parmesan", "pecorino", "grana", "bergkäse", "hartkäse"],
-  chocolate: ["schokolade", "kuvertüre", "kakao"],
-  fruit: [
-    "apfel",
-    "äpfel",
-    "birne",
-    "banane",
-    "beere",
-    "erdbeere",
-    "himbeere",
-    "kirsche",
-    "mango",
-    "orange",
-    "zitrone",
-    "pfirsich",
-    "aprikose",
-    "pflaume",
-    "ananas",
-    "obst",
-  ],
-  meat: [
-    "fleisch",
-    "hähnchen",
-    "huhn",
-    "rind",
-    "schwein",
-    "hackfleisch",
-    "gehacktes",
-    "speck",
-    "schinken",
-    "wurst",
-    "pute",
-    "lamm",
-  ],
-  fish: ["fisch", "lachs", "thunfisch", "kabeljau", "garnele", "shrimp", "forelle"],
-  dairy: [
-    "milch",
-    "sahne",
-    "butter",
-    "joghurt",
-    "quark",
-    "schmand",
-    "frischkäse",
-    "mascarpone",
-    "crème",
-  ],
-  egg: ["eier", "eigelb", "eiweiß", "eiklar"],
-  flour_dough: ["mehl", "hefe", "teig", "backpulver", "stärke"],
-  sugar_spices: ["zucker", "zimt", "pfeffer", "kümmel", "gewürz", "vanille", "muskat"],
-  bread_biscuits: ["brot", "brötchen", "semmel", "zwieback", "keks", "biskuit"],
-  rice_grain: ["reis", "risotto", "hafer", "grieß", "quinoa", "couscous", "bulgur", "hirse"],
-  pasta: ["nudel", "pasta", "spaghetti", "penne", "makkaroni", "tagliatelle", "lasagne"],
-  potatoes: ["kartoffel"],
-  liquid: ["wasser", "brühe", "fond", "wein", "saft"],
-  ice: ["eiswürfel", "crushed ice", "tiefgekühlt", "gefroren"],
-};
-
 export interface TechniqueSelection {
   // Full entries of the selected techniques, in knowledge-file order.
   techniques: Technique[];
-  // One line per technique of the knowledge base.
-  summary: string[];
+}
+
+// Which device modes this installation can run (see usableModes in prompt.ts).
+export type ModeFilter = (mode: string) => boolean;
+const anyMode: ModeFilter = () => true;
+
+// Techniques the prompt never offers, with the reason. The device has a precleaning
+// program, but official recipes rinse the bowl in a text step instead.
+export const PROMPT_EXCLUDED_TECHNIQUES: Readonly<Record<string, string>> = {
+  preclean: 'use the text step "Mixbehälter ausspülen" instead',
+};
+
+// The techniques the prompt may offer: their main program runs on this installation.
+export function offeredTechniques(knowledge: Knowledge, usable: ModeFilter = anyMode): Technique[] {
+  return knowledge.techniques.filter(
+    (technique) => !(technique.id in PROMPT_EXCLUDED_TECHNIQUES) && usable(technique.device.mode),
+  );
+}
+
+// One summary line per offered technique, for the static part of the system prompt.
+export function techniqueSummary(knowledge: Knowledge, usable: ModeFilter = anyMode): string[] {
+  return offeredTechniques(knowledge, usable).map(techniqueSummaryLine);
 }
 
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -541,8 +467,8 @@ export function techniqueSummaryLine(technique: Technique): string {
   return `${technique.id}: ${technique.label} | ${parts.join(", ")}`;
 }
 
-// Picks the techniques whose German or English aliases or ingredient classes occur in the
-// recipe. The techniques of ALWAYS_SELECTED are always in; the others rank by score, ties
+// Picks the offered techniques whose German or English aliases or ingredient classes occur
+// in the recipe. The techniques of ALWAYS_SELECTED are always in; the others rank by score, ties
 // in knowledge-file order. An alias hit scores 3 divided by the number of techniques that
 // share the alias ("zerkleinern" names five chopping techniques), an ingredient class
 // with a hit scores 1, so the ingredients decide between techniques of the same verb.
@@ -550,6 +476,7 @@ export function selectTechniques(
   request: Pick<ConversionRequest, "title" | "rendered" | "ingredients">,
   knowledge: Knowledge,
   max = 12,
+  usable: ModeFilter = anyMode,
 ): TechniqueSelection {
   const text = [request.title, request.rendered, ...request.ingredients.map((i) => i.food)]
     .join("\n")
@@ -559,13 +486,14 @@ export function selectTechniques(
     for (const alias of aliasesOf(technique)) shared.set(alias, (shared.get(alias) ?? 0) + 1);
   }
   const always = new Set<string>(ALWAYS_SELECTED);
-  const scored = knowledge.techniques
+  const offered = offeredTechniques(knowledge, usable);
+  const scored = offered
     .map((technique, order) => {
       const aliasScore = aliasesOf(technique)
         .filter((alias) => occurs(text, alias))
         .reduce((sum, alias) => sum + 3 / (shared.get(alias) ?? 1), 0);
       const classHits = technique.ingredientClasses.filter(
-        (name) => countHits(text, INGREDIENT_CLASS_WORDS[name] ?? []) > 0,
+        (name) => countHits(text, knowledge.ingredientClassWords[name] ?? []) > 0,
       ).length;
       return { technique, order, score: aliasScore + classHits };
     })
@@ -576,8 +504,5 @@ export function selectTechniques(
     if (chosen.size >= max) break;
     chosen.add(technique.id);
   }
-  return {
-    techniques: knowledge.techniques.filter((technique) => chosen.has(technique.id)),
-    summary: knowledge.techniques.map(techniqueSummaryLine),
-  };
+  return { techniques: offered.filter((technique) => chosen.has(technique.id)) };
 }

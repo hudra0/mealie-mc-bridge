@@ -6,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { NormalizedIngredient } from "../ingredients/index.js";
 import {
   ALWAYS_SELECTED,
-  INGREDIENT_CLASS_WORDS,
   KNOWLEDGE_FILES,
   KnowledgeError,
   buildKnowledge,
@@ -15,6 +14,8 @@ import {
   ruleValue,
   selectTechniques,
   techniqueById,
+  offeredTechniques,
+  techniqueSummary,
   techniqueSummaryLine,
   type KnowledgeTexts,
 } from "./knowledge.js";
@@ -30,8 +31,8 @@ async function texts(): Promise<KnowledgeTexts> {
     timing: await read(F.timing),
     units: await read(F.units),
     recommended: await read(F.recommended),
+    converterRules: await read(F.converterRules),
     promptRules: await read(F.promptRules),
-    stepPatterns: await read(F.stepPatterns),
   };
 }
 
@@ -52,7 +53,13 @@ const food = (name: string): NormalizedIngredient => ({
 describe("loadKnowledge", () => {
   it("loads the knowledge base of the repository", () => {
     expect(knowledge.techniques).toHaveLength(45);
-    expect(knowledge.heatUp).toEqual({ errorFactor: 0.5, warningFactor: 0.87, minTemperature: 90 });
+    expect(knowledge.heatUp).toEqual({
+      errorFactor: 0.5,
+      warningFactor: 0.87,
+      minTemperature: 90,
+      typicalFactor: 2.3,
+    });
+    expect(knowledge.amountTolerance).toBe(0.1);
     expect(massLimit(knowledge, "bowl_max").grams).toBe(3000);
     expect(massLimit(knowledge, "steaming_liquid_min").grams).toBe(500);
     expect(ruleValue(knowledge, "speed_max_whisk")).toBe(4);
@@ -143,12 +150,19 @@ describe("loadKnowledge", () => {
   });
 });
 
-describe("INGREDIENT_CLASS_WORDS", () => {
+describe("ingredientClassWords", () => {
   it("has words for every ingredient class the techniques use", () => {
     const classes = new Set(knowledge.techniques.flatMap((t) => t.ingredientClasses));
     classes.delete("any");
     for (const name of classes)
-      expect(INGREDIENT_CLASS_WORDS[name]?.length, name).toBeGreaterThan(0);
+      expect(knowledge.ingredientClassWords[name]?.length, name).toBeGreaterThan(0);
+  });
+
+  it("rejects a converter-rules file without the tables", async () => {
+    const base = await texts();
+    expect(() => buildKnowledge({ ...base, converterRules: "{}" })).toThrow(
+      "converter-rules.json does not have the expected shape",
+    );
   });
 });
 
@@ -188,9 +202,23 @@ describe("selectTechniques", () => {
     expect([...ids].sort((a, b) => order.indexOf(a) - order.indexOf(b))).toEqual(ids);
   });
 
-  it("returns a summary line for every technique", () => {
-    const selection = selectTechniques({ title: "", rendered: "", ingredients: [] }, knowledge);
-    expect(selection.summary).toHaveLength(45);
+  it("offers only techniques the installation can run, and never precleaning", () => {
+    const noFoodProcessor = (mode: string) => mode !== "food_processor";
+    const offered = offeredTechniques(knowledge, noFoodProcessor).map((t) => t.id);
+    expect(offered).not.toContain("food_processor_slice");
+    expect(offered).not.toContain("preclean");
+    expect(offeredTechniques(knowledge).map((t) => t.id)).toContain("food_processor_slice");
+    const ids = selectTechniques(
+      { title: "Gurkensalat", rendered: "Die Gurke in Scheiben schneiden.", ingredients: [] },
+      knowledge,
+      undefined,
+      noFoodProcessor,
+    ).techniques.map((t) => t.id);
+    expect(ids).not.toContain("food_processor_slice");
+  });
+
+  it("returns a summary line for every offered technique", () => {
+    expect(techniqueSummary(knowledge)).toHaveLength(44);
     expect(techniqueSummaryLine(techniqueById(knowledge, "chop_onion_garlic")!)).toBe(
       "chop_onion_garlic: Chop onions, shallots, garlic or ginger | customized, 6 (5-10) s, speed 6 (max 8)",
     );

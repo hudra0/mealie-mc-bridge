@@ -235,7 +235,7 @@ describe("runConvert", () => {
     expect(notRecipe.err[0]).toContain("not a Mealie recipe");
   });
 
-  it("loads the categories from the public API and goes on without them when that fails", async () => {
+  it("loads the categories from the public API and stops without them", async () => {
     const categories = await readFile(CATEGORIES, "utf8");
     const fetch = vi.fn<FetchLike>(() =>
       Promise.resolve(
@@ -249,10 +249,21 @@ describe("runConvert", () => {
     const offline = harness();
     const failing = vi.fn<FetchLike>(() => Promise.reject(new Error("offline")));
     expect(await offline.run(["prompt", "--mealie-json", MEALIE], { fetch: failing })).toBe(
+      EXIT.failed,
+    );
+    expect(offline.err.at(-1)).toContain("Pass --categories <file>");
+    expect(offline.out).toEqual([]);
+  });
+
+  it("prices the conversion with LLM_PRICES_JSON", async () => {
+    const { run, out } = harness([soupText], {
+      LLM_PRICES_JSON: '{"gpt-5.5": {"input": 1, "output": 1}}',
+    });
+    expect(await run(["convert", "--mealie-json", MEALIE, "--categories", CATEGORIES])).toBe(
       EXIT.ok,
     );
-    expect(offline.err.at(-1)).toContain("continuing without a list");
-    expect(offline.out[2]).toContain("No category list is available");
+    // 1000 input and 100 output tokens at 1 USD per million each.
+    expect(out.at(-1)).toBe("Usage: 1000 input tokens, 100 output tokens, about 0.0011 USD");
   });
 
   it("refuses to evaluate without a corpus", async () => {

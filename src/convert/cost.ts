@@ -3,17 +3,10 @@
 // LLM_PRICES_JSON can override or extend the table without a release, for example
 // {"gpt-5.5": {"input": 5, "cachedInput": 0.5, "output": 30}}.
 
-import { z } from "zod";
+import { parsePriceOverrides, type ModelPrice } from "./settings.js";
 import type { TokenUsage } from "./types.js";
 
-export interface ModelPrice {
-  input: number;
-  output: number;
-  // Price of input tokens read from the prompt cache; the input price when absent.
-  cachedInput?: number;
-  // Price of input tokens written to the prompt cache; the input price when absent.
-  cacheWrite?: number;
-}
+export { PriceTableError, parsePriceOverrides, type ModelPrice } from "./settings.js";
 
 export type PriceTable = Readonly<Record<string, ModelPrice>>;
 
@@ -30,49 +23,10 @@ export const DEFAULT_PRICES: PriceTable = {
   "gpt-5.6-terra": { input: 2, cachedInput: 0.2, output: 12 },
   "claude-opus-5-5": { input: 4, cachedInput: 0.2, cacheWrite: 5, output: 20 },
   "claude-opus-5": { input: 5, cachedInput: 0.5, cacheWrite: 6.25, output: 25 },
+  // A server-side fallback target.
+  "claude-opus-4-8": { input: 5, cachedInput: 0.5, cacheWrite: 6.25, output: 25 },
   "claude-sonnet-5-5": { input: 2, cachedInput: 0.2, cacheWrite: 2.5, output: 10 },
 };
-
-const priceSchema = z.strictObject({
-  input: z.number().nonnegative(),
-  output: z.number().nonnegative(),
-  cachedInput: z.number().nonnegative().optional(),
-  cacheWrite: z.number().nonnegative().optional(),
-});
-const overridesSchema = z.record(z.string().min(1), priceSchema);
-
-export class PriceTableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PriceTableError";
-  }
-}
-
-// Parses LLM_PRICES_JSON. Throws PriceTableError with the reason when it is malformed.
-export function parsePriceOverrides(json: string | undefined): Record<string, ModelPrice> {
-  if (json === undefined || json.trim() === "") return {};
-  let value: unknown;
-  try {
-    value = JSON.parse(json);
-  } catch {
-    throw new PriceTableError("LLM_PRICES_JSON is not valid JSON");
-  }
-  const result = overridesSchema.safeParse(value);
-  if (!result.success) {
-    const issue = result.error.issues[0];
-    throw new PriceTableError(
-      `LLM_PRICES_JSON must map model names to {input, output, cachedInput?, cacheWrite?} in USD per 1M tokens${issue ? ` (${issue.path.join(".") || "root"}: ${issue.message})` : ""}`,
-    );
-  }
-  const prices: Record<string, ModelPrice> = {};
-  for (const [model, price] of Object.entries(result.data)) {
-    const entry: ModelPrice = { input: price.input, output: price.output };
-    if (price.cachedInput !== undefined) entry.cachedInput = price.cachedInput;
-    if (price.cacheWrite !== undefined) entry.cacheWrite = price.cacheWrite;
-    prices[model] = entry;
-  }
-  return prices;
-}
 
 export function priceTable(overridesJson?: string): PriceTable {
   return { ...DEFAULT_PRICES, ...parsePriceOverrides(overridesJson) };

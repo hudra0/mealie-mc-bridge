@@ -14,6 +14,7 @@ import {
   duplicateAdditionRule,
   flourRule,
   heatUpRule,
+  ingredientListedRule,
   ingredientReferencedRule,
   machineStepDescriptionRule,
   parseListAmount,
@@ -144,10 +145,36 @@ describe("heat_up", () => {
     expect(run(heatUpRule, [...water, manual(100, 900, 1)])).toEqual({ errors: [], warnings: [] });
   });
 
-  it("skips contents that are already hot and low temperatures", () => {
-    const hot = [manual(120, 300, 1), ...water, manual(100, 60, 1)];
-    expect(run(heatUpRule, hot).errors).toEqual([]);
+  it("skips contents that are still hot and low temperatures", () => {
+    const hot = [...water, manual(100, 900, 1), scale(50, "Wasser"), manual(100, 60, 1)];
+    expect(run(heatUpRule, hot)).toEqual({ errors: [], warnings: [] });
     expect(run(heatUpRule, [...water, manual(60, 60, 1)]).errors).toEqual([]);
+  });
+
+  it("checks the heating after cold stock was added to sautéed onions", () => {
+    const soup = [
+      ingredient("Zwiebeln", 100, "g"),
+      ingredient("Öl", 20, "g"),
+      ingredient("Gemüsebrühe", 1500, "g"),
+      ingredient("Karotten", 500, "g"),
+    ];
+    const steps = [
+      scale(100, "Zwiebeln"),
+      scale(20, "Öl"),
+      manual(120, 180, 1, { title: "Andünsten" }),
+      scale(1500, "Gemüsebrühe"),
+      scale(500, "Karotten"),
+      manual(100, 180, 1),
+    ];
+    const { errors } = run(heatUpRule, steps, soup);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.path).toBe("servingSize.steps[5].minutes");
+    expect(errors[0]?.message).toContain("2120 g from about 26 °C");
+    // The suggested duration is never below the physical minimum it states.
+    const minimum = Number(/at least (\d+) s/.exec(errors[0]?.message ?? "")?.[1]);
+    const suggested = Number(/at least (\d+) min/.exec(errors[0]?.message ?? "")?.[1]);
+    expect(suggested * 60).toBeGreaterThanOrEqual(minimum);
+    expect(errors[0]?.message).toContain("about 2.3 times the minimum");
   });
 
   it("says when part of the mass is unknown", () => {
@@ -324,12 +351,95 @@ describe("amount_balance", () => {
     ]);
   });
 
+  it("rejects steps that add less than the recipe gives", () => {
+    const broth = [ingredient("Gemüsebrühe", 1500, "g")];
+    const { errors } = run(amountBalanceRule, [scale(750, "Gemüsebrühe")], broth);
+    expect(errors).toEqual([
+      expect.objectContaining({
+        path: "servingSize.steps[0]",
+        message: expect.stringContaining('only 750 g of "Gemüsebrühe"') as unknown,
+      }),
+    ]);
+    expect(run(amountBalanceRule, [scale(1500, "Gemüsebrühe")], broth).errors).toEqual([]);
+    // A step that names the ingredient without an amount may add the rest.
+    const rest = [scale(750, "Gemüsebrühe"), text("Restliche Gemüsebrühe zugeben.")];
+    expect(run(amountBalanceRule, rest, broth).errors).toEqual([]);
+  });
+
+  it("rejects an ingredient list that gives less than the recipe", () => {
+    const broth = [ingredient("Gemüsebrühe", 1500, "g")];
+    const half: ListEntry[] = [
+      { name: "Gemüsebrühe", amount: "750", unit: "g", isOptional: false },
+    ];
+    const { errors } = run(amountBalanceRule, [text("Gemüsebrühe zugeben.")], broth, {
+      list: half,
+    });
+    expect(errors).toEqual([
+      expect.objectContaining({
+        path: "servingSize.ingredientGroups[0].ingredients[0].amount",
+        message: expect.stringContaining("only 750 g") as unknown,
+      }),
+    ]);
+    const split: ListEntry[] = [
+      { name: "Gemüsebrühe", amount: "750", unit: "g", isOptional: false },
+      { name: "Gemüsebrühe", amount: "750", unit: "g", isOptional: false },
+    ];
+    expect(
+      run(amountBalanceRule, [text("Gemüsebrühe zugeben.")], broth, { list: split }).errors,
+    ).toEqual([]);
+  });
+
+  it("accepts smaller amounts when the recipe was scaled down to fewer servings", () => {
+    const broth = [ingredient("Gemüsebrühe", 3000, "g")];
+    expect(
+      run(amountBalanceRule, [scale(1500, "Gemüsebrühe")], broth, { servings: 8 }).errors,
+    ).toEqual([]);
+  });
+
   it("reads ingredient-list amounts", () => {
     expect(parseListAmount("1 ½")).toBe(1.5);
     expect(parseListAmount("½")).toBe(0.5);
     expect(parseListAmount("1,5")).toBe(1.5);
     expect(parseListAmount("1-2")).toBeNull();
     expect(parseListAmount("")).toBeNull();
+  });
+});
+
+describe("ingredient_listed", () => {
+  const soup = [
+    ingredient("Gemüsebrühe", 1500, "g"),
+    ingredient("Karotten", 500, "g"),
+    ingredient("Zwiebeln", 1, null),
+    ingredient("Croûtons", null, null, { optional: true }),
+  ];
+  const entry = (name: string): ListEntry => ({ name, amount: "1", unit: "", isOptional: false });
+
+  it("rejects a dropped ingredient", () => {
+    const list = [entry("Gemüsebrühe"), entry("Zwiebeln")];
+    const { errors } = run(ingredientListedRule, [text("x")], soup, { list });
+    expect(errors).toEqual([
+      expect.objectContaining({
+        path: "servingSize.ingredientGroups",
+        message: expect.stringContaining('"Karotten"') as unknown,
+      }),
+    ]);
+    const full = [...list, entry("Karotten")];
+    expect(run(ingredientListedRule, [text("x")], soup, { list: full })).toEqual({
+      errors: [],
+      warnings: [],
+    });
+  });
+
+  it("only warns when most names differ, as in a translated recipe", () => {
+    const english = [
+      ingredient("vegetable stock", 1500, "g"),
+      ingredient("carrots", 500, "g"),
+      ingredient("onion", 1, null),
+    ];
+    const list = [entry("Gemüsebrühe"), entry("Karotten"), entry("Zwiebeln")];
+    const { errors, warnings } = run(ingredientListedRule, [text("x")], english, { list });
+    expect(errors).toEqual([]);
+    expect(warnings[0]).toContain("3 of 3 ingredients");
   });
 });
 
@@ -423,6 +533,7 @@ describe("checkSanity", () => {
       "flour_max_per_knead",
       "steaming_liquid_min",
       "text_before_machine_step",
+      "ingredient_listed",
       "ingredient_referenced",
       "amount_balance",
       "machine_step_description",

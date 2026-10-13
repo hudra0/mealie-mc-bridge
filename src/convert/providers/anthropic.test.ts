@@ -1,4 +1,8 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
+import { loadDeviceLimits } from "../../recipe/limits.js";
+import { recipeInputJsonSchema } from "../../recipe/schema.js";
+import { estimateCost } from "../cost.js";
 import { LlmOutputTruncatedError, LlmRefusalError } from "../errors.js";
 import {
   AnthropicGenerator,
@@ -40,7 +44,11 @@ function fakeClient(answer: AnthropicParsedMessage) {
   return { client: { beta: { messages: { parse } } }, parse };
 }
 
-const input = { system: "SYSTEM", user: "USER", jsonSchema: {} };
+const limits = await loadDeviceLimits(
+  fileURLToPath(new URL("../../../knowledge/device-programs.json", import.meta.url)),
+);
+const jsonSchema = recipeInputJsonSchema(limits);
+const input = { system: "SYSTEM", user: "USER", jsonSchema };
 
 describe("AnthropicGenerator", () => {
   it("sends a cached system block, the user message and the structured output format", async () => {
@@ -73,6 +81,64 @@ describe("AnthropicGenerator", () => {
       model: "claude-opus-5-5",
     });
     expect(generator.provider).toBe("anthropic");
+  });
+
+  it("builds the format from the schema it gets, once per schema object", async () => {
+    const { client, parse } = fakeClient(message());
+    const generator = new AnthropicGenerator({ model: "claude-opus-5-5", client });
+    await generator.generate(input);
+    await generator.generate(input);
+    const [first, second] = parse.mock.calls.map((call) => call[0].output_config?.format);
+    expect(first).toBe(second);
+    const schema = JSON.stringify(first?.schema);
+    // The limits of the knowledge file reach the request: the nutrient names and the
+    // title length.
+    expect(schema).toContain('"calories"');
+    expect(schema).toContain(`maxLength: ${limits.recipe.recipeTitle.max}`);
+    expect(schema).not.toContain(String(Number.MAX_SAFE_INTEGER));
+  });
+
+  it("sums the attempts of a server-side fallback and names each model", async () => {
+    const attempt = (type: string, model: string | null, output: number) => ({
+      type,
+      model,
+      input_tokens: 1_000,
+      output_tokens: output,
+      cache_read_input_tokens: 10_000,
+      cache_creation_input_tokens: 0,
+      cache_creation: null,
+    });
+    const { client } = fakeClient(
+      message({
+        model: "claude-opus-4-8",
+        usage: {
+          ...message().usage,
+          input_tokens: 1_000,
+          output_tokens: 3_000,
+          cache_read_input_tokens: 10_000,
+          iterations: [
+            attempt("message", null, 500),
+            attempt("fallback_message", "claude-opus-4-8", 3_000),
+          ],
+        },
+      } as Partial<AnthropicParsedMessage>),
+    );
+    const output = await new AnthropicGenerator({ model: "claude-opus-5-5", client }).generate(
+      input,
+    );
+    expect(output.model).toBe("claude-opus-4-8");
+    expect(output.usage).toEqual({
+      inputTokens: 22_000,
+      outputTokens: 3_500,
+      cachedInputTokens: 20_000,
+    });
+    expect(output.attempts?.map((part) => part.model)).toEqual([
+      "claude-opus-5-5",
+      "claude-opus-4-8",
+    ]);
+    for (const part of output.attempts ?? []) {
+      expect(estimateCost(part.usage, part.model)).toBeGreaterThan(0);
+    }
   });
 
   it("appends the correction section and maps cache writes", async () => {
@@ -158,10 +224,13 @@ describe("AnthropicGenerator", () => {
 
 describe("recipeOutputFormat", () => {
   it("carries the recipe schema and parses leniently", () => {
-    const format = recipeOutputFormat();
+    const format = recipeOutputFormat(jsonSchema);
     expect(format.type).toBe("json_schema");
     expect(format.schema).toHaveProperty("type", "object");
     expect(format.schema).toHaveProperty("additionalProperties", false);
+    // transformJSONSchema alone would move enums into the descriptions.
+    expect(format.schema).toHaveProperty("properties.complexity.enum", ["easy", "medium", "hard"]);
+    expect(JSON.stringify(format.schema)).not.toContain("{enum:");
     expect(format.parse('{"title":""}')).toEqual({ title: "" });
     expect(format.parse("{")).toBeNull();
   });

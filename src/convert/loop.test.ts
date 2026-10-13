@@ -127,7 +127,7 @@ describe("createConverter", () => {
     expect(result.usage.costUsd).toBe(0.5);
   });
 
-  it("reports plausibility errors and keeps warnings as review hints", async () => {
+  it("reports plausibility errors and keeps warnings apart from the review hints", async () => {
     const tooShort = soupWith((recipe, step) => {
       const steps = recipe.servingSize.steps;
       // Fill 1000 g of stock first, so the first heating has to bring it to the boil.
@@ -155,10 +155,8 @@ describe("createConverter", () => {
       "servingSize.steps[5].minutes",
     );
     expect(result.warnings).toEqual([expect.stringContaining("110-130 °C")]);
-    expect(result.reviewHints).toEqual([
-      "Croûtons nach Belieben, Menge nicht angegeben.",
-      result.warnings[0],
-    ]);
+    // The review hints are the model's German notes as the recipe carries them.
+    expect(result.reviewHints).toEqual(["Croûtons nach Belieben, Menge nicht angegeben."]);
   });
 
   it("asks again when the answer is not JSON and checks category ids", async () => {
@@ -173,12 +171,51 @@ describe("createConverter", () => {
     expect(calls[2]?.feedback?.errors[0]?.path).toBe("categoryIds[0]");
   });
 
-  it("skips the category check without a catalog", async () => {
+  it("offers only the default category ids without a catalog", async () => {
     const unknownCategory = soupWith((recipe) => {
       recipe.categoryIds = [999999];
     });
-    const { generator } = fakeGenerator([unknownCategory]);
-    expect((await converter(generator, { categories: [] }).convert(request)).attempts).toBe(1);
+    const { generator, calls } = fakeGenerator([unknownCategory, soup]);
+    const result = await converter(generator, {
+      categories: [],
+      defaultCategoryIds: [228],
+    }).convert(request);
+    expect(result.attempts).toBe(2);
+    expect(calls[0]?.user).toContain("- 228: Standardkategorie");
+    expect(calls[1]?.feedback?.errors[0]?.path).toBe("categoryIds[0]");
+    expect(result.warnings[0]).toContain("No category list was available");
+  });
+
+  it("refuses to start without a catalog or default category ids", () => {
+    const { generator } = fakeGenerator([]);
+    expect(() => converter(generator, { categories: [] })).toThrow(/must not guess category ids/);
+  });
+
+  it("sends the same system prompt for every recipe", async () => {
+    const { generator, calls } = fakeGenerator([soup, soup]);
+    const convert = converter(generator);
+    await convert.convert(request);
+    await convert.convert({ ...request, title: "Linsensuppe", rendered: "# Linsensuppe\n" });
+    expect(calls[1]?.system).toBe(calls[0]?.system);
+    expect(calls[1]?.user).not.toBe(calls[0]?.user);
+  });
+
+  it("prices each attempt of a server-side fallback at its own model", async () => {
+    const part = { inputTokens: 10_000, outputTokens: 1_000 };
+    const { generator } = fakeGenerator([
+      {
+        json: soup,
+        usage: { inputTokens: 20_000, outputTokens: 2_000 },
+        model: "claude-opus-4-8",
+        attempts: [
+          { model: "claude-opus-5-5", usage: part },
+          { model: "claude-opus-4-8", usage: part },
+        ],
+      },
+    ]);
+    const result = await converter(generator).convert(request);
+    // 10k × 4 + 1k × 20 on Opus 5.5, 10k × 5 + 1k × 25 on Opus 4.8, per million.
+    expect(result.usage.costUsd).toBe(0.135);
   });
 
   it("throws ConversionFailedError with the last errors when the rounds are used up", async () => {

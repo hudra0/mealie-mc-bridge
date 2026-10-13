@@ -362,8 +362,10 @@ export interface BowlState {
   liquidGrams: number;
   liquidUnknown: boolean;
   foaming: boolean;
-  // The highest temperature the contents reached since the bowl was last emptied or cooled.
-  hotTemperature: number;
+  // Estimated temperature of the contents in °C: room temperature for cold contents, the
+  // highest temperature a heated step set since then, lowered by every cold addition to
+  // the mixing temperature (known grams only).
+  temperature: number;
   whisk: boolean;
 }
 
@@ -392,21 +394,35 @@ export function stepTemperature(step: RecipeStep): number {
   return "temperature" in step ? step.temperature : 0;
 }
 
-const EMPTY_BOWL: BowlState = {
+const emptyBowl = (temperature: number): BowlState => ({
   grams: 0,
   unknown: false,
   flourGrams: 0,
   liquidGrams: 0,
   liquidUnknown: false,
   foaming: false,
-  hotTemperature: 0,
+  temperature,
   whisk: false,
-};
+});
+
+// The temperature after adding grams at room temperature to the contents.
+export function mixedTemperature(
+  grams: number,
+  temperature: number,
+  addedGrams: number,
+  roomTemperature: number,
+): number {
+  const total = grams + addedGrams;
+  if (addedGrams <= 0 || total <= 0) return addedGrams > 0 ? roomTemperature : temperature;
+  return (Math.max(0, grams) * temperature + addedGrams * roomTemperature) / total;
+}
 
 // Follows the bowl through the recipe. Scale steps add their weight unless they weigh
 // onto the steamer, a plate or the lid; text steps with an adding verb add the input
 // ingredients they name (their stated amount, else the estimated weight of the whole
 // ingredient). Transferring or rinsing empties the bowl. Every input ingredient counts once.
+// Heated steps raise the temperature of the contents; cold additions lower it to the
+// mixing temperature, so a sauté followed by a litre of stock counts as cold again.
 export function traceBowl(
   recipe: RecipeInput,
   ingredients: readonly NormalizedIngredient[],
@@ -416,10 +432,12 @@ export function traceBowl(
   const index = indexIngredients(ingredients);
   const counted = new Set<number>();
   const fromText = new Map<number, number>();
-  let state: BowlState = { ...EMPTY_BOWL };
+  const room = knowledge.timing.constants.startTemperatureC;
+  let state: BowlState = emptyBowl(room);
   const traces: StepTrace[] = [];
 
   const addContents = (grams: number, label: string) => {
+    state.temperature = mixedTemperature(state.grams, state.temperature, grams, room);
     state.grams += grams;
     if (hasAny(label, FLOUR_WORDS)) state.flourGrams += grams;
     if (hasAny(label, LIQUID_WORDS)) state.liquidGrams += grams;
@@ -431,10 +449,10 @@ export function traceBowl(
     const text = stepText(step);
     if (step.kind === "text") {
       if (EMPTYING.test(text)) {
-        state = { ...EMPTY_BOWL, whisk: state.whisk };
+        state = { ...emptyBowl(room), whisk: state.whisk };
         fromText.clear();
       } else if (COOLING.test(text)) {
-        state.hotTemperature = 0;
+        state.temperature = room;
       }
       if (WHISK.test(text)) {
         if (WHISK_OUT.test(text)) state.whisk = false;
@@ -492,7 +510,7 @@ export function traceBowl(
       }
     } else {
       const temperature = stepTemperature(step);
-      if (temperature > 0) state.hotTemperature = Math.max(state.hotTemperature, temperature);
+      if (temperature > 0) state.temperature = Math.max(state.temperature, temperature);
     }
     traces.push({ index: position, step, text, before, after: { ...state } });
   });

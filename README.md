@@ -89,7 +89,7 @@ npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publi
 
 ## Conversion
 
-A language model turns the Mealie recipe into the recipe format of the device. The bridge then checks the answer twice: the validator against the device limits in `knowledge/device-programs.json`, and a set of plausibility rules for what a limit table cannot see (heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 with the whisk, 1000 g flour per kneading step, 500 g water under the steamer, a text step before every program step, no amount larger than in the source recipe). Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they become review hints for the cook.
+A language model turns the Mealie recipe into the recipe format of the device. The bridge then checks the answer twice: the validator against the device limits in `knowledge/device-programs.json`, and a set of plausibility rules for what a limit table cannot see (heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 with the whisk, 1000 g flour per kneading step, 500 g water under the steamer, a text step before every program step, every ingredient of the source recipe listed, amounts neither larger nor smaller than in the source recipe). The heat-up check also covers cold liquid poured onto sautéed food. Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they are reported next to the model's review hints for the cook.
 
 Two providers are supported. Pick one with `LLM_PROVIDER` and put its key into `.env`:
 
@@ -108,7 +108,7 @@ npm run convert -- convert --mealie-json recipe.json --scale 1.5    # convert an
 npm run convert -- convert --mealie-json recipe.json --provider anthropic --out result.json
 ```
 
-`convert` prints the steps, the warnings, the review hints, the token usage and a cost estimate. The system prompt is about 15 000 tokens; a correction round sends it again, mostly from the provider's prompt cache. The category list comes from `--categories <file>` or, without it, from the public Monsieur Cuisine API (no login needed).
+`convert` prints the steps, the warnings, the review hints, the token usage and a cost estimate. The system prompt is about 9 000 tokens and the same for every recipe, so later recipes and correction rounds read it mostly from the provider's prompt cache; the user message adds about 3 000 tokens of techniques and recipe. The category list comes from `--categories <file>` or, without it, from the public Monsieur Cuisine API (no login needed); without a list the command stops, because the model cannot know category ids.
 
 `npm run convert:eval -- --ids 1234,5678` checks the converter against recipes of your own corpus crawl (see [Knowledge base](#knowledge-base)): it converts each recipe from its ingredients and instruction texts and compares the programs, temperatures and times with the original. It refuses to run without `local/corpus`.
 
@@ -132,7 +132,7 @@ See `CONTRIBUTING.md` for the pull request format and the secrets policy. The ar
 
 ## Knowledge base
 
-`knowledge/` holds the data the converter and the validator will use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers and rules written in our own words.
+`knowledge/` holds the data the converter and the validator will use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), the converter's own tables (`converter-rules.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`; the prompt carries only the prompt rules). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers and rules written in our own words.
 
 To rebuild it from your own crawl:
 
@@ -145,7 +145,7 @@ npm run corpus:build-knowledge  # writes the JSON files in knowledge/
 
 `corpus:crawl` takes `CORPUS_DIR`, `DEVICE` (default `MC3.0`) and `LOCALE` (default `de-DE`) from the environment. `corpus:build-knowledge -- --check` compares instead of writing; a rebuild from the same crawl reproduces the committed files byte for byte. It stops with exit code 1 and names the file when an analyzer output is missing.
 
-The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md` and `step-patterns.md` are written by hand from the analyzer reports.
+The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md`, `step-patterns.md` and `converter-rules.json` are written by hand from the analyzer reports.
 
 ## Disclaimer
 

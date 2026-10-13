@@ -26,6 +26,7 @@ import {
   gramsFor,
   indexIngredients,
   matchScore,
+  mentionedIngredients,
   nameKeys,
   stem,
   stepTemperature,
@@ -74,14 +75,16 @@ const warning = (path: string, message: string): Finding => ({
   message,
 });
 
-// Seconds to bring water-like contents from the start temperature to the target (at most
-// the boiling point): the physical lower bound of timing-model.json tMinSeconds.
+// Seconds to bring water-like contents from the start temperature (room temperature unless
+// given) to the target, at most the boiling point: the physical lower bound of
+// timing-model.json tMinSeconds.
 export function tMinSeconds(
   massGrams: number,
   temperature: number,
   constants: Knowledge["timing"]["constants"],
+  startTemperature: number = constants.startTemperatureC,
 ): number {
-  const delta = Math.min(temperature, 100) - constants.startTemperatureC;
+  const delta = Math.min(temperature, 100) - startTemperature;
   if (delta <= 0 || massGrams <= 0) return 0;
   return (
     ((massGrams / 1000) * constants.heatCapacityJoulePerKgKelvin * delta) /
@@ -110,29 +113,38 @@ function firstOfRuns(
 export const heatUpRule: SanityRule = {
   id: "heat_up",
   description:
-    "The first heated manual step after filling must last long enough to heat the contents (timing-model.json heatUpRules).",
+    "A heated manual step on contents below the rule temperature (cold, or cooled down by cold additions) must last long enough to heat them (timing-model.json heatUpRules).",
   check({ knowledge, traces }) {
-    const { errorFactor, warningFactor, minTemperature } = knowledge.heatUp;
+    const { errorFactor, warningFactor, minTemperature, typicalFactor } = knowledge.heatUp;
+    const constants = knowledge.timing.constants;
     const findings: Finding[] = [];
     for (const { step, before, index } of traces) {
       if (step.kind !== "customized" || step.temperature < minTemperature) continue;
-      if (before.hotTemperature >= minTemperature || before.grams <= 0) continue;
-      const tMin = tMinSeconds(before.grams, step.temperature, knowledge.timing.constants);
+      if (before.temperature >= minTemperature || before.grams <= 0) continue;
+      const tMin = tMinSeconds(before.grams, step.temperature, constants, before.temperature);
+      if (tMin <= 0) continue;
       const time = seconds(step);
       const grams = Math.round(before.grams);
+      const start = Math.round(before.temperature);
+      const from = start > constants.startTemperatureC ? ` from about ${start} °C` : "";
       const label = stepLabel(index, step);
+      const minutes = Math.ceil(tMin / 60);
+      const typical =
+        typicalFactor !== undefined
+          ? ` (official recipes give about ${typicalFactor} times the minimum, here about ${Math.round((typicalFactor * tMin) / 60)} min)`
+          : "";
       if (time < errorFactor * tMin) {
         findings.push(
           error(
             `${stepPath(index)}.minutes`,
-            `${label} heats about ${grams} g to ${step.temperature} °C in ${time} s, but that takes at least ${Math.round(tMin)} s; make the step at least ${Math.ceil((warningFactor * tMin) / 60)} min long (official recipes give about 2.3 times the minimum)`,
+            `${label} heats about ${grams} g${from} to ${step.temperature} °C in ${time} s, but that takes at least ${Math.round(tMin)} s; make the step at least ${minutes} min long${typical}`,
           ),
         );
       } else if (time < warningFactor * tMin) {
         findings.push(
           warning(
             `${stepPath(index)}.minutes`,
-            `${label} heats about ${grams} g to ${step.temperature} °C in ${time} s, close to the physical minimum of ${Math.round(tMin)} s; check that it is long enough`,
+            `${label} heats about ${grams} g${from} to ${step.temperature} °C in ${time} s, close to the physical minimum of ${Math.round(tMin)} s; check that it is long enough`,
           ),
         );
       } else if (before.unknown) {
@@ -198,11 +210,11 @@ export const turboRule: SanityRule = {
           ),
         );
       }
-      if (before.hotTemperature > maxTemperature) {
+      if (before.temperature > maxTemperature) {
         findings.push(
           error(
             stepPath(index),
-            `${stepLabel(index, step)} runs on contents heated to ${before.hotTemperature} °C; turbo is allowed only up to ${maxTemperature} °C, so let them cool first (say so in a text step) or use a manual step at rising speed`,
+            `${stepLabel(index, step)} runs on contents at about ${Math.round(before.temperature)} °C; turbo is allowed only up to ${maxTemperature} °C, so let them cool first (say so in a text step) or use a manual step at rising speed`,
           ),
         );
       }
@@ -299,6 +311,50 @@ export const textBeforeMachineStepRule: SanityRule = {
   },
 };
 
+const nameStems = (text: string) => words(text).map(stem);
+
+// Input ingredients the ingredient list must carry: parsed, not optional, with a name.
+function listable(request: SanityContext["request"], index: IngredientIndex): number[] {
+  return request.ingredients.flatMap((ingredient, position) =>
+    ingredient.source === "unparsed" ||
+    ingredient.optional ||
+    (index.keys[position] ?? []).length === 0
+      ? []
+      : [position],
+  );
+}
+
+export const ingredientListedRule: SanityRule = {
+  id: "ingredient_listed",
+  description:
+    "Every parsed, non-optional input ingredient appears in the ingredient list. When most names do not match (a translated recipe), one warning replaces the errors.",
+  check({ recipe, request, index }) {
+    const entries = recipe.servingSize.ingredientGroups.flatMap((group) =>
+      group.ingredients.map((entry) => nameStems(entry.name)),
+    );
+    const candidates = listable(request, index);
+    const missing = candidates.filter(
+      (position) => !entries.some((stems) => matchScore(index.keys[position] ?? [], stems) > 0),
+    );
+    if (missing.length === 0) return [];
+    if (missing.length * 2 > candidates.length) {
+      return [
+        warning(
+          "servingSize.ingredientGroups",
+          `${missing.length} of ${candidates.length} ingredients of the recipe are not found by name in the ingredient list; check that none was dropped`,
+        ),
+      ];
+    }
+    return missing.map((position) => {
+      const food = request.ingredients[position]?.food ?? "";
+      return error(
+        "servingSize.ingredientGroups",
+        `the ingredient "${food}" of the recipe is missing from the ingredient list; never drop an ingredient: list it with its amount and keep "${food}" in the name`,
+      );
+    });
+  },
+};
+
 export const ingredientReferencedRule: SanityRule = {
   id: "ingredient_referenced",
   description: "Every input ingredient appears in at least one step.",
@@ -364,14 +420,60 @@ function slack(amount: Amount, knowledge: Knowledge): number {
   return 0;
 }
 
+// The most an output amount may be: the tolerance of converter-rules.json or one rounding
+// step above the input, whichever is larger.
 function allowed(input: Amount, knowledge: Knowledge): number {
-  return Math.max(input.value * 1.1, input.value + slack(input, knowledge));
+  return Math.max(
+    input.value * (1 + knowledge.amountTolerance),
+    input.value + slack(input, knowledge),
+  );
 }
 
-function inputAmount(ingredient: NormalizedIngredient, knowledge: Knowledge): Amount | null {
-  const value = ingredient.quantityMax ?? ingredient.quantity;
+// The least an output amount may be, by the same rule below the input.
+function required(input: Amount, knowledge: Knowledge): number {
+  return Math.min(
+    input.value * (1 - knowledge.amountTolerance),
+    input.value - slack(input, knowledge),
+  );
+}
+
+// The input amount of an ingredient: the upper end of a range for the upper bound, the
+// lower end for the lower bound.
+function inputAmount(
+  ingredient: NormalizedIngredient,
+  knowledge: Knowledge,
+  end: "max" | "min" = "max",
+): Amount | null {
+  const value =
+    end === "max" ? (ingredient.quantityMax ?? ingredient.quantity) : ingredient.quantity;
   if (value === null || ingredient.source === "unparsed") return null;
   return amountIn(value, ingredient.unit, ingredient.food, knowledge);
+}
+
+// The share of the input a recipe that was scaled down on purpose (fewer servings than
+// requested, explained in reviewHints) must keep.
+function keptShare(ctx: SanityContext): number {
+  const { amount } = ctx.recipe.servingSize;
+  const { servings } = ctx.request;
+  return amount < servings && servings > 0 ? amount / servings : 1;
+}
+
+const scaled = (amount: Amount, share: number): Amount => ({
+  ...amount,
+  value: amount.value * share,
+});
+
+// Steps that name an input ingredient without giving its amount: they may add the rest.
+function unquantifiedMentions(ctx: SanityContext, position: number): number[] {
+  return ctx.recipe.servingSize.steps.flatMap((step, stepIndex) => {
+    const text = stepText(step);
+    if (step.kind === "scale") return [];
+    if (!mentionedIngredients(text, ctx.index).includes(position)) return [];
+    const quantified = amountMentions(text).some(
+      (mention) => attributeIngredient(mention.phrase, ctx.index) === position,
+    );
+    return quantified ? [] : [stepIndex];
+  });
 }
 
 const show = (amount: Amount) =>
@@ -434,11 +536,12 @@ export function collectAdditions(ctx: SanityContext): Addition[] {
 export const amountBalanceRule: SanityRule = {
   id: "amount_balance",
   description:
-    "Amounts in steps (summed per ingredient) and in the ingredient list do not exceed the input amount by more than 10 % plus rounding.",
+    "Amounts in steps (summed per ingredient) and in the ingredient list stay within the tolerance of converter-rules.json (or one rounding step) of the input amount, in both directions. The step sum is checked from below only when no step names the ingredient without an amount.",
   check(ctx) {
     const { request, knowledge, recipe, index } = ctx;
     const findings: Finding[] = [];
     const additions = collectAdditions(ctx);
+    const share = keptShare(ctx);
     request.ingredients.forEach((ingredient, position) => {
       const input = inputAmount(ingredient, knowledge);
       if (!input) return;
@@ -447,44 +550,78 @@ export const amountBalanceRule: SanityRule = {
         (addition) =>
           addition.ingredient === position && addition.amount.dimension === input.dimension,
       );
+      const steps = own.map((a) => a.stepIndex + 1).join(", ");
       let total = 0;
       for (const addition of own) {
         total += addition.amount.value;
         if (total > limit) {
-          const steps = own.map((a) => a.stepIndex + 1).join(", ");
           findings.push(
             error(
               stepPath(addition.stepIndex),
               `the steps add ${show({ dimension: input.dimension, value: total })} of "${ingredient.food}" (step ${steps}), but the recipe has ${show(input)}; never add more than the recipe gives`,
             ),
           );
-          break;
+          return;
         }
       }
+      const least = inputAmount(ingredient, knowledge, "min");
+      const first = own[0];
+      if (!least || !first || unquantifiedMentions(ctx, position).length > 0) return;
+      const expected = scaled(least, share);
+      if (total < required(expected, knowledge)) {
+        findings.push(
+          error(
+            stepPath(first.stepIndex),
+            `the steps add only ${show({ dimension: input.dimension, value: total })} of "${ingredient.food}" (step ${steps}), but the recipe has ${show(expected)}; keep the amount from the input and add all of it`,
+          ),
+        );
+      }
     });
+
+    // Ingredient-list entries per input ingredient, with their amounts in its dimension.
+    const listed = new Map<number, { path: string; amount: Amount | null }[]>();
     recipe.servingSize.ingredientGroups.forEach((group, g) => {
       group.ingredients.forEach((entry, k) => {
         const position = attributeIngredient(entry.name, index);
         const ingredient = position === null ? undefined : request.ingredients[position];
-        if (!ingredient) return;
-        const input = inputAmount(ingredient, knowledge);
+        if (position === null || !ingredient) return;
+        const path = `servingSize.ingredientGroups[${g}].ingredients[${k}].amount`;
         const value =
           typeof entry.amount === "number" ? entry.amount : parseListAmount(entry.amount);
-        if (!input || value === null) return;
         const unit =
           entry.unit.trim() === "" ? null : (normalizeUnit(entry.unit)?.code ?? entry.unit);
-        const output = amountIn(value, unit, ingredient.food, knowledge);
-        if (!output || output.dimension !== input.dimension) return;
+        const output = value === null ? null : amountIn(value, unit, ingredient.food, knowledge);
+        listed.set(position, [...(listed.get(position) ?? []), { path, amount: output }]);
+        const input = inputAmount(ingredient, knowledge);
+        if (!input || !output || output.dimension !== input.dimension) return;
         if (output.value > allowed(input, knowledge)) {
           findings.push(
             error(
-              `servingSize.ingredientGroups[${g}].ingredients[${k}].amount`,
+              path,
               `the ingredient list gives ${show(output)} of "${entry.name}", but the recipe has ${show(input)}; keep the scaled amounts from the input`,
             ),
           );
         }
       });
     });
+    for (const [position, entries] of listed) {
+      const ingredient = request.ingredients[position];
+      const least = ingredient ? inputAmount(ingredient, knowledge, "min") : null;
+      const first = entries[0];
+      if (!ingredient || !least || !first) continue;
+      // Entries in another unit or without a readable amount: the sum is unknown.
+      if (entries.some((entry) => entry.amount?.dimension !== least.dimension)) continue;
+      const total = entries.reduce((sum, entry) => sum + (entry.amount?.value ?? 0), 0);
+      const expected = scaled(least, share);
+      if (total < required(expected, knowledge)) {
+        findings.push(
+          error(
+            first.path,
+            `the ingredient list gives only ${show({ dimension: least.dimension, value: total })} of "${ingredient.food}", but the recipe has ${show(expected)}; keep the scaled amounts from the input`,
+          ),
+        );
+      }
+    }
     return findings;
   },
 };
@@ -621,6 +758,7 @@ export const SANITY_RULES: readonly SanityRule[] = [
   flourRule,
   steamingWaterRule,
   textBeforeMachineStepRule,
+  ingredientListedRule,
   ingredientReferencedRule,
   amountBalanceRule,
   machineStepDescriptionRule,

@@ -72,19 +72,19 @@ The converter (job flow step 5):
 
 - **`src/convert`**: turns a rendered Mealie recipe into a validated `RecipeInput` with a language model.
   - `types.ts` is the contract the service depends on: `ConversionRequest`, `ConversionResult`, `Converter`, and the provider interface `RecipeGenerator` with `GenerationInput` and `GenerationOutput`.
-  - `knowledge.ts` loads `techniques.json`, `timing-model.json`, `units.json`, `device-limits.json`, `prompt-rules.md` and `step-patterns.md` from `KNOWLEDGE_DIR`, checks the fields it reads, and picks the techniques a recipe needs (aliases and ingredient classes found in the recipe, plus chopping, sautéing, simmering and the scale step).
-  - `prompt.ts` builds the system prompt in a fixed order (role, device limits from the effective layer of `device-programs.json`, structure rules, conversion rules, technique table and the picked techniques, timing, units, output contract) and the user message (category list, servings, recipe, and on a correction round the errors and the previous answer). Both are deterministic, so the provider's prompt cache can reuse them.
-  - `sanity.ts` holds the plausibility rules, each an id, a description and a function: heat-up time of the first heating, bowl mass, foaming contents, turbo, whisk, flour per kneading step, steaming water, a text step before every program step, ingredients used, amounts against the input, descriptions on program steps, roasting and sautéing temperatures, duplicate additions, servings. Thresholds come from the knowledge base. `mass.ts` follows the bowl content from step to step for them.
-  - `loop.ts` runs the conversion: prompts, generator call, JSON parsing, validator and plausibility rules, correction rounds, usage and cost over all attempts, abort signal.
+  - `knowledge.ts` loads `techniques.json`, `timing-model.json`, `units.json`, `device-limits.json`, `converter-rules.json` (ingredient-class words, amount tolerance) and `prompt-rules.md` from `KNOWLEDGE_DIR`, checks the fields it reads, and picks the techniques a recipe needs (aliases and ingredient classes found in the recipe, plus chopping, sautéing, simmering and the scale step), offering only those whose program the installation can run. `step-patterns.md` stays in the directory as the evidence behind the prompt rules.
+  - `prompt.ts` builds the system prompt in a fixed order (role, device limits from the effective layer of `device-programs.json`, conversion rules, technique table, timing, units, output contract) and the user message (category list, servings, the full entries of the picked techniques, recipe, and on a correction round the errors and the previous answer). The system prompt is the same for every recipe of an installation, so the providers' prompt caches reuse it across recipes. File names and source remarks of the knowledge files are rewritten to prompt section names, and technique alternatives in modes the installation cannot run are left out. Without a category list the user message is refused: the model must not guess category ids.
+  - `sanity.ts` holds the plausibility rules, each an id, a description and a function: heat-up time of every heating that starts on cold contents (cold additions cool hot contents to the mixing temperature), bowl mass, foaming contents, turbo, whisk, flour per kneading step, steaming water, a text step before every program step, every input ingredient in the ingredient list, ingredients used, amounts against the input in both directions, descriptions on program steps, roasting and sautéing temperatures, duplicate additions, servings. Thresholds come from the knowledge base. `mass.ts` follows the bowl content from step to step for them.
+  - `loop.ts` runs the conversion: prompts, generator call, JSON parsing, validator and plausibility rules, correction rounds, usage and cost over all attempts (each attempt of a server-side fallback at its own model's price), abort signal. It needs the category catalog or `defaultCategoryIds`. The result keeps the plausibility warnings (English, for the bridge's report) apart from the model's review hints (German, as the recipe carries them).
   - `cost.ts` is the price table per model (USD per million tokens, `LLM_PRICES_JSON` overrides it) and the cost estimate.
-  - `providers/openai.ts` calls the Responses API with a strict JSON schema; `prepareStrictSchema` turns the recipe schema into what strict mode accepts. `providers/anthropic.ts` calls `messages.parse` with structured output, a cached system block and server-side fallbacks.
+  - `providers/openai.ts` calls the Responses API with a strict JSON schema; `prepareStrictSchema` turns the recipe schema into what strict mode accepts. `providers/anthropic.ts` calls `messages.parse` with structured output built from the same JSON schema (enums kept), a cached system block and server-side fallbacks.
   - `index.ts` exports the module and `createGenerator(config)`, which picks the provider from `LLM_PROVIDER`.
 
 ```text
 ConversionRequest (rendered Markdown, scaled ingredients, servings)
   |
   v
-selectTechniques -> buildSystemPrompt + buildUserMessage
+buildSystemPrompt (once) + selectTechniques -> buildUserMessage
   |
   v
 +-> RecipeGenerator.generate ---------------------------- OpenAI or Anthropic
@@ -93,7 +93,7 @@ selectTechniques -> buildSystemPrompt + buildUserMessage
 |   parse JSON -> validateRecipeInput (device-programs.json)
 |              -> checkSanity (physics, structure, amounts)
 |     |
-|     +-- no errors ---------------------> ConversionResult (warnings become review hints)
+|     +-- no errors ---------------------> ConversionResult (recipe, warnings, review hints)
 |     |
 |     +-- errors, rounds left: feedback = errors + previous answer
 |     |

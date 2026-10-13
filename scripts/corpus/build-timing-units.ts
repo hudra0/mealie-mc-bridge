@@ -142,12 +142,20 @@ export function buildTimingModel(input: TimingUnitsInput) {
         appliesTo: "same as heatup_too_short",
         condition: "timeSeconds < 0.87 * tMinSeconds(massGrams, temperature)",
         severity: "warning",
+        typicalFactor: round(
+          required(
+            firstHeating.ratioOfficial.median,
+            "heating.physics.customized.firstHeating.ratioOfficial.median",
+          ),
+          1,
+        ),
         evidence: `0.87 is the p10 of time/tMin over ${firstHeating.ratioOfficial.n} official first heatings (median ${required(firstHeating.ratioOfficial.median, "heating.physics.customized.firstHeating.ratioOfficial.median")}, median headroom ${round(required(firstHeating.headroomSecondsOfficial.median, "heating.physics.customized.firstHeating.headroomSecondsOfficial.median"))} s above tMin).`,
       },
       {
         id: "content_already_hot",
         appliesTo: "heated step after an earlier heated step without emptying the bowl",
-        condition: "skip the heat-up check",
+        condition:
+          "heat up from the mixed temperature of the hot contents and any cold additions; skip the check while that stays at or above the rule temperature",
         evidence: `${percent(h.physics.customized.afterEarlierHeating.shareBelowTMin, "heating.physics.customized.afterEarlierHeating.shareBelowTMin")} % of such steps are shorter than tMin, as expected for hot contents.`,
       },
       {
@@ -224,7 +232,7 @@ export function buildTimingModel(input: TimingUnitsInput) {
       fitFoodMass: fit(timing.steaming.fitTimeVsFoodMass),
     },
     kneading: {
-      note: "Kneading time is a plateau: 120 s up to 1250 g flour.",
+      note: "Kneading time is a plateau: 120 s whatever the flour mass, up to the 1000 g flour limit per kneading step.",
       byMode: Object.fromEntries(
         Object.entries(timing.kneading.byMode).map(([k, v]) => [
           k,
@@ -417,8 +425,25 @@ export function buildTimingModel(input: TimingUnitsInput) {
 // ---------------------------------------------------------------------------
 // units.json
 
+// Singular and plural spellings of one item ("Zwiebel", "Zwiebeln") would give the
+// converter two piece weights; only the one with more observations is kept.
+export function singularPluralMerged<T extends { name: string; n: number }>(items: T[]): T[] {
+  const key = (name: string) =>
+    name
+      .toLowerCase()
+      .split(/\s+/)
+      .map((word) => word.replace(/(?:en|n|e|s)$/u, ""))
+      .join(" ");
+  const best = new Map<string, T>();
+  for (const item of items) {
+    const current = best.get(key(item.name));
+    if (!current || item.n > current.n) best.set(key(item.name), item);
+  }
+  return items.filter((item) => best.get(key(item.name)) === item);
+}
+
 export function buildUnits(input: TimingUnitsInput) {
-  const pieceWeights = input.ingredients.pieceWeights
+  const pieceWeights = singularPluralMerged(input.ingredients.pieceWeights)
     .filter((p) => p.n >= 4 && !/\(|½/.test(p.name))
     .map((p) => {
       const spread = required(p.spread, "pieceWeights[].spread");

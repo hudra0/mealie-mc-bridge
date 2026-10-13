@@ -10,7 +10,7 @@ import { DEFAULT_PRICES, estimateCost, type PriceTable } from "./cost.js";
 import { ConversionFailedError } from "./errors.js";
 import { selectTechniques, type Knowledge } from "./knowledge.js";
 import { parseJsonOutput } from "./output.js";
-import { buildSystemPrompt, buildUserMessage, type Category } from "./prompt.js";
+import { buildSystemPrompt, buildUserMessage, usableModes, type Category } from "./prompt.js";
 import { checkSanity } from "./sanity.js";
 import type {
   ConversionRequest,
@@ -31,8 +31,12 @@ export interface ConverterOptions {
   generator: RecipeGenerator;
   knowledge: Knowledge;
   limits: DeviceLimits;
-  // The live category catalog. Ids outside it are errors; an empty list skips the check.
+  // The live category catalog. Ids outside it are errors. The model cannot know category
+  // ids, so an empty catalog needs defaultCategoryIds.
   categories: readonly Category[];
+  // Category ids to offer when the catalog is empty (for example a cached or configured
+  // default). The model then picks among these ids only, and a warning says so.
+  defaultCategoryIds?: readonly number[];
   // Correction rounds after the first attempt.
   maxCorrections?: number;
   logger?: ConverterLogger;
@@ -87,15 +91,33 @@ export function createConverter(options: ConverterOptions): Converter {
       `maxCorrections must be a whole number of at least 0, got ${maxCorrections}`,
     );
   }
+  const defaults = options.defaultCategoryIds ?? [];
+  if (categories.length === 0 && defaults.length === 0) {
+    throw new RangeError(
+      "createConverter needs the category list or defaultCategoryIds: the model must not guess category ids",
+    );
+  }
+  const offered: readonly Category[] =
+    categories.length > 0
+      ? categories
+      : defaults.map((id) => ({ id, name: "Standardkategorie (keine Kategorienliste verfügbar)" }));
+  const categoryWarning =
+    categories.length > 0
+      ? []
+      : [
+          `No category list was available; the recipe uses the default category ids ${defaults.join(", ")}. Check the categories in the app.`,
+        ];
+  const knownCategoryIds = offered.map((c) => c.id);
   const jsonSchema = recipeInputJsonSchema(limits);
-  const knownCategoryIds = categories.length > 0 ? categories.map((c) => c.id) : undefined;
+  const usable = usableModes(limits, attachments);
+  // The same for every recipe, so the providers' prompt caches reuse it across recipes.
+  const system = buildSystemPrompt(knowledge, limits, { attachments });
 
   return {
     async convert(request: ConversionRequest, opts = {}): Promise<ConversionResult> {
       const { signal } = opts;
-      const techniques = selectTechniques(request, knowledge, options.maxTechniques);
-      const system = buildSystemPrompt(knowledge, limits, { techniques, attachments });
-      const user = buildUserMessage(request, categories);
+      const { techniques } = selectTechniques(request, knowledge, options.maxTechniques, usable);
+      const user = buildUserMessage(request, offered, { techniques, usable });
       let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
       let cost: number | undefined = 0;
       let feedback: GenerationFeedback | undefined;
@@ -121,7 +143,12 @@ export function createConverter(options: ConverterOptions): Converter {
         }
         model = output.model ?? generator.model;
         usage = addUsage(usage, output.usage);
-        const attemptCost = estimateCost(output.usage, model, prices);
+        const attemptCost = output.attempts
+          ? output.attempts.reduce<number | undefined>((sum, part) => {
+              const partCost = estimateCost(part.usage, part.model, prices);
+              return sum === undefined || partCost === undefined ? undefined : sum + partCost;
+            }, 0)
+          : estimateCost(output.usage, model, prices);
         cost = cost === undefined || attemptCost === undefined ? undefined : cost + attemptCost;
         lastJson = output.json;
 
@@ -133,14 +160,14 @@ export function createConverter(options: ConverterOptions): Converter {
         } else {
           lastJson = parsed.text;
           const validation = validateRecipeInput(parsed.value, limits, {
-            ...(knownCategoryIds ? { knownCategoryIds } : {}),
+            knownCategoryIds,
             attachments,
           });
           const typed = RecipeInputSchema.safeParse(parsed.value);
           const sanity = typed.success
             ? checkSanity(typed.data, request, knowledge, limits)
             : { errors: [], warnings: [] };
-          warnings = sanity.warnings;
+          warnings = [...categoryWarning, ...sanity.warnings];
           errors = mergeErrors(validation.errors, sanity.errors);
           if (errors.length === 0 && validation.recipe) {
             const total: TokenUsage = cost === undefined ? usage : { ...usage, costUsd: cost };
@@ -154,14 +181,12 @@ export function createConverter(options: ConverterOptions): Converter {
               },
               "recipe converted",
             );
-            const hints = [...(validation.recipe.reviewHints ?? [])];
-            for (const text of warnings) if (!hints.includes(text)) hints.push(text);
             return {
               recipe: validation.recipe,
               attempts: attempt,
               usage: total,
               warnings,
-              reviewHints: hints,
+              reviewHints: [...(validation.recipe.reviewHints ?? [])],
               provider: generator.provider,
               model,
             };

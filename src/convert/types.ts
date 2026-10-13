@@ -37,9 +37,11 @@ export interface ConversionResult {
   // Generator calls, the first one included.
   attempts: number;
   usage: TokenUsage;
-  // Plausibility warnings of the accepted recipe.
+  // Plausibility warnings of the accepted recipe, in English, uncapped: for the bridge's
+  // own report (log, Mealie note), not for the recipe.
   warnings: string[];
-  // The model's review hints followed by the warnings: what a human should check.
+  // The model's review hints as the recipe carries them: German, within the recipe's
+  // limits on count and length.
   reviewHints: string[];
   provider: string;
   model: string;
@@ -58,7 +60,9 @@ export interface GenerationFeedback {
 export interface GenerationInput {
   system: string;
   user: string;
-  // JSON Schema of the recipe (recipeInputJsonSchema with the loaded limits).
+  // JSON Schema of the recipe (recipeInputJsonSchema with the loaded limits). Every
+  // provider builds its structured-output format from it; the loop passes the same object
+  // for every call, so providers may cache the converted format per object.
   jsonSchema: object;
   feedback?: GenerationFeedback;
 }
@@ -69,6 +73,9 @@ export interface GenerationOutput {
   usage: Omit<TokenUsage, "costUsd">;
   // The model that answered, when the provider reports it (a fallback may differ).
   model?: string;
+  // Per-model usage when one call ran several models (a server-side fallback); usage is
+  // then their sum, and each attempt is priced at its own model.
+  attempts?: { model: string; usage: Omit<TokenUsage, "costUsd"> }[];
 }
 
 export interface RecipeGenerator {

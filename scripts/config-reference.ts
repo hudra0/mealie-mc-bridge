@@ -46,7 +46,7 @@ const REFERENCE = {
   },
   DATA_DIR: {
     description:
-      "Directory of `bridge.db`. The image sets `/data`; leave it unset there, an empty value counts as unset anyway.",
+      "Directory of `bridge.db`. The image sets `/data`. Do not set it in `.env` with Docker: even an empty line overrides the image's value, and the bridge then falls back to `./data` inside `/app`.",
   },
   SETTINGS_KEY: {
     description:

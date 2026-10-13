@@ -12,7 +12,7 @@ The bridge is a small service that runs next to Mealie. Mealie hands it a recipe
 4. The recipe is saved privately in your Monsieur Cuisine account, so it appears on the machine.
 5. Mealie gets a tag on the recipe and a timeline entry with the link and the points you should check before you cook.
 
-Status: version 0.1. It runs end to end and is used with German recipes on a real machine. English output exists but has not been checked on a device yet. Every converted recipe is written by a language model, so check times and temperatures before you cook it.
+Status: first version, not tagged yet. It runs end to end and is used with German recipes on a real machine. English output exists but has not been checked on a device yet. Every converted recipe is written by a language model, so check times and temperatures before you cook it.
 
 ## Requirements
 
@@ -36,7 +36,7 @@ mkdir -p data && sudo chown 1000:1000 data   # the container runs as uid 1000
 
 Mealie calls the bridge and the bridge calls Mealie, so both need one Docker network. Pick a layout:
 
-- **In Mealie's compose project (simplest).** Paste the `mc-bridge` service from `compose.yml` into Mealie's compose file, and put `.env` and `data/` next to that file. Both services then share Mealie's default network.
+- **In Mealie's compose project (simplest).** Paste the `mc-bridge` service from `compose.yml` into Mealie's compose file, and put `data/` next to that file. Save the bridge's settings there as `mc-bridge.env` instead of `.env` and change the service's `env_file:` line to match: Compose reads a `.env` in the project directory for its own variables, and many Mealie setups keep theirs there. Do not merge the two files; Mealie reads some of the same variable names. Both services then share Mealie's default network. Wherever this guide says `.env`, use `mc-bridge.env`.
 - **As its own project.** Keep `mc-bridge/compose.yml` and join Mealie's network: find its name with `docker network ls` (usually `<mealie directory>_default`), uncomment the two `networks:` blocks in `compose.yml` and put that name in.
 
 ### 2. Generate the secrets
@@ -64,7 +64,8 @@ The user needs edit rights on a recipe to tag it. Without them the bridge still 
 - `LLM_PROVIDER` and the key of that provider, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
 - `ADMIN_USER` and `ADMIN_PASSWORD` for the admin pages.
 - `TZ`, for example `Europe/Berlin`, for the dates in timeline entries and mails.
-- Optional: `MC_LOCALE` and `UI_LANGUAGE` (see [Languages](#languages)) and the mail settings (see [Email notifications](#email-notifications)).
+- `MC_LOCALE` and `UI_LANGUAGE` (see [Languages](#languages)). The default `MC_LOCALE=de-DE` writes German recipes to the machine, and the admin pages, timeline entries and mails follow it in German. For English recipes set `MC_LOCALE=en-US` (not verified on a device yet); to keep German recipes but read English pages, set only `UI_LANGUAGE=en`. This guide names the English labels and gives the German ones in parentheses.
+- Optional: the mail settings (see [Email notifications](#email-notifications)).
 
 Every variable is listed in the [configuration reference](#configuration-reference).
 
@@ -75,7 +76,7 @@ docker compose up -d mc-bridge
 curl http://127.0.0.1:3000/health
 ```
 
-`/health` answers with `"status": "degraded"` and the session state `invalid` until the next step. That is expected. If the container does not start, `docker compose logs mc-bridge` names the setting it rejects; values are never printed.
+`/health` answers with `"status": "degraded"` and the session state `invalid` until the next step. That is expected. If mail is configured, this first check also sends a mail that the session does not work; ignore it. If the container does not start, `docker compose logs mc-bridge` names the setting it rejects; values are never printed.
 
 ### 6. Paste the Monsieur Cuisine session
 
@@ -113,7 +114,7 @@ Replace `mealie` with the name of your Mealie container (`docker ps`). An error 
 
 ### 9. Send a first recipe
 
-Open a recipe in Mealie, pick the action and watch the job on the admin page (Jobs). A conversion takes one to a few minutes. Then:
+Open a recipe in Mealie, pick the action and watch the job on the admin page (Jobs, "Aufträge"). A conversion takes one to a few minutes. Then:
 
 - On the machine, the recipe is in your own recipes ("Meine Rezepte" on a German device). It is saved privately: nobody else sees it, and it is not submitted for publication.
 - On monsieur-cuisine.com, it is in the recipe editor of your account. The timeline entry links to it.
@@ -123,7 +124,7 @@ Mealie shows "Message sent" ("Daten gesendet") as soon as it accepted the click,
 
 ## Configuration reference
 
-The bridge reads its settings from the environment; Compose passes `.env` through `env_file`. An empty value counts as unset. The service refuses to start when a required setting is missing or a value is invalid, and names the setting. Generated from `src/config.ts` by `npm run docs:config`; a test fails when this table and the schema disagree.
+The bridge reads its settings from the environment; Compose passes `.env` through `env_file`. The bridge treats an empty value as unset, but an empty line in `.env` still overrides a variable the image sets (`DATA_DIR`, `NODE_ENV`), so leave those out. The service refuses to start when a required setting is missing or a value is invalid, and names the setting. Generated from `src/config.ts` by `npm run docs:config`; a test fails when this table and the schema disagree.
 
 <!-- config-reference:start -->
 
@@ -133,7 +134,7 @@ The bridge reads its settings from the environment; Compose passes `.env` throug
 | `HOST`                    | `0.0.0.0`                          |                                                              | Interface to bind. Keep `0.0.0.0` in a container; `127.0.0.1` keeps a local run off the network.                                                                                                                               |
 | `LOG_LEVEL`               | `info`                             | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | Log verbosity. `debug` logs every request to Mealie and Monsieur Cuisine. Secrets are masked at every level.                                                                                                                   |
 | `TZ`                      | UTC in the image                   |                                                              | Time zone of the dates in timeline entries and mails, for example `Europe/Berlin`. Read by Node.js itself. The admin pages always show UTC.                                                                                    |
-| `DATA_DIR`                | `./data`                           |                                                              | Directory of `bridge.db`. The image sets `/data`; leave it unset there, an empty value counts as unset anyway.                                                                                                                 |
+| `DATA_DIR`                | `./data`                           |                                                              | Directory of `bridge.db`. The image sets `/data`. Do not set it in `.env` with Docker: even an empty line overrides the image's value, and the bridge then falls back to `./data` inside `/app`.                               |
 | `SETTINGS_KEY`            | **required**                       |                                                              | Base64 of 32 random bytes; `generate-secrets` prints one. Encrypts the Monsieur Cuisine cookie in `bridge.db`. With another key the stored cookie cannot be read, and you paste it again.                                      |
 | `WEBHOOK_TOKEN`           | **required**                       |                                                              | Secret path segment of the webhook, `/hooks/mealie/<WEBHOOK_TOKEN>`. At least 32 characters of letters, digits and `. _ ~ -`.                                                                                                  |
 | `MEALIE_URL`              | **required**                       |                                                              | How the bridge reaches Mealie, for example `http://mealie:9000` on a shared Docker network. An http or https URL.                                                                                                              |
@@ -177,7 +178,7 @@ Monsieur Cuisine has no public API for writing recipes. The bridge uses the same
 1. Log in on www.monsieur-cuisine.com and open "Create recipe".
 2. Open the browser's developer tools (F12), Network tab, and reload the page.
 3. Pick any request whose URL contains `proxy-api` and copy the value of its `Cookie` request header. In Chrome and Edge it is under Headers, Request Headers; in Firefox under Headers, Request Headers with "Raw" switched on.
-4. Paste it into the form on the admin dashboard and press "Save session".
+4. Paste it into the form on the admin dashboard and press "Save session" ("Sitzung speichern").
 
 The bridge checks the cookie with a separate request before it stores it, encrypted with `SETTINGS_KEY`. A cookie Monsieur Cuisine rejects is not stored, and the working session stays in place. The cookie is a secret: anyone who has it can change the recipes in your account. Keep it out of chats, screenshots and issue reports.
 
@@ -187,7 +188,7 @@ Instead of the form you can set `MC_COOKIE` in `.env`. The bridge stores it on t
 
 The login cookies carry an expiry date 14 days after you logged in. Expect to paste a new cookie about every two weeks. Logging out on the website may end it earlier, so close the tab after copying the cookie instead of logging out.
 
-The bridge checks the session on start and then every `SESSION_CHECK_MINUTES` (60 by default) with a cheap account call. "Check now" on the dashboard runs the check at once, and the dashboard shows the state, the time of the last check and the age of the cookie.
+The bridge checks the session on start and then every `SESSION_CHECK_MINUTES` (60 by default) with a cheap account call. "Check now" ("Jetzt prüfen") on the dashboard runs the check at once, and the dashboard shows the state, the time of the last check and the age of the cookie.
 
 ### When it expires
 
@@ -215,7 +216,7 @@ Monsieur Cuisine publishes recipes in several languages, and each recipe carries
 - `de-DE` is verified: recipes created with it show up and cook on a Monsieur Cuisine Smart, and the settings were checked against the web editor.
 - `en-US` is generated from the 1015 English MC Smart recipes of the public recipe API and marked `verifiedOnDevice: false`. Its complexity ids and editor path come from another project's source and are unchecked, and its default ingredient group name is a translation. The bridge logs a warning on start with an unverified pack. Check the first recipes in the web editor before you cook them, and please report what you find.
 
-A Mealie recipe in English can become a German Monsieur Cuisine recipe, or the other way round. The checks never compare ingredient names across languages; the model says which Mealie ingredient line each of its ingredients comes from, and amounts are compared along that mapping. Adding a language is a data change; see "Adding a language" in `CONTRIBUTING.md`. `UI_LANGUAGE` replaces the former `TIMELINE_LANGUAGE`, which is no longer read.
+A Mealie recipe in English can become a German Monsieur Cuisine recipe, or the other way round. The checks never compare ingredient names across languages; the model says which Mealie ingredient line each of its ingredients comes from, and amounts are compared along that mapping. Adding a language is a data change; see "Adding a language" in `CONTRIBUTING.md`.
 
 ## How conversion works
 
@@ -235,7 +236,7 @@ The defaults are the models the bridge was written against; check that your acco
 
 Two more steps happen around the conversion:
 
-- **Already sent.** A recipe that has not changed since it was last sent at the same scale is not converted again; the timeline entry points to the existing recipe. "Force rebuild" on the admin page sends it anyway.
+- **Already sent.** A recipe that has not changed since it was last sent at the same scale is not converted again; the timeline entry points to the existing recipe. "Force rebuild" ("Neu senden erzwingen") on the admin page sends it anyway.
 - **Ingredient ids.** Published Monsieur Cuisine recipes link each ingredient to an id of the site's ingredient database, which the app uses for the shopping list. With `MC_RESOLVE_INGREDIENTS=exact` (the default) the bridge looks each name up in a catalog built from published recipes, then in a local cache, then in the site's search, and takes an id only for exactly the same name. It never guesses: "Karotten" gets no id, because published recipes say "Möhren". Names without a match go out without an id; the job page lists them. A recipe without ids cooks the same.
 
 The job flow, the job states and the modules are described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -246,7 +247,7 @@ The job flow, the job states and the modules are described in [docs/ARCHITECTURE
 
 The dashboard shows the session, the queue and recent jobs. The job list shows every job with its log. A failed job can be retried; "Force rebuild" sends the recipe again even if it has not changed; queued jobs can be cancelled. Temporary failures (network, server errors) are retried three times with a pause of 2, 4 and 8 seconds. Validation and conversion failures are not retried automatically, and neither is creating the recipe on Monsieur Cuisine, so a timeout never leaves two copies behind.
 
-"Dry run" shows what the converter would get for a Mealie recipe and, on request, runs the conversion without uploading anything. That conversion is a paid model call.
+"Dry run" ("Probelauf") shows what the converter would get for a Mealie recipe and, on request, runs the conversion without uploading anything. That conversion is a paid model call.
 
 Without `ADMIN_USER` and `ADMIN_PASSWORD` the admin pages are open to anyone who reaches the port, and they answer only to an IP address, `localhost` or a host name listed in `ADMIN_HOSTS`.
 
@@ -271,11 +272,17 @@ The bridge logs JSON lines to stdout: `docker compose logs -f mc-bridge`. Set `L
 
 `status` is `degraded` while the session is `invalid` or `expired` or the worker is stopped. A restart fixes neither, so the container health check fails only when the bridge stops answering or its database fails (503). `lastError` carries only the time of the last worker error; the message is on the dashboard.
 
-`GET /jobs/<id>` returns one job with its log as JSON. It needs no login either; job ids are random UUIDs that appear only in the bridge's own pages and logs.
+`GET /jobs/<id>` returns one job with its log as JSON. It needs no login either; job ids are random UUIDs that appear in the bridge's pages, logs and failure mails, and in its answer to Mealie. Anyone who has a job id can read that job's log.
 
 ### Data directory and backups
 
-Everything the bridge keeps is in `bridge.db` in the data directory (`/data` in the container): jobs and their logs, the list of sent recipes, the encrypted session, the category cache and the ingredient id cache. The database runs in WAL mode, so back up the whole directory with the container stopped, or use `sqlite3 bridge.db ".backup backup.db"` while it runs. Keep `SETTINGS_KEY` with the backup; without it the stored cookie cannot be read, and you would paste a new one.
+Everything the bridge keeps is in `bridge.db` in the data directory (`/data` in the container): jobs and their logs, the list of sent recipes, the encrypted session, the category cache and the ingredient id cache. The database runs in WAL mode, so back up the whole directory with the container stopped, or take a consistent copy while it runs:
+
+```sh
+docker compose exec mc-bridge node -e "require('better-sqlite3')('/data/bridge.db').backup('/data/backup.db').then(() => console.log('done'))"
+```
+
+This writes `backup.db` into `data/` next to the database. Keep `SETTINGS_KEY` with the backup; without it the stored cookie cannot be read, and you would paste a new one.
 
 ### Upgrading and migrations
 
@@ -286,7 +293,7 @@ docker compose up -d mc-bridge
 
 Schema migrations run on start, each in its own transaction. A database written by a newer release is refused rather than guessed at, so back up `data/` before an upgrade if you might roll back. Stopping the container hands a running job back to the queue, unless the job is already creating the recipe on Monsieur Cuisine; give it the `stop_grace_period` of the example compose file.
 
-`latest` follows the `main` branch. For a fixed version, use a release tag such as `0.1.0` or `0.1`; see [CHANGELOG.md](CHANGELOG.md).
+`latest` follows the `main` branch. No release is tagged yet; until then, pin a build with its `sha-<commit>` tag from the [package page](https://github.com/hudra0/mealie-mc-bridge/pkgs/container/mealie-mc-bridge). Once a release is tagged, its image carries the tags `X.Y.Z` and `X.Y`; see [CHANGELOG.md](CHANGELOG.md).
 
 ### Email notifications
 
@@ -325,7 +332,7 @@ Only a recipe saved privately shows up on the machine; a draft does not. Check:
 - The timeline entry. If setting the status failed, it says the recipe stayed a draft. Open it in the web editor and save it privately there.
 - The machine is online and signed in to the same account.
 
-### Costs
+## Costs
 
 Each job shows its token usage and an estimated cost on the job page and the dashboard. The system prompt is about 9000 tokens and the same for every recipe, so later recipes and correction rounds read most of it from the provider's prompt cache; the recipe and its techniques add about 3000 tokens. Each correction round is another call. To spend less, lower `LLM_MAX_CORRECTIONS` or pick a cheaper model and effort. The estimate uses a built-in price table; `LLM_PRICES_JSON` overrides it when your prices differ. Set a spending limit in your provider account as well.
 
@@ -365,7 +372,7 @@ npm run hooks:install    # secret scan before every commit, needs gitleaks 8.19 
 
 `npm run dev` and `npm start` read `.env` from the working directory when `NODE_ENV` is not `production`. `npm run test:coverage` enforces 85 % line coverage per module directory under `src/`. The tests never call a provider; `src/convert/providers/live.test.ts` converts a fixture with the real API when `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set, is skipped otherwise and in CI, and costs money.
 
-Image conversion uses [sharp](https://sharp.pixelplumbing.com) and the database [better-sqlite3](https://github.com/WiseLibs/better-sqlite3). Both ship prebuilt native binaries per platform. The Docker image installs them on linux during the build; do not copy a `node_modules` folder from Windows or macOS into an image. To build the image yourself, replace the `image:` line in `compose.yml` with `build: .` and run `docker compose up -d --build`.
+Image conversion uses [sharp](https://sharp.pixelplumbing.com) and the database [better-sqlite3](https://github.com/WiseLibs/better-sqlite3). Both ship prebuilt native binaries per platform. The Docker image installs them on linux during the build; do not copy a `node_modules` folder from Windows or macOS into an image. To build the image yourself, clone the repository (`git clone https://github.com/hudra0/mealie-mc-bridge`), replace the `image:` line in `compose.yml` with `build: <path of the clone>` (or `build: .` when `compose.yml` sits in the clone) and run `docker compose up -d --build`.
 
 ### Command line tools
 
@@ -380,7 +387,7 @@ npm run convert -- convert --mealie-json recipe.json --locale en-US   # write an
 
 It prints the steps, warnings, review hints, token usage and a cost estimate. The category list comes from `--categories <file>` or from the public Monsieur Cuisine API. `npm run convert:eval -- --ids 1234,5678` converts recipes of your own corpus crawl from their ingredients and texts and compares programs, temperatures and times with the original; it reads the corpus of `--locale` (else `MC_LOCALE`). Exit codes: 0 done, 1 unreadable input or a recipe that still failed, 3 provider error, 64 usage error, 66 no corpus, 78 configuration.
 
-`npm run mc:smoke` checks the Monsieur Cuisine side against your own account and reads `.env` when it exists:
+`npm run mc:smoke` checks the Monsieur Cuisine side against your own account and reads `.env` when it exists. `whoami`, `categories` and `create` take the session only from `MC_COOKIE` in the environment or `.env`, not from a cookie pasted on the admin page; `dry-run` works offline:
 
 ```sh
 npm run mc:smoke -- whoami                        # is the session valid?
@@ -389,7 +396,7 @@ npm run mc:smoke -- dry-run recipe.json           # validate and print the paylo
 npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publish]
 ```
 
-`create` adds a real recipe to your account, as a draft unless `--status private-publish` is given; it never submits a recipe for publication. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it). Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file.
+`create` adds a real recipe to your account, as a draft unless `--status private-publish` is given; it never submits a recipe for publication. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it). Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file or locale pack.
 
 See `CONTRIBUTING.md` for the pull request format, the secrets policy and how to add a language, and `docs/ARCHITECTURE.md` for the design.
 

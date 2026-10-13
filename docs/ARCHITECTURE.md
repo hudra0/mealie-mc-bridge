@@ -101,7 +101,7 @@ Rules that are data live in one place each: device limits in `knowledge/device-p
 
 ## Converter
 
-`src/pipeline/converter-port.ts` imports `src/convert/index.js` at startup and calls `createConverter({ env, limits, logger })` (`src/convert/service.ts`). The generator is built at the first conversion, so a missing API key fails the job rather than the start.
+`src/pipeline/converter-port.ts` imports `src/convert/index.js` at startup and calls `createConverter({ env, limits, logger })` from `src/convert/index.ts`, which hands it to `createServiceConverter` (`src/convert/service.ts`). The generator is built at the first conversion, so a missing API key fails the job rather than the start.
 
 ```ts
 interface Converter {

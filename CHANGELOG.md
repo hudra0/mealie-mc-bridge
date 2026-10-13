@@ -24,6 +24,6 @@ First version, not tagged yet.
 - Command line tools: `npm run convert` (convert without uploading, and an evaluation against a local corpus), `npm run mc:smoke` (checks against your own account) and the corpus crawler and knowledge build.
 - Docker image for linux/amd64 and linux/arm64, an example compose file, and a configuration reference in the README generated from the settings schema.
 
-### Changed
+### Notes for pre-release builds
 
-- `UI_LANGUAGE` replaces `TIMELINE_LANGUAGE`, which is no longer read.
+- Builds from `main` before localization read `TIMELINE_LANGUAGE`. Rename it to `UI_LANGUAGE`; the old name is ignored without a warning.

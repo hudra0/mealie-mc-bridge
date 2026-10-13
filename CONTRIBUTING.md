@@ -43,12 +43,12 @@ Rules:
 - Never commit keys, cookies, tokens, passwords, account ids, or host names and addresses of private infrastructure. Examples use `example.com` hosts and placeholders such as `<LAN address>`; the gitleaks rules in `.gitleaks.toml` also flag private network addresses and the Monsieur Cuisine cookie formats.
 - Put every setting in `.env.example` with an empty or harmless value. Real values live in your own `.env`, which git ignores, and personal deployment files live under `local/`, which git ignores as well.
 - Browser sessions, HAR files and cookie dumps belong under `local/`.
-- CI runs gitleaks over the whole history on every push and pull request, and again weekly.
+- CI runs gitleaks over the whole history on every push to `main`, every tag, every pull request, and weekly.
 - Maintainer only: a newly pushed GHCR package is private until its visibility is set to public in the package settings.
 
 ## Hooks
 
-`npm run hooks:install` points git at `.githooks/`. The pre-commit hook runs `gitleaks git --staged` and refuses to commit when gitleaks (8.19 or newer) is missing. `SKIP_GITLEAKS=1` skips the scan once; CI still scans every push.
+`npm run hooks:install` points git at `.githooks/`. The pre-commit hook runs `gitleaks git --staged` and refuses to commit when gitleaks (8.19 or newer) is missing. `SKIP_GITLEAKS=1` skips the scan once; CI still scans every pull request and every push to `main`.
 
 ## Fixtures and recipe data
 

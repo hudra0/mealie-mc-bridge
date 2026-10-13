@@ -1,15 +1,17 @@
 # Copy to compose.yml next to a filled-in .env (from .env.example). Mealie posts to the bridge
 # and the bridge calls Mealie, so both must share a Docker network. Two ways:
-# - Paste the mc-bridge service into Mealie's compose file. Keep .env and data/ next to that
-#   file. The networks lines below stay commented out.
+# - Paste the mc-bridge service into Mealie's compose file and keep data/ next to that file.
+#   Name the settings file mc-bridge.env there and point env_file at it, so it does not
+#   collide with a .env of Mealie's project. The networks lines below stay commented out.
 # - Keep this as its own compose project and join Mealie's network: uncomment both networks
 #   blocks and set the name to Mealie's network (`docker network ls`; usually
 #   <mealie project directory>_default).
 services:
   mc-bridge:
     image: ghcr.io/hudra0/mealie-mc-bridge:latest
-    # Pin a release instead of following main, for example :0.1. To build the image yourself,
-    # replace the image line with:
+    # latest follows main. To pin a build, use its sha-<commit> tag; once a release is tagged,
+    # its X.Y tag works too. To build the image yourself from a clone of the repository,
+    # replace the image line with the path of the clone:
     # build: .
     restart: unless-stopped
     # Every setting comes from .env; README.md has the full reference.

@@ -1,0 +1,2294 @@
+{
+  "$comment": "Monsieur Cuisine smart (MC3.0) automatic programs and recipe limits, in four layers. Maintained by hand; see the sources block.",
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-13",
+  "device": {
+    "code": "MC3.0",
+    "deviceTypeId": 13,
+    "slug": "mc-smart",
+    "name": "Monsieur Cuisine smart"
+  },
+  "sources": {
+    "editor": "Recipe editor on www.monsieur-cuisine.com, web app version 1.138.0. The program catalog is a static table per device in the page's JavaScript; no API call delivers modes or limits.",
+    "server": "Live probes on 2026-10-13 from a member account: 80 updates of a private draft, each changing one value. The server checks enumerations only; every out-of-range number was stored unchanged.",
+    "assumed": "SmartRecipe (MIT) limits in its mode converter and constants, as analysed on 2026-10-12.",
+    "corpus": "Numbers derived from 2,221 public MC3.0 recipes (1,094 official, 1,127 member). Official recipes are the reference.",
+    "officialGuide": "The official recipe-creation guide for members (speed 1-10, butterfly whisk at most speed 4, step description shown on the device for only two programs, drawn as icons that match scale and turbo)."
+  },
+  "layers": {
+    "editor": "What the website editor lets a member enter for MC3.0.",
+    "server": "What the recipe API did with probe values. null means not probed. rangeEnforced false means out-of-range numbers were stored unchanged.",
+    "assumed": "What SmartRecipe assumes. null means SmartRecipe does not support it.",
+    "corpus": "Observed values in public recipes, split into official and member.",
+    "effective": "What the bridge validator enforces: the editor limit, tightened where SmartRecipe, the official guide or official recipes give a stricter rule that no official recipe breaks. Editor minimums of 0 s are replaced by the smallest value in official recipes."
+  },
+  "conditionFormat": "Each condition is { when: { <param>: { <op>: value } }, set: { <field>: value }, kind }. Ops: eq, ne, gt, gte, lt, lte. kind device = editor or device rule, accessory = depends on an attachment, sanity = enforced by the bridge only.",
+  "labels": "label.de is the website's German label (our translation for MC4.0-only modes, which the site shows in English). label.en is our translation.",
+  "payloadRules": [
+    "mode.type is the snake_case id; the editor uses camelCase internally.",
+    "deviceSettings is an array with one object per phase (one for every mode except ramp), keys as listed in payload.deviceSettingsKeys. Keys of device-controlled values are not sent.",
+    "cooking_eggs and precleaning send modeSetting instead of deviceSettings.",
+    "Unknown mode types are rejected with HTTP 400 code 40004."
+  ],
+  "deviceTables": {
+    "precedence": ["MC1.1", "MC2.0", "MC3.0", "MC0.5", "MC4.0"],
+    "note": "The editor uses the first device in this order that the recipe lists.",
+    "tables": {
+      "MC3.0": "19 programs, 2 of them editors only (kneading, ramp)",
+      "MC2.0": "kneading, steaming, roasting with free temperature 0-130 °C, scale, customized, turbo, ramp (editors only)",
+      "MC1.1": "like MC2.0 without ramp; kneading default 90 s",
+      "MC0.5": "kneading 45-90 s, roasting 100-130 °C, scale 1-3000 g, customized up to 5400 s with speed max 6 above 600 s, turbo without parameter",
+      "MC4.0": "half speeds, defaults for every program, attachments as modules, nine extra programs (see otherDeviceModes)"
+    }
+  },
+  "recipeLimits": {
+    "deviceTypeIds": {
+      "editor": {
+        "note": "the editor picks one device table per recipe; first match wins in the order MC1.1, MC2.0, MC3.0, MC0.5, MC4.0"
+      },
+      "server": null,
+      "assumed": {
+        "values": [13]
+      },
+      "effective": {
+        "values": [13],
+        "note": "MC3.0 only; adding MC2.0 makes the web editor open the recipe with the smaller MC2.0 table"
+      }
+    },
+    "temperatureGrid": {
+      "heating": {
+        "values": [
+          0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130
+        ],
+        "usedBy": ["customized", "roasting (editor)"]
+      },
+      "roastingEffective": {
+        "values": [100, 105, 110, 115, 120, 125, 130],
+        "usedBy": ["roasting (effective)"]
+      },
+      "slowCooking": {
+        "values": [37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
+        "usedBy": ["slow_cooking"]
+      },
+      "fermentation": {
+        "values": [37, 40, 45, 50, 55, 60, 65],
+        "usedBy": ["fermentation"]
+      },
+      "sousVide": {
+        "min": 40,
+        "max": 85,
+        "step": 1,
+        "usedBy": ["sous_vide"]
+      },
+      "notes": [
+        "0 °C means no heating. No value exists between 0 and 37 or between 37 and 40.",
+        "The server stores off-grid values (36, 38, 135 °C) unchanged, so the bridge must check the grid itself."
+      ]
+    },
+    "speedRules": {
+      "range": {
+        "editor": { "min": 1, "max": 10, "step": 1 },
+        "server": {
+          "rangeEnforced": false,
+          "accepted": [0, 4, 10, 11]
+        },
+        "assumed": { "min": 0, "max": 10, "step": 1 },
+        "corpus": { "min": 1, "max": 10, "halfSpeeds": 0, "zero": 0 },
+        "effective": { "min": 1, "max": 10, "step": 1 }
+      },
+      "rules": [
+        {
+          "id": "heat-cap",
+          "text": "With any temperature above 0 °C, speed is at most 3.",
+          "when": {
+            "temperature": { "ne": 0 }
+          },
+          "set": { "max": 3 },
+          "kind": "device",
+          "layers": { "editor": true, "server": false, "assumed": true, "effective": true },
+          "corpus": "one official step breaks it (speed 4 at 50 °C)"
+        },
+        {
+          "id": "reverse-cap",
+          "text": "In reverse (clockwise false), speed is at most 3.",
+          "when": {
+            "clockwise": { "eq": false }
+          },
+          "set": { "max": 3 },
+          "kind": "device",
+          "layers": { "editor": true, "server": false, "assumed": true, "effective": true },
+          "corpus": "5 steps at 0 °C break it (speed 4-8), one of them official"
+        },
+        {
+          "id": "whisk-cap",
+          "text": "With the butterfly whisk, speed is at most 4.",
+          "when": {
+            "accessory": { "eq": "butterfly_whisk" }
+          },
+          "set": { "max": 4 },
+          "kind": "accessory",
+          "layers": { "editor": false, "server": false, "assumed": true, "effective": true },
+          "source": "official recipe-creation guide; SmartRecipe prompt"
+        },
+        {
+          "id": "high-speed-time",
+          "text": "At speed 6 or higher, a manual step lasts at most 600 s.",
+          "when": {
+            "speed": { "gte": 6 }
+          },
+          "set": { "max": 600 },
+          "kind": "sanity",
+          "appliesTo": "time",
+          "layers": { "editor": false, "server": false, "assumed": false, "effective": true },
+          "source": "MC4.0 and MC0.5 editor tables; corpus maximum is exactly 600 s"
+        },
+        {
+          "id": "no-speed-zero",
+          "text": "Speed 0 is invalid. A pause or wait is a text step, not a manual step at 0 °C and speed 0.",
+          "layers": { "editor": true, "server": false, "assumed": false, "effective": true },
+          "corpus": "no step with speed 0"
+        }
+      ]
+    },
+    "text": {
+      "recipeTitle": {
+        "editor": { "minLength": 1, "maxLength": 86 },
+        "server": {
+          "rangeEnforced": false,
+          "accepted": [87]
+        },
+        "assumed": { "minLength": 1, "maxLength": 120 },
+        "corpus": { "maxLength": 86 },
+        "effective": { "minLength": 1, "maxLength": 86 }
+      },
+      "recipeDescription": {
+        "editor": { "maxLength": 240, "required": false },
+        "server": null,
+        "assumed": { "maxLength": 2000 },
+        "corpus": null,
+        "effective": { "maxLength": 240 }
+      },
+      "stepTitle": {
+        "editor": { "minLength": 1, "maxLength": 80 },
+        "server": {
+          "rangeEnforced": false,
+          "accepted": [80, 81]
+        },
+        "assumed": { "minLength": 1, "maxLength": 80 },
+        "corpus": {
+          "official": { "maxLength": 86 },
+          "member": { "maxLength": 80 },
+          "note": "official titles above 80 come from devices whose editor derives the title from the description"
+        },
+        "effective": { "minLength": 1, "maxLength": 80 }
+      },
+      "stepDescription": {
+        "editor": {
+          "maxLength": 240,
+          "requiredOn": ["text", "scale", "turbo"],
+          "clearedOn": "every other mode"
+        },
+        "server": {
+          "rangeEnforced": false,
+          "accepted": [240, 241, 300],
+          "note": "a description on a roasting step was stored too"
+        },
+        "assumed": {
+          "maxLength": 240,
+          "allowedOn": ["text", "scale", "turbo"],
+          "note": "blanked for every other mode"
+        },
+        "corpus": {
+          "official": { "maxLength": 243 },
+          "member": { "maxLength": 240 },
+          "note": "text, scale and turbo steps always have one; other programs almost never"
+        },
+        "effective": {
+          "minLength": 1,
+          "maxLength": 240,
+          "requiredOn": ["text", "scale", "turbo"],
+          "emptyOn": "every other mode"
+        }
+      },
+      "countedAs": "characters (the editor fields are named WordLimit but count characters)"
+    },
+    "textStep": {
+      "duration": {
+        "editor": {
+          "available": false,
+          "note": "the web editor has no timer field for text steps"
+        },
+        "server": {
+          "accepted": [60],
+          "note": "stored and returned"
+        },
+        "assumed": { "value": null },
+        "effective": {
+          "value": null,
+          "note": "send null until a device test shows what the device does with it"
+        }
+      }
+    },
+    "servings": {
+      "amount": {
+        "editor": { "min": 1, "max": null, "note": "no upper limit" },
+        "server": {
+          "rangeEnforced": false,
+          "accepted": [0, 25]
+        },
+        "assumed": { "min": 1, "max": 24, "step": 1 },
+        "corpus": {
+          "official": { "min": 1, "max": 100 },
+          "member": { "min": 1, "max": 400 },
+          "note": "49 official recipes above 24, all counted in pieces or slices"
+        },
+        "effective": {
+          "min": 1,
+          "max": 100,
+          "step": 1,
+          "note": "SmartRecipe's 24 contradicts official recipes; 100 is the largest official value"
+        }
+      },
+      "servingSizes": {
+        "editor": { "min": 1, "max": 4 },
+        "server": null,
+        "assumed": { "min": 1, "max": 1 },
+        "effective": { "min": 1, "max": 1 }
+      }
+    },
+    "categories": {
+      "editor": {
+        "min": 1,
+        "max": null,
+        "note": "members can pick only categories flagged as not official"
+      },
+      "server": {
+        "rangeEnforced": false,
+        "accepted": [9]
+      },
+      "assumed": { "min": 0, "max": 8 },
+      "corpus": { "max": 14, "above8": 4 },
+      "effective": { "min": 1, "max": 8, "note": "ids from GET api/v1/categories" }
+    },
+    "times": {
+      "preparationTime": {
+        "unit": "min",
+        "editor": { "min": 1, "max": 5940 },
+        "server": null,
+        "assumed": { "min": 1, "max": 1440 },
+        "corpus": {
+          "official": { "max": 1440 },
+          "member": { "max": 3600 }
+        },
+        "effective": { "min": 1, "max": 1440 }
+      },
+      "readyInTime": {
+        "unit": "min",
+        "editor": { "min": 1, "max": 18000 },
+        "server": null,
+        "assumed": { "min": 1, "max": 2880 },
+        "corpus": {
+          "official": { "max": 14426, "above2880": 10 }
+        },
+        "effective": {
+          "min": 1,
+          "max": 18000,
+          "conditions": [
+            {
+              "when": {
+                "readyInTime": { "lt": "preparationTime" }
+              },
+              "set": { "invalid": true },
+              "kind": "sanity"
+            }
+          ]
+        },
+        "notes": [
+          "SmartRecipe's 2880 contradicts 10 official recipes. No official recipe has a total time below its preparation time."
+        ]
+      }
+    },
+    "required": {
+      "editor": [
+        "title",
+        "complexity",
+        "category (at least one)",
+        "cover photo",
+        "ingredient (at least one)",
+        "step (at least one)",
+        "step title"
+      ],
+      "effective": [
+        "title",
+        "complexityId",
+        "categoryIds (at least one)",
+        "cover photo",
+        "ingredient (at least one)",
+        "step (at least one)",
+        "step title"
+      ]
+    },
+    "coverPhoto": {
+      "editor": {
+        "types": ["image/jpeg", "image/png"],
+        "crop": "16:9",
+        "exportedAs": "image/jpeg"
+      },
+      "effective": { "type": "image/jpeg", "aspect": "16:9" }
+    },
+    "nutrients": {
+      "editor": {
+        "names": [
+          "calories",
+          "carbohydrate",
+          "fat",
+          "protein",
+          "saturates",
+          "sugar",
+          "salt",
+          "roughage"
+        ],
+        "units": { "calories": "kCal", "other": "g" },
+        "note": "numeric checks only for MC4.0 (at most 99999, 2 decimals); empty values are dropped"
+      },
+      "server": null,
+      "assumed": {
+        "names": ["calories", "carbohydrate", "fat", "protein"],
+        "step": 1,
+        "min": 0
+      },
+      "effective": {
+        "names": [
+          "calories",
+          "carbohydrate",
+          "fat",
+          "protein",
+          "saturates",
+          "sugar",
+          "salt",
+          "roughage"
+        ],
+        "min": 0,
+        "max": 99999,
+        "step": 1,
+        "note": "optional; omit unknown values"
+      }
+    },
+    "notInMemberEditor": [
+      "step video (editors only, mp4 up to 100 MB)",
+      "modules (MC4.0 only)",
+      "timer on text steps"
+    ]
+  },
+  "modes": [
+    {
+      "id": "kneading",
+      "editorId": "kneading",
+      "label": { "de": "Einfaches Kneten", "en": "Simple kneading" },
+      "devices": ["MC0.5", "MC1.1", "MC2.0", "MC3.0"],
+      "editorOrder": 0,
+      "memberVisible": false,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": {
+        "typeAccepted": true,
+        "note": "accepted from a member account (60 s), although the MC3.0 editor shows it only to editors"
+      },
+      "assumed": { "supported": false, "note": "SmartRecipe has no simple kneading mode" },
+      "corpus": { "officialSteps": 188, "memberSteps": 0 },
+      "effective": {
+        "allowed": false,
+        "reason": "Hidden from members in the MC3.0 editor and untested on the device for member recipes. Use kneading_solid_dough, kneading_soft_dough or kneading_liquid_dough."
+      },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 45,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "entered as minutes + seconds; starts at 0, which is invalid"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [60],
+            "rejected": []
+          },
+          "assumed": null,
+          "corpus": {
+            "official": {
+              "min": 45,
+              "max": 120,
+              "values": [45, 60, 90, 120]
+            },
+            "member": null
+          },
+          "effective": {
+            "unit": "s",
+            "min": 45,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "applies only if the mode is enabled after a device test"
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "Official recipes use it often; members cannot pick it on MC3.0.",
+        "MC2.0 and MC1.1 offer it to everyone (45-120 s, MC1.1 default 90 s); MC0.5 allows 45-90 s."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry kneading, adminOnly, time 45-120 s",
+        "server: kneading with 60 s stored from a member account",
+        "corpus: 188 official steps, 45-120 s"
+      ]
+    },
+    {
+      "id": "kneading_solid_dough",
+      "editorId": "kneadingSolidDough",
+      "label": { "de": "Fester Teig", "en": "Firm dough" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 1,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "solidDoughKnead" },
+      "corpus": { "officialSteps": 0, "memberSteps": 171 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 45,
+            "max": 240,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "entered as minutes + seconds; starts at 0, which is invalid"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [44, 45, 240, 241],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 45,
+            "max": 240,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": null,
+            "member": { "min": 45, "max": 240, "median": 120 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 45,
+            "max": 240,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "The editor tip names bread and pasta dough and recommends at least 2 minutes.",
+        "MC4.0: 1-360 s, default 120 s."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry kneadingSolidDough, time 45-240 s",
+        "server: 44 s and 241 s stored unchanged",
+        "corpus: 171 member steps, 45-240 s"
+      ]
+    },
+    {
+      "id": "kneading_soft_dough",
+      "editorId": "kneadingSoftDough",
+      "label": { "de": "Weicher Teig", "en": "Soft dough" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 2,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "softDoughKnead" },
+      "corpus": { "officialSteps": 0, "memberSteps": 162 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 45,
+            "max": 240,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "entered as minutes + seconds; starts at 0, which is invalid"
+          },
+          "server": null,
+          "assumed": {
+            "unit": "s",
+            "min": 45,
+            "max": 240,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": null,
+            "member": { "min": 45, "max": 240, "median": 120 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 45,
+            "max": 240,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "The editor tip names yeast dough, brioche and soft rolls and recommends at least 2 minutes.",
+        "MC4.0: 1-240 s, default 120 s."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry kneadingSoftDough, time 45-240 s",
+        "corpus: 162 member steps, 45-240 s"
+      ]
+    },
+    {
+      "id": "kneading_liquid_dough",
+      "editorId": "kneadingLiquidDough",
+      "label": { "de": "Flüssiger Teig", "en": "Batter" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 3,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "liquidDoughKnead" },
+      "corpus": { "officialSteps": 0, "memberSteps": 16 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 45,
+            "max": 360,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "entered as minutes + seconds; starts at 0, which is invalid"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [360, 361],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 45,
+            "max": 360,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": null,
+            "member": { "min": 45, "max": 180 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 45,
+            "max": 360,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["The editor tip names pancake and crêpe batter.", "MC4.0: 1-600 s, default 120 s."],
+      "evidence": [
+        "editor: MC3.0 table entry kneadingLiquidDough, time 45-360 s",
+        "server: 361 s stored unchanged",
+        "corpus: 16 member steps, 45-180 s"
+      ]
+    },
+    {
+      "id": "steaming",
+      "editorId": "steaming",
+      "label": { "de": "Dampfgaren", "en": "Steaming" },
+      "devices": ["MC0.5", "MC1.1", "MC2.0", "MC3.0", "MC4.0"],
+      "editorOrder": 4,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "steam" },
+      "corpus": { "officialSteps": 240, "memberSteps": 69 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 0,
+            "max": 3600,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "0 s is valid in the editor"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [0, 3600, 3601],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 0,
+            "max": 3600,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 180, "max": 3600, "p10": 480, "median": 900, "p90": 2400 },
+            "member": { "min": 120, "max": 3000 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 180,
+            "max": 3600,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "editor minimum 0 replaced by the smallest official value"
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "Physical preconditions (water in the bowl, steamer attachment) are outside this file.",
+        "MC4.0: 1-3600 s, default 1200 s."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry steaming, time 0-3600 s",
+        "server: 0 s and 3601 s stored unchanged",
+        "corpus: official 180-3600 s"
+      ]
+    },
+    {
+      "id": "roasting",
+      "editorId": "roasting",
+      "label": { "de": "Anbraten", "en": "Roasting" },
+      "devices": ["MC0.5", "MC1.1", "MC2.0", "MC3.0"],
+      "editorOrder": 5,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "temperature", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "roast" },
+      "corpus": { "officialSteps": 399, "memberSteps": 307 },
+      "effective": { "allowed": true },
+      "params": {
+        "temperature": {
+          "unit": "°C",
+          "editor": {
+            "unit": "°C",
+            "min": 0,
+            "max": 130,
+            "step": null,
+            "default": 0,
+            "values": [
+              0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125,
+              130
+            ],
+            "conditions": [],
+            "note": "slider over the list; starts at the first value (0)"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [60, 130, 135],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "°C",
+            "min": 0,
+            "max": 130,
+            "step": null,
+            "default": null,
+            "values": [
+              0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125,
+              130
+            ],
+            "conditions": []
+          },
+          "corpus": {
+            "official": {
+              "values": { "0": 1, "100": 40, "110": 52, "115": 2, "120": 77, "130": 227 }
+            },
+            "member": { "min": 0, "max": 130, "note": "13 steps at 80-95 °C, 3 at 0 °C" }
+          },
+          "effective": {
+            "unit": "°C",
+            "min": 100,
+            "max": 130,
+            "step": null,
+            "default": null,
+            "values": [100, 105, 110, 115, 120, 125, 130],
+            "conditions": [],
+            "note": "official recipes roast at 100-130 °C (398 of 399 steps); MC0.5 and the MC4.0 roast modes also start at 100 °C"
+          },
+          "notes": []
+        },
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 0,
+            "max": 840,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "0 s is valid in the editor"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [0, 840, 841],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 0,
+            "max": 840,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 60, "max": 840, "median": 240 },
+            "member": { "min": 2, "max": 840, "median": 180 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 60,
+            "max": 840,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "editor minimum 0 replaced by the smallest official value"
+          },
+          "notes": []
+        }
+      },
+      "notes": ["MC2.0 and MC1.1 take any whole degree 0-130 °C; MC0.5 only 100-130 °C."],
+      "evidence": [
+        "editor: MC3.0 table entry roasting, temperature list 0/37-130, time 0-840 s",
+        "server: 135 °C and 841 s stored unchanged",
+        "corpus: official 100-130 °C (one step at 0 °C), 60-840 s"
+      ]
+    },
+    {
+      "id": "scale",
+      "editorId": "scale",
+      "label": { "de": "Waage", "en": "Scale" },
+      "devices": ["MC0.5", "MC1.1", "MC2.0", "MC3.0", "MC4.0"],
+      "editorOrder": 6,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "weight"],
+        "modeSettingKeys": null,
+        "deviceControlled": []
+      },
+      "stepDescription": "required",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "scale" },
+      "corpus": { "officialSteps": 7026, "memberSteps": 4919 },
+      "effective": { "allowed": true },
+      "params": {
+        "weight": {
+          "unit": "g",
+          "editor": {
+            "unit": "g",
+            "min": 5,
+            "max": 5000,
+            "step": null,
+            "default": 5,
+            "values": null,
+            "conditions": [],
+            "note": "parsed as float, so decimals pass; clamped to 5 when the field is created"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [4, 5, 5000, 5001],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "g",
+            "min": 5,
+            "max": 5000,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 5, "max": 2500, "median": 150 },
+            "member": { "min": 5, "max": 2000, "median": 150 },
+            "note": "no decimal weights"
+          },
+          "effective": {
+            "unit": "g",
+            "min": 5,
+            "max": 5000,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "The step description is required and shown on the device.",
+        "MC0.5: 1-3000 g. MC4.0 links scale steps to recipe ingredients instead of one weight."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry scale, weight 5-5000 g, showDescription and requireDescription",
+        "server: 4 g and 5001 g stored unchanged",
+        "corpus: 11,945 steps, 5-2500 g, all with a description"
+      ]
+    },
+    {
+      "id": "customized",
+      "editorId": "customized",
+      "label": { "de": "Manuelles Kochen", "en": "Manual cooking" },
+      "devices": ["MC0.5", "MC1.1", "MC2.0", "MC3.0", "MC4.0"],
+      "editorOrder": 7,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "temperature", "speed", "time", "clockwise"],
+        "modeSettingKeys": null,
+        "deviceControlled": []
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "manualCooking" },
+      "corpus": { "officialSteps": 4119, "memberSteps": 2731 },
+      "effective": { "allowed": true },
+      "params": {
+        "temperature": {
+          "unit": "°C",
+          "editor": {
+            "unit": "°C",
+            "min": 0,
+            "max": 130,
+            "step": null,
+            "default": 0,
+            "values": [
+              0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125,
+              130
+            ],
+            "conditions": [],
+            "note": "slider over the list; 0 means no heating"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [36, 37, 38, 130, 135],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "°C",
+            "min": 0,
+            "max": 130,
+            "step": null,
+            "default": null,
+            "values": [
+              0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125,
+              130
+            ],
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 0, "max": 130, "offGrid": 0 },
+            "member": { "min": 0, "max": 130, "offGrid": 0 }
+          },
+          "effective": {
+            "unit": "°C",
+            "min": 0,
+            "max": 130,
+            "step": null,
+            "default": null,
+            "values": [
+              0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125,
+              130
+            ],
+            "conditions": []
+          },
+          "notes": []
+        },
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 1,
+            "max": 5940,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "entered as minutes (0-99) + seconds (0-59); starts at 0, which is invalid"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [0, 1, 5940, 5941, 6000],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 1,
+            "max": 5940,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 2, "max": 5940, "missing": 2 },
+            "member": { "min": 2, "max": 5940 },
+            "note": "at speed 6 or higher the longest step is 600 s (1,874 steps)"
+          },
+          "effective": {
+            "unit": "s",
+            "min": 1,
+            "max": 5940,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [
+              {
+                "when": {
+                  "speed": { "gte": 6 }
+                },
+                "set": { "max": 600 },
+                "kind": "sanity"
+              }
+            ]
+          },
+          "notes": [
+            "The 600 s cap at speed 6+ comes from the MC4.0 and MC0.5 tables, not from MC3.0. The corpus never breaks it, so the bridge enforces it as a sanity rule."
+          ]
+        },
+        "speed": {
+          "unit": "level",
+          "editor": {
+            "unit": "level",
+            "min": 1,
+            "max": 10,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [
+              {
+                "when": {
+                  "temperature": { "ne": 0 }
+                },
+                "set": { "max": 3 },
+                "kind": "device"
+              },
+              {
+                "when": {
+                  "clockwise": { "eq": false }
+                },
+                "set": { "max": 3 },
+                "kind": "device"
+              }
+            ],
+            "note": "slider 0-10, starts at 0, which is invalid; the cap of 3 is a slider bound that clamps a higher value when heat or reverse is switched on"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [0, 4, 10, 11],
+            "rejected": [],
+            "note": "speed 4 was stored both at 100 °C and in reverse"
+          },
+          "assumed": {
+            "unit": "level",
+            "min": 0,
+            "max": 10,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [
+              {
+                "when": {
+                  "temperature": { "ne": 0 }
+                },
+                "set": { "max": 3 },
+                "kind": "device"
+              },
+              {
+                "when": {
+                  "clockwise": { "eq": false }
+                },
+                "set": { "max": 3 },
+                "kind": "device"
+              }
+            ]
+          },
+          "corpus": {
+            "official": {
+              "min": 1,
+              "max": 10,
+              "heatedMax": 3,
+              "exceptions": "1 step at speed 4 and 50 °C; 1 step above 3 in reverse"
+            },
+            "member": {
+              "min": 1,
+              "max": 10,
+              "heatedMax": 3,
+              "exceptions": "4 steps at speed 4-8 in reverse at 0 °C"
+            },
+            "note": "no speed 0, no half speeds"
+          },
+          "effective": {
+            "unit": "level",
+            "min": 1,
+            "max": 10,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [
+              {
+                "when": {
+                  "temperature": { "ne": 0 }
+                },
+                "set": { "max": 3 },
+                "kind": "device"
+              },
+              {
+                "when": {
+                  "clockwise": { "eq": false }
+                },
+                "set": { "max": 3 },
+                "kind": "device"
+              },
+              {
+                "when": {
+                  "accessory": { "eq": "butterfly_whisk" }
+                },
+                "set": { "max": 4 },
+                "kind": "accessory"
+              }
+            ]
+          },
+          "notes": ["Speed 0 is not a waiting step. A pause is a text step."]
+        },
+        "clockwise": {
+          "unit": null,
+          "editor": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": true,
+            "values": [true, false],
+            "conditions": [],
+            "note": "stored as clockwise = not reverse; Linkslauf (reverse) is false"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [true, false],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": [true, false],
+            "conditions": [],
+            "note": "rotationDirection right maps to true"
+          },
+          "corpus": {
+            "official": { "reverseShare": 0.162 },
+            "member": { "reverseShare": 0.257 }
+          },
+          "effective": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": true,
+            "values": [true, false],
+            "conditions": [],
+            "note": "always sent"
+          },
+          "notes": ["Reverse stirs without cutting."]
+        }
+      },
+      "notes": [
+        "MC3.0 has no time limit tied to speed in the editor.",
+        "MC0.5: up to 5400 s, speed max 6 above 600 s. MC4.0: half speeds, max 4 with heat or reverse, up to 5999 s and 600 s from speed 6."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry customized, temperature list, time 1-5940 s, speed 1-10 with temperatureDependentUpperBoundaries [10, 3]",
+        "editor: speed bound set to 3 when temperature is not 0 or reverse is on",
+        "official guide: butterfly whisk at most speed 4",
+        "server: speed 0, 11, and 4 at 100 °C stored unchanged",
+        "corpus: 6,850 steps, all temperatures on the grid, no speed 0"
+      ]
+    },
+    {
+      "id": "sous_vide",
+      "editorId": "sousVide",
+      "label": { "de": "Sous-vide", "en": "Sous vide" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 8,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "temperature", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "sousVide" },
+      "corpus": { "officialSteps": 6, "memberSteps": 1 },
+      "effective": { "allowed": true },
+      "params": {
+        "temperature": {
+          "unit": "°C",
+          "editor": {
+            "unit": "°C",
+            "min": 40,
+            "max": 85,
+            "step": 1,
+            "default": 40,
+            "values": null,
+            "conditions": [],
+            "note": "free number field, whole degrees; clamped to 40 when created"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [39, 40, 85, 86],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "°C",
+            "min": 40,
+            "max": 85,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 50, "max": 85 },
+            "member": { "min": 55, "max": 55 }
+          },
+          "effective": {
+            "unit": "°C",
+            "min": 40,
+            "max": 85,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        },
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 900,
+            "max": 43200,
+            "step": 60,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "15-720 min, entered as hours + minutes, so whole minutes only"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [840, 930, 43200, 43260],
+            "rejected": [],
+            "note": "930 s is not a whole minute"
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 900,
+            "max": 43200,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "minutes + seconds"
+          },
+          "corpus": {
+            "official": { "min": 1500, "max": 5400 },
+            "member": { "min": 5400, "max": 5400 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 900,
+            "max": 43200,
+            "step": 60,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["MC4.0: 1-720 min, default 40 °C for 120 min."],
+      "evidence": [
+        "editor: MC3.0 table entry sousVide, temperature 40-85, time type minutes 15-720",
+        "server: 39 °C, 86 °C, 840 s, 930 s, 43260 s stored unchanged"
+      ]
+    },
+    {
+      "id": "slow_cooking",
+      "editorId": "slowCooking",
+      "label": { "de": "Slow Cook", "en": "Slow cooking" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 9,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "temperature", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "slowCooking" },
+      "corpus": { "officialSteps": 4, "memberSteps": 4 },
+      "effective": { "allowed": true },
+      "params": {
+        "temperature": {
+          "unit": "°C",
+          "editor": {
+            "unit": "°C",
+            "min": 37,
+            "max": 95,
+            "step": null,
+            "default": 37,
+            "values": [37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
+            "conditions": [],
+            "note": "starts at the first list value"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [36, 95, 96],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "°C",
+            "min": 37,
+            "max": 95,
+            "step": null,
+            "default": null,
+            "values": [37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
+            "conditions": []
+          },
+          "corpus": {
+            "official": {
+              "values": { "90": 4 }
+            },
+            "member": { "min": 70, "max": 95 }
+          },
+          "effective": {
+            "unit": "°C",
+            "min": 37,
+            "max": 95,
+            "step": null,
+            "default": null,
+            "values": [37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
+            "conditions": []
+          },
+          "notes": []
+        },
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 900,
+            "max": 28800,
+            "step": 60,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "15-480 min, whole minutes only"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [28800, 28860],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 900,
+            "max": 28800,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 10800, "max": 14400 },
+            "member": { "min": 1800, "max": 7200 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 900,
+            "max": 28800,
+            "step": 60,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["MC4.0: 1-480 min, default 90 °C for 360 min."],
+      "evidence": [
+        "editor: MC3.0 table entry slowCooking, temperature list 37/40-95, time type minutes 15-480",
+        "server: 36 °C, 96 °C and 28860 s stored unchanged"
+      ]
+    },
+    {
+      "id": "cooking_eggs",
+      "editorId": "cookingEggs",
+      "label": { "de": "Eier kochen", "en": "Egg cooking" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 10,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": null,
+        "modeSettingKeys": ["size", "texture"],
+        "deviceControlled": ["temperature", "speed", "time"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "cookingEggs" },
+      "corpus": { "officialSteps": 1, "memberSteps": 2 },
+      "effective": { "allowed": true },
+      "params": {
+        "size": {
+          "unit": null,
+          "editor": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": "",
+            "values": ["small", "medium", "large"],
+            "conditions": [],
+            "note": "empty until chosen; the step validator does not check it, so an empty choice can be saved"
+          },
+          "server": {
+            "rangeEnforced": true,
+            "clamped": false,
+            "accepted": ["medium"],
+            "rejected": ["huge"],
+            "note": "HTTP 400, code 40004, must be a valid enum value"
+          },
+          "assumed": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": ["small", "medium", "large"],
+            "conditions": []
+          },
+          "corpus": {
+            "official": {
+              "values": { "medium": 1 }
+            },
+            "member": {
+              "values": { "medium": 2 }
+            }
+          },
+          "effective": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": ["small", "medium", "large"],
+            "conditions": [],
+            "note": "required"
+          },
+          "notes": []
+        },
+        "texture": {
+          "unit": null,
+          "editor": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": "",
+            "values": ["soft", "waxy_soft", "hard"],
+            "conditions": [],
+            "note": "editor id waxySoft, snake_cased on save"
+          },
+          "server": {
+            "rangeEnforced": true,
+            "clamped": false,
+            "accepted": ["hard"],
+            "rejected": ["raw"],
+            "note": "HTTP 400, code 40004, must be a valid enum value"
+          },
+          "assumed": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": ["soft", "waxy_soft", "hard"],
+            "conditions": []
+          },
+          "corpus": {
+            "official": {
+              "values": { "hard": 1 }
+            },
+            "member": {
+              "values": { "soft": 1, "hard": 1 }
+            }
+          },
+          "effective": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": ["soft", "waxy_soft", "hard"],
+            "conditions": [],
+            "note": "required"
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "No deviceSettings. The editor shows cooking times in minutes for display only: small 8/9/15, medium 10/12/18, large 11/13/18 (soft/waxy soft/hard)."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry cookingEggs, sizeOptions and textureOptions, beStoredParameters null",
+        "server: size huge and texture raw rejected with HTTP 400"
+      ]
+    },
+    {
+      "id": "precleaning",
+      "editorId": "precleaning",
+      "label": { "de": "Vorspülen", "en": "Pre-rinse" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 11,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": null,
+        "modeSettingKeys": ["duration"],
+        "deviceControlled": ["temperature", "speed", "time"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "precleaning" },
+      "corpus": { "officialSteps": 0, "memberSteps": 17 },
+      "effective": { "allowed": true },
+      "params": {
+        "duration": {
+          "unit": null,
+          "editor": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": "short",
+            "values": ["short", "long"],
+            "conditions": [],
+            "note": "display only: short 1.5 min, long 5 min"
+          },
+          "server": {
+            "rangeEnforced": true,
+            "clamped": false,
+            "accepted": ["short"],
+            "rejected": ["medium"],
+            "note": "HTTP 400, code 40004, must be a valid enum value"
+          },
+          "assumed": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": ["short", "long"],
+            "conditions": []
+          },
+          "corpus": {
+            "official": null,
+            "member": {
+              "values": { "short": 14, "long": 3 }
+            },
+            "note": "the read API calls the field cleaningMode"
+          },
+          "effective": {
+            "unit": null,
+            "min": null,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": ["short", "long"],
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["MC4.0 offers short, dough and intense (2, 5, 10 min)."],
+      "evidence": [
+        "editor: MC3.0 table entry precleaning, cleaningOptions short and long",
+        "server: duration medium rejected with HTTP 400"
+      ]
+    },
+    {
+      "id": "fermentation",
+      "editorId": "fermentation",
+      "label": { "de": "Fermentieren", "en": "Fermenting" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 12,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "temperature", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "fermentation" },
+      "corpus": { "officialSteps": 5, "memberSteps": 5 },
+      "effective": { "allowed": true },
+      "params": {
+        "temperature": {
+          "unit": "°C",
+          "editor": {
+            "unit": "°C",
+            "min": 37,
+            "max": 65,
+            "step": null,
+            "default": 37,
+            "values": [37, 40, 45, 50, 55, 60, 65],
+            "conditions": [],
+            "note": "starts at the first list value"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [65, 66],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "°C",
+            "min": 37,
+            "max": 65,
+            "step": null,
+            "default": null,
+            "values": [37, 40, 45, 50, 55, 60, 65],
+            "conditions": []
+          },
+          "corpus": {
+            "official": {
+              "values": { "40": 5 }
+            },
+            "member": {
+              "values": { "37": 5 }
+            }
+          },
+          "effective": {
+            "unit": "°C",
+            "min": 37,
+            "max": 65,
+            "step": null,
+            "default": null,
+            "values": [37, 40, 45, 50, 55, 60, 65],
+            "conditions": []
+          },
+          "notes": []
+        },
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 1800,
+            "max": 43200,
+            "step": 60,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "30-720 min, whole minutes only"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [43200, 43260],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 1800,
+            "max": 43200,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 3600, "max": 43200 },
+            "member": { "min": 2700, "max": 28800 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 1800,
+            "max": 43200,
+            "step": 60,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["MC4.0: 37-70 °C, 1-720 min, default 40 °C for 480 min."],
+      "evidence": [
+        "editor: MC3.0 table entry fermentation, temperature list 37/40-65, time type minutes 30-720",
+        "server: 66 °C and 43260 s stored unchanged"
+      ]
+    },
+    {
+      "id": "turbo",
+      "editorId": "turbo",
+      "label": { "de": "Turbo", "en": "Turbo" },
+      "devices": ["MC0.5", "MC1.1", "MC2.0", "MC3.0", "MC4.0"],
+      "editorOrder": 13,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "required",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "turbo" },
+      "corpus": { "officialSteps": 244, "memberSteps": 169 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 1,
+            "max": 20,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "dropdown of whole seconds 0-20; a fresh field reports valid at 0 without checking"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [0, 1, 20, 21],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 1,
+            "max": 20,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 1, "max": 12, "median": 2 },
+            "member": { "min": 1, "max": 20, "median": 4 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 1,
+            "max": 20,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "The step description is required and shown on the device.",
+        "Physical limits (liquid volume, temperature of the contents) are outside this file.",
+        "MC0.5 turbo has no parameter; MC4.0 allows 2-20 s, default 2 s."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry turbo, time 1-20 s, showDescription and requireDescription",
+        "server: 0 s and 21 s stored unchanged",
+        "corpus: official 1-12 s"
+      ]
+    },
+    {
+      "id": "rice_cooking",
+      "editorId": "riceCooking",
+      "label": { "de": "Reis kochen", "en": "Rice cooking" },
+      "devices": ["MC3.0"],
+      "editorOrder": 14,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "riceCooking" },
+      "corpus": { "officialSteps": 0, "memberSteps": 0 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 1200,
+            "max": 2400,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [1199, 1200, 2400, 2401],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 1200,
+            "max": 2400,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": null,
+          "effective": {
+            "unit": "s",
+            "min": 1200,
+            "max": 2400,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "No recipe in the corpus uses it, so there is no reference for quantities or setup."
+      ],
+      "evidence": [
+        "editor: MC3.0 table entry riceCooking, time 1200-2400 s",
+        "server: 1199 s and 2401 s stored unchanged"
+      ]
+    },
+    {
+      "id": "food_processor",
+      "editorId": "foodProcessor",
+      "label": { "de": "Food Processor", "en": "Food processor" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 15,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": {
+        "typeAccepted": null,
+        "note": "not part of any probe; the type exists in official and member recipes"
+      },
+      "assumed": {
+        "supported": true,
+        "smartRecipeType": "foodProcessor",
+        "note": "excluded unless MC_HAS_FOOD_PROCESSOR=true"
+      },
+      "corpus": { "officialSteps": 13, "memberSteps": 15 },
+      "effective": {
+        "allowed": true,
+        "requires": ["food_processor_attachment"]
+      },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 1,
+            "max": 300,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "server": null,
+          "assumed": {
+            "unit": "s",
+            "min": 1,
+            "max": 300,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 120, "max": 300 },
+            "member": { "min": 15, "max": 120 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 1,
+            "max": 300,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": [
+        "Needs the food processor attachment; the bridge offers it only when the deployment says the attachment is present.",
+        "MC4.0 adds speed 1-6 in half steps, default 4.5."
+      ],
+      "evidence": ["editor: MC3.0 table entry foodProcessor, time 1-300 s"]
+    },
+    {
+      "id": "ramp",
+      "editorId": "ramp",
+      "label": { "de": "Rampe", "en": "Speed ramp" },
+      "devices": ["MC2.0", "MC3.0", "MC4.0"],
+      "editorOrder": 16,
+      "memberVisible": false,
+      "payload": {
+        "deviceSettingsKeys": ["order", "speed", "temperature", "weight", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": [],
+        "note": "one deviceSettings entry per phase"
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true, "note": "two phases accepted from a member account" },
+      "assumed": { "supported": false, "note": "SmartRecipe has no speed ramps" },
+      "corpus": { "officialSteps": 60, "memberSteps": 0 },
+      "effective": {
+        "allowed": false,
+        "reason": "Editors only in every table, untested on the device for member recipes, and official recipes break the editor's 20 s phase limit."
+      },
+      "params": {
+        "phaseCount": {
+          "unit": "phases",
+          "editor": {
+            "unit": "phases",
+            "min": 1,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "sortable list of phases, no maximum"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [2],
+            "rejected": []
+          },
+          "assumed": null,
+          "corpus": {
+            "official": { "min": 3, "max": 7 },
+            "member": null
+          },
+          "effective": {
+            "unit": "phases",
+            "min": 1,
+            "max": null,
+            "step": null,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        },
+        "phaseTime": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 1,
+            "max": 20,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": [],
+            "note": "dropdown of whole seconds 0-20"
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [10, 20],
+            "rejected": []
+          },
+          "assumed": null,
+          "corpus": {
+            "official": { "min": 2, "max": 30, "note": "7 phases at 30 s" },
+            "member": null
+          },
+          "effective": {
+            "unit": "s",
+            "min": 1,
+            "max": 20,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        },
+        "phaseSpeed": {
+          "unit": "level",
+          "editor": {
+            "unit": "level",
+            "min": 1,
+            "max": 10,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [4, 8],
+            "rejected": []
+          },
+          "assumed": null,
+          "corpus": {
+            "official": { "min": 2, "max": 10, "temperature": 0 },
+            "member": null
+          },
+          "effective": {
+            "unit": "level",
+            "min": 1,
+            "max": 10,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["Official ramps climb in speed, for example 4 to 8, at 0 °C."],
+      "evidence": [
+        "editor: MC3.0 table entry ramp, adminOnly, per phase speed 1-10 and time 1-20 s",
+        "server: two phases stored from a member account",
+        "corpus: 60 official steps, 3-7 phases, phase time 2-30 s"
+      ]
+    },
+    {
+      "id": "puree",
+      "editorId": "puree",
+      "label": { "de": "Pürieren", "en": "Puree" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 17,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "puree" },
+      "corpus": { "officialSteps": 3, "memberSteps": 80 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 30,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "server": {
+            "rangeEnforced": false,
+            "clamped": false,
+            "accepted": [29, 30, 120, 121],
+            "rejected": []
+          },
+          "assumed": {
+            "unit": "s",
+            "min": 30,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 30, "max": 30 },
+            "member": { "min": 30, "max": 120, "median": 30 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 30,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["MC4.0: 1-300 s, default 120 s."],
+      "evidence": [
+        "editor: MC3.0 table entry puree, time 30-120 s",
+        "server: 29 s and 121 s stored unchanged"
+      ]
+    },
+    {
+      "id": "smoothie",
+      "editorId": "smoothie",
+      "label": { "de": "Smoothie", "en": "Smoothie" },
+      "devices": ["MC3.0", "MC4.0"],
+      "editorOrder": 18,
+      "memberVisible": true,
+      "payload": {
+        "deviceSettingsKeys": ["order", "time"],
+        "modeSettingKeys": null,
+        "deviceControlled": ["temperature", "speed"]
+      },
+      "stepDescription": "cleared",
+      "server": { "typeAccepted": true },
+      "assumed": { "supported": true, "smartRecipeType": "smoothie" },
+      "corpus": { "officialSteps": 4, "memberSteps": 19 },
+      "effective": { "allowed": true },
+      "params": {
+        "time": {
+          "unit": "s",
+          "editor": {
+            "unit": "s",
+            "min": 30,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "server": null,
+          "assumed": {
+            "unit": "s",
+            "min": 30,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "corpus": {
+            "official": { "min": 60, "max": 60 },
+            "member": { "min": 30, "max": 120, "median": 60 }
+          },
+          "effective": {
+            "unit": "s",
+            "min": 30,
+            "max": 120,
+            "step": 1,
+            "default": null,
+            "values": null,
+            "conditions": []
+          },
+          "notes": []
+        }
+      },
+      "notes": ["MC4.0: 1-120 s, default 45 s."],
+      "evidence": ["editor: MC3.0 table entry smoothie, time 30-120 s"]
+    }
+  ],
+  "otherDeviceModes": [
+    {
+      "id": "kneading_prove_dough",
+      "editorId": "kneadingProveDough",
+      "label": { "de": "Teig gehen lassen", "en": "Proving dough" },
+      "devices": ["MC4.0"],
+      "editor": "37-40 °C, 30-60 min, default 37 °C for 45 min",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "roasting_gentle",
+      "editorId": "roastingGentle",
+      "label": { "de": "Sanft anbraten", "en": "Gentle roast" },
+      "devices": ["MC4.0"],
+      "editor": "100-145 °C in 5-degree steps, 1-1200 s, default 145 °C for 420 s",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "roasting_intense",
+      "editorId": "roastingIntense",
+      "label": { "de": "Intensiv anbraten", "en": "Intense roast" },
+      "devices": ["MC4.0"],
+      "editor": "100-165 °C in 5-degree steps, 1-1200 s, default 165 °C for 420 s",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "heat_water",
+      "editorId": "heatWater",
+      "label": { "de": "Wasser erhitzen", "en": "Heat water" },
+      "devices": ["MC4.0"],
+      "editor": "37-100 °C, no time, default 100 °C",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "heating_up",
+      "editorId": "heatingUp",
+      "label": { "de": "Aufwärmen", "en": "Heating up" },
+      "devices": ["MC4.0"],
+      "editor": "37-90 °C, 0-20 min, speed 0.5-2, default 70 °C, speed 1",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "open_cooking",
+      "editorId": "openCooking",
+      "label": { "de": "Offenes Kochen", "en": "Open cooking" },
+      "devices": ["MC4.0"],
+      "editor": "37-165 °C, 1-120 min, default 100 °C for 15 min",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "citrus_juicer",
+      "editorId": "citrusJuicer",
+      "label": { "de": "Zitruspresse", "en": "Citrus juicer" },
+      "devices": ["MC4.0"],
+      "editor": "1-1200 s, default 300 s, fixed speed 0.5 clockwise, citrus juicer module",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "air_fryer",
+      "editorId": "airFryer",
+      "label": { "de": "Heißluftfritteuse", "en": "Air fryer" },
+      "devices": ["MC4.0"],
+      "editor": "1-3600 s, fixed 200 °C, air fryer module",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    },
+    {
+      "id": "contact_grill",
+      "editorId": "contactGrill",
+      "label": { "de": "Kontaktgrill", "en": "Contact grill" },
+      "devices": ["MC4.0"],
+      "editor": "1-3600 s, fixed 180 °C, contact grill module",
+      "server": null,
+      "effective": { "allowed": false, "reason": "not an MC3.0 program" }
+    }
+  ],
+  "openQuestions": [
+    "What does the MC3.0 do with values outside the editor limits?",
+    "Does the device play kneading and ramp from a member recipe?",
+    "Does duration on a text step become a timer on the device?",
+    "Which program values can be changed on the device before starting, and which defaults does it show?",
+    "Does the server reject an official category from a member account?"
+  ]
+}

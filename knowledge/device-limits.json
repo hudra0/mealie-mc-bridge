@@ -1,0 +1,660 @@
+{
+  "description": "Recommended ranges per mode: corpus observation, SmartRecipe's assumed limits, the member editor's limits, and the recommended range (the stricter of all of them). Hard limits live in device-programs.json.",
+  "version": 1,
+  "source": "corpus 2026-10",
+  "policy": {
+    "hardLimits": "knowledge/device-programs.json (modes[].params[].effective) is the single source of truth for hard limits: the validator rejects values outside it. This file holds no hard limits.",
+    "recommended": "For each limit the stricter of: the corpus range over all 2221 recipes (member recipes went through the same device, so this shows what the device runs), SmartRecipe's assumed limit, the member editor's limit and the hard limit from knowledge/device-programs.json. Ranges intersect; value lists keep the grid values inside the intersected range. Minimum times and weights come from official recipes when a mode has at least 30 official steps (member recipes contain stray values such as a 2 s roasting step); maximums come from all recipes. Every recommended range lies inside the hard limit. The validator may warn outside the recommended range; it does not reject on it.",
+    "lowEvidence": "Modes with fewer than 30 corpus steps have lowEvidence: true. Their corpus range is a small sample, not a device limit, so their recommended range is a weak hint.",
+    "serverDoesNotCheck": "The recipe API stores out-of-range numbers unchanged (device-programs.json server layer), so the bridge validates everything itself.",
+    "relation": "knowledge/device-programs.json holds the hard limits, the editor and server layers, labels and payload keys. This file adds the corpus ranges, the SmartRecipe comparison and the recommended ranges.",
+    "missingInSmartRecipe": "kneading and ramp: official recipes only, not offered by the member editor on MC3.0. The server stores them from a member account; whether the device plays them is untested. The converter avoids them.",
+    "missingInCorpus": "rice_cooking has no corpus step."
+  },
+  "temperatureGrids": {
+    "heating": [
+      0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130
+    ],
+    "lowTemperature": [37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
+    "fermentation": [37, 40, 45, 50, 55, 60, 65]
+  },
+  "rules": [
+    {
+      "id": "speed_max_heated",
+      "rule": "customized: speed <= 3 when temperature > 0",
+      "value": 3,
+      "severity": "error",
+      "sources": ["SmartRecipe", "editor"],
+      "corpus": "1 of 2414 heated manual steps exceed it (one official step at 50 °C, speed 4)."
+    },
+    {
+      "id": "speed_max_reverse",
+      "rule": "customized: speed <= 3 when reverse is true",
+      "value": 3,
+      "severity": "error",
+      "sources": ["SmartRecipe", "editor"],
+      "corpus": "5 of 1371 reverse steps exceed it (all at 0 °C, speeds 4, 5 and 8)."
+    },
+    {
+      "id": "speed_max_whisk",
+      "rule": "speed <= 4 while the whisk attachment (Rühraufsatz) is fitted",
+      "value": 4,
+      "severity": "error",
+      "sources": ["official recipe guide", "SmartRecipe prompt"],
+      "corpus": "92 % of 474 working steps with the whisk fitted run at speed 4 or lower; the 30 above are probably missed removals in the text parser."
+    },
+    {
+      "id": "time_max_fast",
+      "rule": "customized: time <= 600 s when speed >= 6",
+      "value": 600,
+      "severity": "error",
+      "sources": ["device-programs.json sanity rule (MC4.0 and MC0.5 editor tables)"],
+      "corpus": "The longest of 1874 manual steps at speed 6 or more runs 600 s."
+    },
+    {
+      "id": "no_turbo_with_whisk",
+      "rule": "no turbo step while the whisk is fitted",
+      "severity": "error",
+      "sources": ["SmartRecipe prompt"]
+    },
+    {
+      "id": "turbo_content_temperature",
+      "rule": "no turbo on contents hotter than 60 °C",
+      "value": 60,
+      "severity": "error",
+      "sources": ["SmartRecipe prompt"],
+      "corpus": "Turbo steps always store 0 °C; 68 % sit in the first third of the recipe, before any heating."
+    },
+    {
+      "id": "temperature_grid",
+      "rule": "customized and roasting temperatures lie on the heating grid (0, 37, 40-130 in steps of 5)",
+      "severity": "error",
+      "sources": ["SmartRecipe", "editor"],
+      "corpus": "No corpus temperature is off the grid or above 130 °C."
+    },
+    {
+      "id": "single_phase",
+      "rule": "every mode except ramp has exactly one settings phase",
+      "severity": "error",
+      "corpus": "6850 of 6850 manual steps have one phase."
+    },
+    {
+      "id": "no_speed_on_programs",
+      "rule": "program modes store no speed and no reverse flag; reverse exists only on customized",
+      "severity": "error",
+      "corpus": "All program steps have speed null and reverse false; 1371 manual steps use reverse."
+    },
+    {
+      "id": "turbo_flag",
+      "rule": "the turbo flag is true on turbo steps and false everywhere else",
+      "severity": "error",
+      "corpus": "413 of 413 turbo steps carry the flag; no other step does."
+    },
+    {
+      "id": "step_text",
+      "rule": "step title 1-80 characters; description 1-240 characters on text, scale and turbo steps, empty on every other mode",
+      "severity": "error",
+      "sources": ["editor", "SmartRecipe"]
+    },
+    {
+      "id": "mass_limits",
+      "rule": "bowl, flour, steaming-water and basket limits live in timing-model.json under massLimits"
+    }
+  ],
+  "apiMapping": {
+    "readApi": "GET /api/v2/recipes/{id}: step.deviceSetting = {mode, reverse, turbo, size, texture, cleaningMode, settings[{order, speed, temperature, time, weight}]}",
+    "upload": "POST/PUT api/v3/auth/user/recipes: step.mode = {type, modeSetting, deviceSettings[{order, temperature, time, speed, clockwise}]}",
+    "reverseToClockwise": "clockwise = !reverse (reverse true means Linkslauf)",
+    "modeSetting": "cooking_eggs: {size, texture}; precleaning: {duration} (the read API calls it cleaningMode)",
+    "textOnDevice": "Only text, scale and turbo steps show a description on the device; other program steps show their title only."
+  },
+  "modes": {
+    "customized": {
+      "parameters": ["temperature", "time", "speed", "reverse"],
+      "corpus": {
+        "all": {
+          "steps": 6850,
+          "recipes": 2067,
+          "temperature": {
+            "min": 0,
+            "max": 130,
+            "values": [
+              0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125,
+              130
+            ]
+          },
+          "timeSeconds": { "min": 2, "max": 5940 },
+          "speed": { "min": 1, "max": 10 }
+        },
+        "official": {
+          "steps": 4119,
+          "recipes": 1064,
+          "temperature": {
+            "min": 0,
+            "max": 130,
+            "values": [
+              0, 37, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 120, 125, 130
+            ]
+          },
+          "timeSeconds": { "min": 2, "max": 5940 },
+          "speed": { "min": 1, "max": 10 }
+        }
+      },
+      "smartRecipe": {
+        "temperature": {
+          "values": [
+            0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130
+          ]
+        },
+        "timeSeconds": { "min": 1, "max": 5940 },
+        "speed": { "min": 0, "max": 10 }
+      },
+      "editor": {
+        "temperature": {
+          "values": [
+            0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130
+          ]
+        },
+        "timeSeconds": { "min": 1, "max": 5940 },
+        "speed": { "min": 1, "max": 10 }
+      },
+      "recommended": {
+        "temperature": {
+          "values": [
+            0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130
+          ]
+        },
+        "timeSeconds": { "min": 2, "max": 5940 },
+        "speed": {
+          "min": 1,
+          "max": 10,
+          "maxWhenHeated": 3,
+          "maxWithReverse": 3,
+          "conditions": ["speed >= 6: time at most 600 s"]
+        }
+      },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": [
+        "Speed at most 3 when the temperature is above 0 or in reverse (rules speed_max_heated, speed_max_reverse).",
+        "Speed 0 is allowed by SmartRecipe as a fake waiting step but never occurs in the corpus and the editor starts at 1; a pause is a text step.",
+        "Every manual step in the corpus has exactly one settings phase; the turbo flag is never set on manual steps.",
+        "SmartRecipe: speed at most 3 when heating or in reverse."
+      ]
+    },
+    "scale": {
+      "parameters": ["weight"],
+      "corpus": {
+        "all": {
+          "steps": 11945,
+          "recipes": 2190,
+          "temperature": { "values": [0] },
+          "weightGrams": { "min": 5, "max": 2500 }
+        },
+        "official": {
+          "steps": 7026,
+          "recipes": 1093,
+          "temperature": { "values": [0] },
+          "weightGrams": { "min": 5, "max": 2500 }
+        }
+      },
+      "smartRecipe": { "weightGrams": { "min": 5, "max": 5000 } },
+      "editor": { "weightGrams": { "min": 5, "max": 5000 } },
+      "recommended": { "weightGrams": { "min": 5, "max": 2500 } },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": [
+        "The editor and SmartRecipe allow up to 5000 g (the hard limit); the corpus maximum is 2500 g, which sets the recommended maximum. Below 5 g the corpus never weighs (amounts go into Tl, Prise or Msp.)."
+      ]
+    },
+    "roasting": {
+      "parameters": ["temperature", "time"],
+      "corpus": {
+        "all": {
+          "steps": 706,
+          "recipes": 463,
+          "temperature": {
+            "min": 0,
+            "max": 130,
+            "values": [0, 80, 85, 90, 95, 100, 110, 115, 120, 125, 130]
+          },
+          "timeSeconds": { "min": 2, "max": 840 }
+        },
+        "official": {
+          "steps": 399,
+          "recipes": 275,
+          "temperature": { "min": 0, "max": 130, "values": [0, 100, 110, 115, 120, 130] },
+          "timeSeconds": { "min": 60, "max": 840 }
+        }
+      },
+      "smartRecipe": {
+        "temperature": {
+          "values": [
+            0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130
+          ]
+        },
+        "timeSeconds": { "min": 0, "max": 840 }
+      },
+      "editor": {
+        "temperature": {
+          "values": [
+            0, 37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130
+          ]
+        },
+        "timeSeconds": { "min": 0, "max": 840 }
+      },
+      "recommended": {
+        "temperature": { "values": [100, 105, 110, 115, 120, 125, 130] },
+        "timeSeconds": { "min": 60, "max": 840 }
+      },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": [
+        "The temperature starts at 100 °C (hard limit in device-programs.json): official recipes roast at 100-130 °C (398 of 399 steps). Member recipes also roast at 80-95 °C (13 steps) and 4 steps store 0 °C, which looks like data errors.",
+        "The editor and SmartRecipe allow 0 s; the minimum is the official minimum of 60 s (member recipes go down to 2 s)."
+      ]
+    },
+    "turbo": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 413,
+          "recipes": 335,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 1, "max": 20 }
+        },
+        "official": {
+          "steps": 244,
+          "recipes": 198,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 1, "max": 12 }
+        }
+      },
+      "smartRecipe": { "timeSeconds": { "min": 1, "max": 20 } },
+      "editor": { "timeSeconds": { "min": 1, "max": 20 } },
+      "recommended": { "timeSeconds": { "min": 1, "max": 20 } },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": []
+    },
+    "steaming": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 309,
+          "recipes": 275,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 120, "max": 3600 }
+        },
+        "official": {
+          "steps": 240,
+          "recipes": 214,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 180, "max": 3600 }
+        }
+      },
+      "smartRecipe": { "timeSeconds": { "min": 0, "max": 3600 } },
+      "editor": { "timeSeconds": { "min": 0, "max": 3600 } },
+      "recommended": { "timeSeconds": { "min": 180, "max": 3600 } },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": [
+        "The API stores temperature 0; the device controls the heat.",
+        "SmartRecipe: no temperature."
+      ]
+    },
+    "kneading": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 188,
+          "recipes": 182,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 45, "max": 120 }
+        },
+        "official": {
+          "steps": 188,
+          "recipes": 182,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 45, "max": 120 }
+        }
+      },
+      "smartRecipe": null,
+      "editor": { "timeSeconds": { "min": 45, "max": 120 } },
+      "recommended": { "timeSeconds": { "min": 45, "max": 120 } },
+      "lowEvidence": false,
+      "memberEditor": false,
+      "notes": [
+        "Official recipes only (188 steps, 45-120 s). The member editor does not offer it on MC3.0; member recipes use the three kneading_*_dough programs instead.",
+        "Not in SmartRecipe's mapping."
+      ]
+    },
+    "kneading_solid_dough": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 171,
+          "recipes": 147,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 45, "max": 240 }
+        },
+        "official": null
+      },
+      "smartRecipe": { "timeSeconds": { "min": 45, "max": 240 } },
+      "editor": { "timeSeconds": { "min": 45, "max": 240 } },
+      "recommended": { "timeSeconds": { "min": 45, "max": 240 } },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": []
+    },
+    "kneading_soft_dough": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 162,
+          "recipes": 140,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 45, "max": 240 }
+        },
+        "official": null
+      },
+      "smartRecipe": { "timeSeconds": { "min": 45, "max": 240 } },
+      "editor": { "timeSeconds": { "min": 45, "max": 240 } },
+      "recommended": { "timeSeconds": { "min": 45, "max": 240 } },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": []
+    },
+    "kneading_liquid_dough": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 16,
+          "recipes": 15,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 45, "max": 180 }
+        },
+        "official": null
+      },
+      "smartRecipe": { "timeSeconds": { "min": 45, "max": 360 } },
+      "editor": { "timeSeconds": { "min": 45, "max": 360 } },
+      "recommended": { "timeSeconds": { "min": 45, "max": 180 } },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": [
+        "SmartRecipe and the editor allow up to 360 s; the corpus maximum is 180 s over 16 steps."
+      ]
+    },
+    "puree": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 83,
+          "recipes": 76,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 30, "max": 120 }
+        },
+        "official": {
+          "steps": 3,
+          "recipes": 3,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 30, "max": 30 }
+        }
+      },
+      "smartRecipe": { "timeSeconds": { "min": 30, "max": 120 } },
+      "editor": { "timeSeconds": { "min": 30, "max": 120 } },
+      "recommended": { "timeSeconds": { "min": 30, "max": 120 } },
+      "lowEvidence": false,
+      "memberEditor": true,
+      "notes": []
+    },
+    "smoothie": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 23,
+          "recipes": 17,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 30, "max": 120 }
+        },
+        "official": {
+          "steps": 4,
+          "recipes": 3,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 60, "max": 60 }
+        }
+      },
+      "smartRecipe": { "timeSeconds": { "min": 30, "max": 120 } },
+      "editor": { "timeSeconds": { "min": 30, "max": 120 } },
+      "recommended": { "timeSeconds": { "min": 30, "max": 120 } },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": []
+    },
+    "ramp": {
+      "parameters": ["phases[{speed, time}]"],
+      "corpus": {
+        "all": {
+          "steps": 60,
+          "recipes": 54,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 2, "max": 30 },
+          "speed": { "min": 2, "max": 10 },
+          "phases": { "min": 3, "max": 7 },
+          "stepTimeSeconds": { "min": 10, "max": 120 }
+        },
+        "official": {
+          "steps": 60,
+          "recipes": 54,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 2, "max": 30 },
+          "speed": { "min": 2, "max": 10 },
+          "phases": { "min": 3, "max": 7 },
+          "stepTimeSeconds": { "min": 10, "max": 120 }
+        }
+      },
+      "smartRecipe": null,
+      "editor": {
+        "phaseTimeSeconds": { "min": 1, "max": 20 },
+        "phaseSpeed": { "min": 1, "max": 10 }
+      },
+      "recommended": {
+        "phases": { "min": 3, "max": 7 },
+        "phaseTimeSeconds": { "min": 2, "max": 20 },
+        "phaseSpeed": { "min": 2, "max": 10 },
+        "temperature": { "values": [0] }
+      },
+      "lowEvidence": false,
+      "memberEditor": false,
+      "notes": [
+        "Official recipes only (60 steps, 262 phases). The member editor does not offer it on MC3.0.",
+        "Official ramps contain phases of up to 30 s although the editor limits a phase to 20 s; the limit follows the editor.",
+        "Speeds rise phase by phase (59 of 60 corpus paths ascend, for example 4>5>6>7>8), about 10 s per phase (p10 4, p90 15), 10-120 s in total, always at 0 °C.",
+        "Not in SmartRecipe's mapping."
+      ]
+    },
+    "food_processor": {
+      "parameters": ["time"],
+      "corpus": {
+        "all": {
+          "steps": 28,
+          "recipes": 24,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 15, "max": 300 }
+        },
+        "official": {
+          "steps": 13,
+          "recipes": 12,
+          "temperature": { "values": [0] },
+          "timeSeconds": { "min": 120, "max": 300 }
+        }
+      },
+      "smartRecipe": { "timeSeconds": { "min": 1, "max": 300 } },
+      "editor": { "timeSeconds": { "min": 1, "max": 300 } },
+      "recommended": { "timeSeconds": { "min": 15, "max": 300 } },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": [
+        "Needs the food processor attachment; offer it only when the installation says it is present.",
+        "SmartRecipe: excluded unless the installation sets MC_HAS_FOOD_PROCESSOR=true."
+      ]
+    },
+    "sous_vide": {
+      "parameters": ["temperature", "time"],
+      "corpus": {
+        "all": {
+          "steps": 7,
+          "recipes": 6,
+          "temperature": { "min": 50, "max": 85, "values": [50, 55, 60, 70, 85] },
+          "timeSeconds": { "min": 1500, "max": 5400 }
+        },
+        "official": {
+          "steps": 6,
+          "recipes": 5,
+          "temperature": { "min": 50, "max": 85, "values": [50, 55, 60, 70, 85] },
+          "timeSeconds": { "min": 1500, "max": 5400 }
+        }
+      },
+      "smartRecipe": {
+        "temperature": { "range": { "min": 40, "max": 85 }, "integer": true },
+        "timeSeconds": { "min": 900, "max": 43200 }
+      },
+      "editor": {
+        "temperature": { "range": { "min": 40, "max": 85 }, "integer": true },
+        "timeSeconds": { "min": 900, "max": 43200 }
+      },
+      "recommended": {
+        "temperature": { "range": { "min": 50, "max": 85 }, "integer": true },
+        "timeSeconds": { "min": 1500, "max": 5400 }
+      },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": []
+    },
+    "slow_cooking": {
+      "parameters": ["temperature", "time"],
+      "corpus": {
+        "all": {
+          "steps": 8,
+          "recipes": 8,
+          "temperature": { "min": 70, "max": 95, "values": [70, 75, 90, 95] },
+          "timeSeconds": { "min": 1800, "max": 14400 }
+        },
+        "official": {
+          "steps": 4,
+          "recipes": 4,
+          "temperature": { "min": 90, "max": 90, "values": [90] },
+          "timeSeconds": { "min": 10800, "max": 14400 }
+        }
+      },
+      "smartRecipe": {
+        "temperature": { "values": [37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95] },
+        "timeSeconds": { "min": 900, "max": 28800 }
+      },
+      "editor": {
+        "temperature": { "values": [37, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95] },
+        "timeSeconds": { "min": 900, "max": 28800 }
+      },
+      "recommended": {
+        "temperature": { "values": [70, 75, 80, 85, 90, 95] },
+        "timeSeconds": { "min": 1800, "max": 14400 }
+      },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": []
+    },
+    "fermentation": {
+      "parameters": ["temperature", "time"],
+      "corpus": {
+        "all": {
+          "steps": 10,
+          "recipes": 10,
+          "temperature": { "min": 37, "max": 40, "values": [37, 40] },
+          "timeSeconds": { "min": 2700, "max": 43200 }
+        },
+        "official": {
+          "steps": 5,
+          "recipes": 5,
+          "temperature": { "min": 40, "max": 40, "values": [40] },
+          "timeSeconds": { "min": 3600, "max": 43200 }
+        }
+      },
+      "smartRecipe": {
+        "temperature": { "values": [37, 40, 45, 50, 55, 60, 65] },
+        "timeSeconds": { "min": 1800, "max": 43200 }
+      },
+      "editor": {
+        "temperature": { "values": [37, 40, 45, 50, 55, 60, 65] },
+        "timeSeconds": { "min": 1800, "max": 43200 }
+      },
+      "recommended": {
+        "temperature": { "values": [37, 40] },
+        "timeSeconds": { "min": 2700, "max": 43200 }
+      },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": []
+    },
+    "rice_cooking": {
+      "parameters": ["time"],
+      "corpus": { "all": null, "official": null },
+      "smartRecipe": { "timeSeconds": { "min": 1200, "max": 2400 } },
+      "editor": { "timeSeconds": { "min": 1200, "max": 2400 } },
+      "recommended": { "timeSeconds": { "min": 1200, "max": 2400 } },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": [
+        "No corpus step: no reference for quantities or setup.",
+        "No corpus step; the recommended range comes from SmartRecipe, the editor and device-programs.json."
+      ]
+    },
+    "cooking_eggs": {
+      "parameters": ["modeSetting.size", "modeSetting.texture"],
+      "corpus": {
+        "all": {
+          "steps": 3,
+          "recipes": 3,
+          "modeSetting": { "size": { "medium": 3 }, "texture": { "hard": 2, "soft": 1 } }
+        },
+        "official": {
+          "steps": 1,
+          "recipes": 1,
+          "modeSetting": { "size": { "medium": 1 }, "texture": { "hard": 1 } }
+        }
+      },
+      "smartRecipe": {
+        "modeSetting": {
+          "size": ["small", "medium", "large"],
+          "texture": ["soft", "waxy_soft", "hard"]
+        }
+      },
+      "editor": {
+        "modeSetting": {
+          "size": ["small", "medium", "large"],
+          "texture": ["soft", "waxy_soft", "hard"]
+        }
+      },
+      "recommended": { "modeSetting": { "size": ["medium"], "texture": ["hard", "soft"] } },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": ["SmartRecipe: no deviceSettings; durations are display-only."]
+    },
+    "precleaning": {
+      "parameters": ["modeSetting.duration"],
+      "corpus": {
+        "all": {
+          "steps": 17,
+          "recipes": 13,
+          "modeSetting": { "cleaningMode": { "short": 14, "long": 3 } }
+        },
+        "official": null
+      },
+      "smartRecipe": { "modeSetting": { "duration": ["short", "long"] } },
+      "editor": { "modeSetting": { "duration": ["short", "long"] } },
+      "recommended": { "modeSetting": { "duration": ["short", "long"] } },
+      "lowEvidence": true,
+      "memberEditor": true,
+      "notes": ["SmartRecipe: no deviceSettings."]
+    }
+  }
+}

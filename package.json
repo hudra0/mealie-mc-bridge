@@ -23,7 +23,7 @@
     "start": "node dist/main.js",
     "corpus:crawl": "tsx scripts/corpus/crawl.ts",
     "corpus:normalize": "tsx scripts/corpus/normalize.ts",
-    "corpus:analyze": "tsx scripts/corpus/normalize.ts && tsx scripts/corpus/analyze-modes.ts && tsx scripts/corpus/analyze-techniques.ts && tsx scripts/corpus/analyze-structure.ts && tsx scripts/corpus/analyze-ingredients.ts && tsx scripts/corpus/analyze-timing.ts",
+    "corpus:analyze": "tsx scripts/corpus/analyze.ts",
     "corpus:analyze-modes": "tsx scripts/corpus/analyze-modes.ts",
     "corpus:analyze-techniques": "tsx scripts/corpus/analyze-techniques.ts",
     "corpus:analyze-ingredients": "tsx scripts/corpus/analyze-ingredients.ts",

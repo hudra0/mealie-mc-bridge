@@ -346,7 +346,7 @@ const extraNotes: Record<string, string[]> = {
     "Every manual step in the corpus has exactly one settings phase; the turbo flag is never set on manual steps.",
   ],
   scale: [
-    "The editor and SmartRecipe allow up to 5000 g (the hard limit); the corpus maximum is 2500 g, which sets the recommended maximum. Below 5 g the corpus never weighs (amounts go into Tl, Prise or Msp.).",
+    "The editor and SmartRecipe allow up to 5000 g (the hard limit); the corpus maximum is 2500 g, which sets the recommended maximum. Below 5 g the corpus never weighs (amounts go into teaspoons, pinches or knife tips).",
   ],
   roasting: [
     "The temperature starts at 100 °C (hard limit in device-programs.json): official recipes roast at 100-130 °C (398 of 399 steps). Member recipes also roast at 80-95 °C (13 steps) and 4 steps store 0 °C, which looks like data errors.",
@@ -472,7 +472,7 @@ export function buildDeviceLimits(input: DeviceLimitsInput) {
       },
       {
         id: "speed_max_whisk",
-        rule: "speed <= 4 while the whisk attachment (Rühraufsatz) is fitted",
+        rule: "speed <= 4 while the butterfly whisk attachment is fitted",
         value: 4,
         severity: "error",
         sources: ["official recipe guide", "SmartRecipe prompt"],

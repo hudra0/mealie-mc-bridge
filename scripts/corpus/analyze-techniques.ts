@@ -24,6 +24,7 @@ import {
   type Technique,
 } from "./technique-rules.js";
 import type { NormalizedRecipe, NormalizedStep } from "./types.js";
+import { parseCorpusArgs } from "./locale.js";
 
 // ---------------------------------------------------------------------------
 // Statistics helpers
@@ -498,5 +499,6 @@ function isMain(): boolean {
 }
 
 if (isMain()) {
-  run(process.env.CORPUS_DIR ?? path.join("local", "corpus"), process.argv.slice(2));
+  const args = parseCorpusArgs(process.argv.slice(2));
+  run(args.corpusDir, args.rest);
 }

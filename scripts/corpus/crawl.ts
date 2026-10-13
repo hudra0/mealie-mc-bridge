@@ -3,8 +3,9 @@
 // Output: $CORPUS_DIR/index.jsonl          one recipe summary per line (all pages)
 //         $CORPUS_DIR/details/<id>.json    one recipe detail per file
 //         $CORPUS_DIR/crawl.log            progress and failures
-// Default CORPUS_DIR: local/corpus (gitignored). The recipes are copyrighted: keep the raw
-// crawl private. Only derived numbers and rules in your own words belong in knowledge/.
+// Default CORPUS_DIR: local/corpus for de-DE, local/corpus/<locale> for every other locale
+// (gitignored). The recipes are copyrighted: keep the raw crawl private. Only derived
+// numbers and rules in your own words belong in knowledge/.
 //
 // The crawler sends one request per second (DELAY_MS, never below 1000), backs off on HTTP 429
 // and 5xx, and resumes: a finished index is reused and details already on disk are skipped.
@@ -13,6 +14,7 @@
 // Environment: CORPUS_DIR, DEVICE (default MC3.0, the Monsieur Cuisine smart),
 //              LOCALE (default de-DE), DELAY_MS (default 1000).
 // Run: npm run corpus:crawl   (about 40 minutes for 2,200 recipes)
+//      npm run corpus:crawl -- --locale en-US   (--locale wins over LOCALE)
 
 import { randomUUID } from "node:crypto";
 import {
@@ -28,6 +30,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { parseCorpusArgs } from "./locale.js";
 
 export const API_BASE = "https://mc-api.tecpal.com";
 // The website sends this fixed value with every API call.
@@ -41,15 +44,20 @@ export interface CrawlOptions {
   delayMs: number;
 }
 
-export function parseOptions(env: Record<string, string | undefined>): CrawlOptions {
+export function parseOptions(
+  env: Record<string, string | undefined>,
+  argv: readonly string[] = [],
+): CrawlOptions {
   const delay = env.DELAY_MS === undefined ? MIN_DELAY_MS : Number(env.DELAY_MS);
   if (!Number.isFinite(delay)) throw new Error(`DELAY_MS is not a number: ${env.DELAY_MS}`);
   if (delay < MIN_DELAY_MS)
     throw new Error(`DELAY_MS must be at least ${MIN_DELAY_MS}, got ${delay}`);
+  const args = parseCorpusArgs(argv, env, env.LOCALE ?? "de-DE");
+  if (args.rest.length > 0) throw new Error(`unknown argument: ${args.rest.join(" ")}`);
   return {
-    corpusDir: env.CORPUS_DIR ?? path.join("local", "corpus"),
+    corpusDir: args.corpusDir,
     device: env.DEVICE ?? "MC3.0",
-    locale: env.LOCALE ?? "de-DE",
+    locale: args.locale,
     delayMs: delay,
   };
 }
@@ -189,7 +197,7 @@ function isMain(): boolean {
 if (isMain()) {
   let options: CrawlOptions;
   try {
-    options = parseOptions(process.env);
+    options = parseOptions(process.env, process.argv.slice(2));
   } catch (e) {
     console.error(`corpus:crawl: ${(e as Error).message}`);
     process.exit(2);

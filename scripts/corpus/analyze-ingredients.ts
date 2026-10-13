@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ingredientKeys, normalizeUnit, parseAmount } from "./normalize.js";
 import type { NormalizedIngredient, NormalizedRecipe } from "./types.js";
+import { parseCorpusArgs } from "./locale.js";
 
 // ---------------------------------------------------------------------------
 // Small statistics helpers
@@ -1588,5 +1589,5 @@ function isMain(): boolean {
 }
 
 if (isMain()) {
-  run(process.env.CORPUS_DIR ?? path.join("local", "corpus"));
+  run(parseCorpusArgs(process.argv.slice(2)).corpusDir);
 }

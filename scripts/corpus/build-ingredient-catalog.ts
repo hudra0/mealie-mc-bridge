@@ -1,5 +1,6 @@
-// Builds knowledge/ingredient-catalog.json: every ingredient name that published recipes
-// link to a systemIngredientId, with the id they use most and the others as alternatives.
+// Builds knowledge/locales/<locale>/ingredient-catalog.json: every ingredient name that
+// published recipes of that locale link to a systemIngredientId, with the id they use most
+// and the others as alternatives.
 //
 // Input:  $CORPUS_DIR/derived/recipes.jsonl (names, ids and source per recipe), falling back
 //         to $CORPUS_DIR/details/<id>.json when the normalizer has not run. Categories are
@@ -21,7 +22,11 @@ import {
 } from "../../src/ingredients/catalog.js";
 import type { NormalizedRecipe } from "./types.js";
 
-export const CATALOG_GENERATED_FROM = "published Monsieur Cuisine recipes (MC Smart, de-DE)";
+// Where a catalog comes from, per locale.
+export function catalogGeneratedFrom(locale: string): string {
+  return `published Monsieur Cuisine recipes (MC Smart, ${locale})`;
+}
+export const CATALOG_GENERATED_FROM = catalogGeneratedFrom("de-DE");
 export const OFFICIAL_WEIGHT = 3;
 // A name enters the catalog when at least this many official recipes, or this many member
 // recipes, use it. A name from a single member recipe is mostly free text ("Eigelb und 2 El
@@ -63,6 +68,7 @@ function bump<K>(map: Map<K, Counts>, key: K, official: boolean) {
 export function buildIngredientCatalog(
   recipes: readonly CatalogRecipe[],
   categories: ReadonlyMap<number, string | null> = new Map(),
+  locale = "de-DE",
 ): IngredientCatalogFile {
   const groups = new Map<
     string,
@@ -130,7 +136,7 @@ export function buildIngredientCatalog(
     });
   }
   entries.sort((a, b) => b.officialRecipes - a.officialRecipes || compareText(a.name, b.name));
-  return { generatedFrom: CATALOG_GENERATED_FROM, entries };
+  return { generatedFrom: catalogGeneratedFrom(locale), entries };
 }
 
 interface DetailIngredient extends CatalogIngredient {

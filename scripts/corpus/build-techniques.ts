@@ -1,8 +1,11 @@
 // Builds knowledge/techniques.json: cooking techniques for the converter, each with the
 // recommended device setting, alternatives seen in the corpus, structure rules and evidence.
 //
-// Hand-written technique metadata (labels, aliases, selection rules, structure notes in our
-// own words) is merged with numbers from the corpus analysis:
+// Hand-written technique metadata (labels, selection rules, structure notes in our own words)
+// is merged with numbers from the corpus analysis. The wording per language (aliases) lives
+// in the locale packs, knowledge/locales/<locale>/technique-aliases.json; structure notes name
+// standard phrases and units by placeholder ({{phrase:pushDown}}, {{unit:teaspoon}}), which
+// the converter fills from the pack of the output language. Inputs:
 //   $CORPUS_DIR/derived/steps.jsonl            (corpus:normalize)
 //   $CORPUS_DIR/derived/technique-steps.jsonl  (corpus:analyze-techniques)
 //   $CORPUS_DIR/derived/timing.json            (corpus:analyze-timing)
@@ -170,8 +173,6 @@ type Cup = "in" | "out" | "either" | "n/a";
 interface Spec {
   id: string;
   label: string;
-  de: string[];
-  en: string[];
   classes: string[];
   select: (r: Row) => boolean;
   selection: string;
@@ -205,7 +206,7 @@ const chopSel = (what: string) =>
   `manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names ${what}`;
 
 const pushDownNote =
-  'Text step after the step: "mit dem Spatel nach unten schieben" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo).';
+  'Text step after the step: "{{phrase:pushDown}}" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo).';
 const cupInNote =
   "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237).";
 
@@ -213,18 +214,16 @@ const specs: Spec[] = [
   {
     id: "weigh_ingredient",
     label: "Weigh an ingredient into the bowl with the built-in scale",
-    de: ["abwiegen", "einwiegen", "in den Mixbehälter geben", "zugeben", "dazugeben"],
-    en: ["weigh", "add", "put in the bowl"],
     classes: ["any"],
     select: () => false,
     selection: "scale mode",
     mode: "scale",
     cup: "n/a",
     structure: [
-      'One scale step per ingredient added by weight; the title starts with amount and name, for example "200 g Wasser" (78.7 % of official scale titles start with "<N> g").',
+      'One scale step per ingredient added by weight; the title starts with amount and name, for example "{{phrase:scaleExample}}" (78.7 % of official scale titles start with "<N> g").',
       "74.3 % of scale steps weigh exactly the gram amount of the one ingredient they name; split an ingredient across two scale steps only when it goes in at two points of the recipe.",
       "The text step right before a scale step names the same ingredient in only 3.2 % of cases: it prepares something else (cutting, fitting an accessory).",
-      "Amounts below 5 g never go on the scale; write them in a text step in Tl, Prise or Msp.",
+      "Amounts below 5 g never go on the scale; write them in a text step in {{unit:teaspoon}}, {{unit:pinch}} or {{unit:knifeTip}}.",
     ],
     notes: [
       "Scale steps carry text on the device, like turbo steps; all other program steps show only their title.",
@@ -233,8 +232,6 @@ const specs: Spec[] = [
   {
     id: "chop_onion_garlic",
     label: "Chop onions, shallots, garlic or ginger",
-    de: ["hacken", "fein hacken", "würfeln", "klein schneiden", "zerkleinern"],
-    en: ["chop", "dice", "mince", "finely chop"],
     classes: ["onion_garlic"],
     select: chop("onion_garlic"),
     selection: chopSel("onion, shallot, garlic or ginger"),
@@ -254,8 +251,6 @@ const specs: Spec[] = [
   {
     id: "chop_vegetables",
     label: "Chop vegetables coarse or fine",
-    de: ["zerkleinern", "grob hacken", "klein schneiden", "würfeln", "raspeln"],
-    en: ["chop", "dice", "cut into small pieces", "shred"],
     classes: ["vegetables"],
     select: chop("vegetables"),
     selection: chopSel("a vegetable"),
@@ -271,23 +266,19 @@ const specs: Spec[] = [
   {
     id: "chop_herbs",
     label: "Chop fresh herbs",
-    de: ["Kräuter hacken", "fein hacken", "zupfen und hacken"],
-    en: ["chop herbs", "mince herbs"],
     classes: ["herbs"],
     select: chop("herbs"),
     selection: chopSel("a herb"),
     reverse: false,
     cup: "in",
     structure: [
-      "Text step before: pick the leaves from the stems; the ingredient list counts herbs as Stück of stems (Petersilienstiele, Thymianstiele).",
+      'Text step before: pick the leaves from the stems; the ingredient list counts herbs by their stems ("{{phrase:herbStems}}").',
       "Chop herbs while the bowl is still dry, then transfer and set them aside when they are used at the end.",
     ],
   },
   {
     id: "chop_nuts_seeds",
     label: "Chop nuts or seeds",
-    de: ["Nüsse hacken", "grob hacken", "hacken"],
-    en: ["chop nuts", "roughly chop"],
     classes: ["nuts_seeds"],
     select: chop("nuts_seeds"),
     selection: chopSel("nuts, almonds or seeds"),
@@ -298,8 +289,6 @@ const specs: Spec[] = [
   {
     id: "grate_hard_cheese",
     label: "Grate hard cheese",
-    de: ["reiben", "Parmesan reiben", "fein reiben"],
-    en: ["grate", "grate cheese"],
     classes: ["hard_cheese"],
     select: chop("hard_cheese"),
     selection: chopSel("cheese"),
@@ -313,8 +302,6 @@ const specs: Spec[] = [
   {
     id: "chop_chocolate",
     label: "Chop chocolate or couverture",
-    de: ["Schokolade hacken", "grob hacken", "zerkleinern"],
-    en: ["chop chocolate"],
     classes: ["chocolate"],
     select: chop("chocolate"),
     selection: chopSel("chocolate or couverture"),
@@ -328,8 +315,6 @@ const specs: Spec[] = [
   {
     id: "chop_fruit",
     label: "Chop fruit",
-    de: ["Obst zerkleinern", "würfeln", "klein schneiden"],
-    en: ["chop fruit", "dice fruit"],
     classes: ["fruit"],
     select: chop("fruit"),
     selection: chopSel("a fruit"),
@@ -340,8 +325,6 @@ const specs: Spec[] = [
   {
     id: "chop_meat_fish",
     label: "Chop or mince meat, ham or fish",
-    de: ["hacken", "zerkleinern", "fein hacken", "faschieren"],
-    en: ["chop", "mince", "grind meat"],
     classes: ["meat", "fish"],
     select: chop("meat_fish"),
     selection: chopSel("meat, ham, bacon or fish"),
@@ -354,8 +337,6 @@ const specs: Spec[] = [
   {
     id: "make_crumbs",
     label: "Make crumbs from bread, rolls or biscuits",
-    de: ["Brösel herstellen", "zerbröseln", "fein mahlen"],
-    en: ["make breadcrumbs", "crush biscuits"],
     classes: ["bread_biscuits"],
     select: chop("bread_biscuits"),
     selection: chopSel("bread, rolls, rusks or biscuits"),
@@ -366,8 +347,6 @@ const specs: Spec[] = [
   {
     id: "turbo_pulse",
     label: "Turbo pulse for coarse chopping",
-    de: ["Turbo", "kurz zerkleinern", "grob hacken"],
-    en: ["pulse", "turbo"],
     classes: ["onion_garlic", "vegetables", "nuts_seeds", "hard_cheese"],
     select: (r) => r.mode === "turbo",
     selection: "turbo mode",
@@ -375,7 +354,7 @@ const specs: Spec[] = [
     reverse: false,
     cup: "in",
     structure: [
-      'Turbo is its own step; its title names the seconds ("Turbo-Taste für 2 Sekunden"); the number matches the programmed time in 99.6 % of 262 such titles.',
+      'Turbo is its own step; its title names the seconds ("{{phrase:turboTitle}}"); the number matches the programmed time in 99.6 % of 262 such titles.',
       "Turbo steps sit early in the recipe (68 % in the first third) and are often followed by roasting (83 times).",
       "Never with the whisk fitted; never on hot contents (SmartRecipe rule: at most 60 °C) and at most 2500 g in the bowl.",
       pushDownNote,
@@ -387,8 +366,6 @@ const specs: Spec[] = [
   {
     id: "grind_fine",
     label: "Grind fine: sugar to icing sugar, grains, spices, ground nuts",
-    de: ["mahlen", "fein mahlen", "pulverisieren", "Puderzucker herstellen"],
-    en: ["grind", "mill", "powder"],
     classes: ["sugar_spices", "rice_grain", "nuts_seeds"],
     select: T("fein_mahlen"),
     selection: 'technique "fein_mahlen"',
@@ -402,8 +379,6 @@ const specs: Spec[] = [
   {
     id: "crush_ice_frozen",
     label: "Crush ice or blend frozen fruit (sorbet, ice cream)",
-    de: ["Eis crushen", "zerkleinern", "Sorbet mixen"],
-    en: ["crush ice", "blend frozen fruit"],
     classes: ["ice", "fruit"],
     select: T("eis_gefrorenes"),
     selection: 'technique "eis_gefrorenes"',
@@ -416,23 +391,19 @@ const specs: Spec[] = [
   {
     id: "stir_cold",
     label: "Stir or mix cold ingredients",
-    de: ["verrühren", "vermischen", "vermengen", "unterrühren", "mischen"],
-    en: ["stir", "mix", "combine"],
     classes: ["dairy", "vegetables", "flour_dough", "egg"],
     select: (r) => r.technique === "ruehren_kalt" && !r.reverse,
     selection: 'technique "ruehren_kalt", forward rotation',
     reverse: false,
     cup: "in",
     structure: [
-      'Text step before: name everything that goes in ("zugeben", "in den Mixbehälter geben").',
+      'Text step before: name everything that goes in ("{{phrase:add}}", "{{phrase:intoBowl}}").',
       "Speed 4 is the mixing speed (median 30 s at speed 4); speed 2-3 for short stirs.",
     ],
   },
   {
     id: "fold_in_reverse",
     label: "Fold in or stir gently so pieces stay whole (reverse rotation)",
-    de: ["unterheben", "vorsichtig unterrühren", "im Linkslauf rühren"],
-    en: ["fold in", "stir gently"],
     classes: ["vegetables", "meat", "dairy", "pasta"],
     select: (r) => r.technique === "ruehren_kalt" && r.reverse,
     selection: 'technique "ruehren_kalt", reverse rotation',
@@ -447,8 +418,6 @@ const specs: Spec[] = [
   {
     id: "blend_smooth_cold",
     label: "Blend smooth (cold purée, pesto, dip, dressing)",
-    de: ["pürieren", "fein pürieren", "mixen", "cremig mixen"],
-    en: ["purée", "blend", "blend until smooth"],
     classes: ["vegetables", "fruit", "nuts_seeds", "liquid"],
     select: (r) =>
       r.mode === "customized" &&
@@ -471,8 +440,6 @@ const specs: Spec[] = [
   {
     id: "puree_hot_soup",
     label: "Purée a hot soup or sauce after cooking",
-    de: ["pürieren", "Suppe pürieren", "fein mixen"],
-    en: ["purée soup", "blend soup"],
     classes: ["vegetables", "liquid"],
     select: T("suppe_puerieren_heiss"),
     selection: 'technique "suppe_puerieren_heiss"',
@@ -496,8 +463,6 @@ const specs: Spec[] = [
   {
     id: "blend_drink_smoothie",
     label: "Blend a drink or smoothie",
-    de: ["mixen", "aufmixen", "Smoothie mixen"],
-    en: ["blend", "mix a drink"],
     classes: ["fruit", "vegetables", "dairy", "liquid"],
     select: T("mixen_smoothie"),
     selection: 'technique "mixen_smoothie"',
@@ -511,8 +476,6 @@ const specs: Spec[] = [
   {
     id: "whip",
     label: "Whip cream, egg whites or eggs with sugar (whisk attachment)",
-    de: ["steif schlagen", "aufschlagen", "schaumig schlagen", "Sahne schlagen", "Eischnee"],
-    en: ["whip", "whisk", "beat until stiff"],
     classes: ["egg", "dairy"],
     select: T("schlagen"),
     selection: 'technique "schlagen"',
@@ -521,7 +484,7 @@ const specs: Spec[] = [
     cup: "out",
     attachment: "whisk",
     structure: [
-      'Own text step to fit the whisk attachment ("Rühraufsatz einsetzen", 230 text steps) and one to remove it afterwards (125).',
+      'Own text step to fit the whisk attachment ("{{phrase:whiskIn}}", 230 text steps) and one to remove it afterwards (125).',
       "With the whisk fitted the speed is at most 4 (official guide; 92 % of steps with the whisk run at speed 4 or lower).",
       "Bowl and whisk must be free of fat for egg whites; cream should be cold.",
       "Whipping time depends on fat content and temperature, so the text step after says to check the stiffness.",
@@ -530,8 +493,6 @@ const specs: Spec[] = [
   {
     id: "emulsify",
     label: "Emulsify: mayonnaise, aioli, creamy dressings",
-    de: ["emulgieren", "Mayonnaise herstellen", "Öl einlaufen lassen", "aufschlagen"],
-    en: ["emulsify", "make mayonnaise", "drizzle in oil"],
     classes: ["egg", "liquid"],
     select: T("emulgieren"),
     selection: 'technique "emulgieren"',
@@ -539,15 +500,13 @@ const specs: Spec[] = [
     reverse: false,
     cup: "in",
     structure: [
-      'The oil is poured slowly onto the lid while the measuring cup stays in, so it runs in along the cup in a thin stream ("das Öl langsam auf den Deckel gießen, sodass es am Messbecher entlang in den Mixbehälter läuft"); 16 of 17 official oil emulsions pour the oil onto the lid, none through the lid opening.',
+      'The oil is poured slowly onto the lid while the measuring cup stays in, so it runs in along the cup in a thin stream ("{{phrase:oilOntoLid}}"); 16 of 17 official oil emulsions pour the oil onto the lid, none through the lid opening.',
       "Two-step pattern: a short step (about 10 s) mixes the base, then a long step at speed 4 (top setting 240 s, 13 of 17 official oil emulsions) runs while the oil is poured onto the lid.",
     ],
   },
   {
     id: "batter_sponge",
     label: "Mix a cake batter or sponge mixture",
-    de: ["Teig rühren", "Rührteig", "verrühren", "glatt rühren"],
-    en: ["mix batter", "beat batter"],
     classes: ["flour_dough", "egg", "dairy"],
     select: T("ruehrteig_biskuit"),
     selection: 'technique "ruehrteig_biskuit"',
@@ -564,8 +523,6 @@ const specs: Spec[] = [
   {
     id: "activate_yeast",
     label: "Dissolve yeast in lukewarm liquid",
-    de: ["Hefe auflösen", "Hefe anrühren", "lauwarm erwärmen"],
-    en: ["dissolve yeast", "proof yeast", "warm milk"],
     classes: ["liquid", "dairy", "flour_dough"],
     select: T("hefe_aktivieren"),
     selection: 'technique "hefe_aktivieren"',
@@ -581,8 +538,6 @@ const specs: Spec[] = [
   {
     id: "knead_yeast_dough",
     label: "Knead a yeast dough",
-    de: ["kneten", "Hefeteig kneten", "zu einem Teig verkneten"],
-    en: ["knead", "knead the dough"],
     classes: ["flour_dough"],
     select: T("hefeteig_kneten"),
     selection: 'technique "hefeteig_kneten"',
@@ -606,8 +561,6 @@ const specs: Spec[] = [
   {
     id: "knead_short_dough",
     label: "Mix a short crust or another firm dough without yeast",
-    de: ["Mürbteig kneten", "verkneten", "zu einem Teig verarbeiten"],
-    en: ["make shortcrust", "knead briefly"],
     classes: ["flour_dough", "dairy", "egg"],
     select: T("muerbteig_kneten"),
     selection: 'technique "muerbteig_kneten"',
@@ -626,8 +579,6 @@ const specs: Spec[] = [
   {
     id: "melt",
     label: "Melt chocolate or butter",
-    de: ["schmelzen", "zerlassen", "Schokolade schmelzen", "Butter zerlassen"],
-    en: ["melt"],
     classes: ["chocolate", "dairy"],
     select: T("schmelzen"),
     selection: 'technique "schmelzen"',
@@ -642,8 +593,6 @@ const specs: Spec[] = [
   {
     id: "warm_heat",
     label: "Warm or heat a liquid or a finished dish",
-    de: ["erwärmen", "erhitzen", "warm machen", "temperieren"],
-    en: ["warm", "heat", "reheat"],
     classes: ["liquid", "dairy", "vegetables"],
     select: T("erwaermen_temperieren"),
     selection: 'technique "erwaermen_temperieren"',
@@ -659,9 +608,7 @@ const specs: Spec[] = [
   },
   {
     id: "saute_onions",
-    label: "Sauté onions, garlic or vegetables in fat (anschwitzen, andünsten)",
-    de: ["anschwitzen", "andünsten", "dünsten", "glasig dünsten"],
-    en: ["sauté", "sweat", "soften"],
+    label: "Sauté onions, garlic or vegetables in fat",
     classes: ["onion_garlic", "vegetables"],
     select: (r) =>
       r.technique === "anschwitzen" || (r.mode === "roasting" && r.afterChop === "onion_garlic"),
@@ -684,9 +631,7 @@ const specs: Spec[] = [
   },
   {
     id: "sear_roast",
-    label: "Sear or brown with the roasting program (anbraten)",
-    de: ["anbraten", "braten", "scharf anbraten", "anrösten"],
-    en: ["sear", "brown", "fry"],
+    label: "Sear or brown with the roasting program",
     classes: ["vegetables", "meat", "onion_garlic"],
     select: T("anbraten"),
     selection: 'technique "anbraten"',
@@ -704,8 +649,6 @@ const specs: Spec[] = [
   {
     id: "toast_dry",
     label: "Toast nuts, seeds, spices or flour without fat",
-    de: ["rösten", "anrösten", "ohne Fett rösten"],
-    en: ["toast", "dry-roast"],
     classes: ["nuts_seeds", "sugar_spices", "flour_dough"],
     select: T("roesten"),
     selection: 'technique "roesten"',
@@ -718,8 +661,6 @@ const specs: Spec[] = [
   {
     id: "bring_to_boil",
     label: "Bring a liquid to the boil",
-    de: ["aufkochen", "zum Kochen bringen", "aufwallen lassen"],
-    en: ["bring to the boil", "boil"],
     classes: ["liquid", "vegetables"],
     select: T("aufkochen"),
     selection: 'technique "aufkochen" (member recipes only)',
@@ -735,8 +676,6 @@ const specs: Spec[] = [
   {
     id: "simmer_cook",
     label: "Simmer or cook in liquid (soups, stews, sauces, vegetables)",
-    de: ["köcheln", "kochen", "garen", "weich kochen", "köcheln lassen"],
-    en: ["simmer", "cook", "boil gently", "stew"],
     classes: ["vegetables", "liquid", "meat", "dairy"],
     select: (r) => r.technique === "koecheln_garen" && !r.splash,
     selection: 'technique "koecheln_garen" without the basket as splash guard',
@@ -757,8 +696,6 @@ const specs: Spec[] = [
   {
     id: "reduce_open",
     label: "Reduce or cook hard with the cooking basket on the lid as splash guard",
-    de: ["einkochen", "reduzieren", "sämig einkochen", "offen köcheln"],
-    en: ["reduce", "cook down", "simmer uncovered"],
     classes: ["liquid", "vegetables", "fruit"],
     select: (r) => r.splash && (r.temperature ?? 0) > 0,
     selection:
@@ -776,8 +713,6 @@ const specs: Spec[] = [
   {
     id: "thicken_bind",
     label: "Thicken or bind: roux, béchamel, custard, starch-bound sauces",
-    de: ["binden", "andicken", "eindicken", "Mehlschwitze", "Béchamel kochen"],
-    en: ["thicken", "bind", "make a roux", "make béchamel"],
     classes: ["flour_dough", "dairy", "liquid"],
     select: T("eindicken_binden"),
     selection: 'technique "eindicken_binden"',
@@ -794,8 +729,6 @@ const specs: Spec[] = [
   {
     id: "cook_risotto",
     label: "Cook risotto or another rice dish in the bowl",
-    de: ["Risotto kochen", "Reis garen", "Reis köcheln"],
-    en: ["cook risotto", "cook rice in the bowl"],
     classes: ["rice_grain", "liquid"],
     select: T("risotto_reis"),
     selection: 'technique "risotto_reis"',
@@ -811,8 +744,6 @@ const specs: Spec[] = [
   {
     id: "cook_pasta",
     label: "Cook pasta in the bowl (one-pot)",
-    de: ["Nudeln kochen", "Pasta garen", "Nudeln garen"],
-    en: ["cook pasta", "boil noodles"],
     classes: ["pasta", "liquid"],
     select: T("nudeln_garen"),
     selection: 'technique "nudeln_garen"',
@@ -827,8 +758,6 @@ const specs: Spec[] = [
   {
     id: "cook_milk_rice_pudding",
     label: "Cook milk rice, pudding or porridge",
-    de: ["Milchreis kochen", "Pudding kochen", "Brei kochen", "Grießbrei"],
-    en: ["cook rice pudding", "cook pudding", "cook porridge"],
     classes: ["dairy", "rice_grain", "egg"],
     select: T("milchreis_pudding_brei"),
     selection: 'technique "milchreis_pudding_brei"',
@@ -842,8 +771,6 @@ const specs: Spec[] = [
   {
     id: "cook_jam",
     label: "Cook jam, jelly or compote",
-    de: ["Marmelade kochen", "einkochen", "Gelee kochen", "Kompott kochen"],
-    en: ["make jam", "cook jam", "cook compote"],
     classes: ["fruit"],
     select: T("marmelade_einkochen"),
     selection: 'technique "marmelade_einkochen"',
@@ -860,8 +787,6 @@ const specs: Spec[] = [
   {
     id: "cook_in_basket",
     label: "Cook potatoes, rice or eggs in the cooking basket",
-    de: ["im Kocheinsatz garen", "Kartoffeln garen", "Reis im Garkorb kochen"],
-    en: ["cook in the basket", "boil potatoes", "cook rice in the basket"],
     classes: ["potatoes", "rice_grain", "egg", "vegetables"],
     select: T("daempfen_gareinsatz"),
     selection: 'technique "daempfen_gareinsatz"',
@@ -870,7 +795,7 @@ const specs: Spec[] = [
     cup: "out",
     attachment: "cooking_basket",
     structure: [
-      'Text step before: insert the cooking basket and fill it ("Kocheinsatz einsetzen", named before 90 % of these steps); water or stock goes into the bowl in a scale step.',
+      'Text step before: insert the cooking basket and fill it ("{{phrase:basketIn}}", named before 90 % of these steps); water or stock goes into the bowl in a scale step.',
       "The basket holds about 1000-1200 g of food (SmartRecipe rule).",
       "Often combined with the steamer on top: the basket cooks a side while the steamer cooks the main item.",
     ],
@@ -881,8 +806,6 @@ const specs: Spec[] = [
   {
     id: "steam_in_steamer",
     label: "Steam in the steamer attachment (vegetables, fish, meat, dumplings)",
-    de: ["dämpfen", "dampfgaren", "im Dampfgaraufsatz garen", "Dampfgaraufsatz", "Dampfgareinsatz"],
-    en: ["steam"],
     classes: ["vegetables", "fish", "meat", "potatoes", "flour_dough"],
     select: (r) =>
       r.technique === "daempfen_dampfgaraufsatz" || r.technique === "daempfen_unbestimmt",
@@ -893,7 +816,7 @@ const specs: Spec[] = [
     attachment: "steamer",
     structure: [
       "Scale step before: water or stock into the bowl, typically 1000 g, never below 500 g (p10 500 g over 270 steaming steps).",
-      'Text steps before: spread the food in the steamer ("im Dampfgaraufsatz verteilen", 376 text steps) and set it on ("Dampfgaraufsatz aufsetzen", 342); name the level (deep bowl or flat insert) before 78.3 % of steaming steps.',
+      'Text steps before: spread the food in the steamer ("{{phrase:steamerSpread}}", 376 text steps) and set it on ("{{phrase:steamerOn}}", 342); name the level (deep bowl or flat insert) before 78.3 % of steaming steps.',
       "Steaming time does not scale with food mass (fit 877 + 0.343 * grams, R² 0.06); pick it by load class (timeByLoadClass).",
       "In 48 % of steaming steps something else cooks in the bowl below; count its mass toward the bowl limit.",
     ],
@@ -904,8 +827,6 @@ const specs: Spec[] = [
   {
     id: "sous_vide",
     label: "Cook sous-vide in the bowl",
-    de: ["sous-vide garen", "vakuumgaren"],
-    en: ["sous-vide"],
     classes: ["meat", "fish", "egg"],
     select: T("sous_vide"),
     selection: 'technique "sous_vide"',
@@ -920,8 +841,6 @@ const specs: Spec[] = [
   {
     id: "slow_cook",
     label: "Slow cook a stew or braise",
-    de: ["schmoren", "langsam garen", "Slow Cook"],
-    en: ["slow cook", "braise"],
     classes: ["meat", "vegetables"],
     select: T("slow_cooking"),
     selection: 'technique "slow_cooking"',
@@ -936,8 +855,6 @@ const specs: Spec[] = [
   {
     id: "ferment",
     label: "Ferment or proof (yogurt, dough rising in the bowl)",
-    de: ["fermentieren", "gehen lassen", "Joghurt herstellen"],
-    en: ["ferment", "proof", "make yogurt"],
     classes: ["dairy", "flour_dough"],
     select: T("fermentieren"),
     selection: 'technique "fermentieren"',
@@ -952,8 +869,6 @@ const specs: Spec[] = [
   {
     id: "cook_eggs",
     label: "Cook eggs with the egg program",
-    de: ["Eier kochen"],
-    en: ["boil eggs"],
     classes: ["egg"],
     select: T("eier_kochen"),
     selection: 'technique "eier_kochen"',
@@ -968,8 +883,6 @@ const specs: Spec[] = [
   {
     id: "food_processor_slice",
     label: "Slice or grate with the food processor attachment",
-    de: ["hobeln", "in Scheiben schneiden", "raspeln"],
-    en: ["slice", "grate", "shred"],
     classes: ["vegetables", "potatoes"],
     select: T("food_processor"),
     selection: 'technique "food_processor"',
@@ -984,8 +897,6 @@ const specs: Spec[] = [
   {
     id: "preclean",
     label: "Pre-clean the bowl between stages",
-    de: ["vorreinigen", "Mixbehälter reinigen"],
-    en: ["pre-clean", "rinse the bowl"],
     classes: [],
     select: T("vorreinigen"),
     selection: 'technique "vorreinigen" (member recipes only)',
@@ -993,7 +904,7 @@ const specs: Spec[] = [
     reverse: false,
     cup: "n/a",
     structure: [
-      'Official recipes write a text step instead ("Mixbehälter ausspülen", 731 text steps); prefer the text step.',
+      'Official recipes write a text step instead ("{{phrase:rinseBowl}}", 731 text steps); prefer the text step.',
     ],
   },
 ];
@@ -1024,7 +935,6 @@ interface Alternative {
 export interface TechniqueEntry {
   id: string;
   label: string;
-  aliases: { de: string[]; en: string[] };
   ingredientClasses: string[];
   device: Device;
   recommendedModeObserved?: {
@@ -1174,7 +1084,6 @@ export function buildTechniques(input: TechniquesInput) {
     const entry: TechniqueEntry = {
       id: s.id,
       label: s.label,
-      aliases: { de: s.de, en: s.en },
       ingredientClasses: s.classes,
       device,
       structure: s.structure,
@@ -1233,8 +1142,8 @@ export function buildTechniques(input: TechniquesInput) {
   }
   return {
     description:
-      "Cooking techniques for the converter, derived from the de-DE MC Smart corpus. Numbers and generic phrases only, in our own words; no recipe text.",
-    version: 1,
+      "Cooking techniques for the converter, derived from the de-DE MC Smart corpus: ids, English labels, device numbers and structure notes, in our own words; no recipe text. The wording per language is in knowledge/locales/<locale>/technique-aliases.json; {{phrase:...}} and {{unit:...}} placeholders in the notes are filled from the locale pack of the output language.",
+    version: 2,
     source: SOURCE,
     corpus: {
       recipes: 2221,
@@ -1257,7 +1166,7 @@ export function buildTechniques(input: TechniquesInput) {
       "device.reverse": "true, false, or a condition the converter decides per recipe.",
       "device.accessory.measuringCup": "in, out, either (the recipe decides) or n/a.",
       "device.accessory.attachment":
-        "null, whisk (Rühraufsatz), cooking_basket (Kocheinsatz in the bowl), cooking_basket_on_lid (Kocheinsatz as splash guard), steamer (Dampfgaraufsatz), food_processor.",
+        "null, whisk (butterfly whisk), cooking_basket (cooking basket in the bowl), cooking_basket_on_lid (cooking basket on the lid as splash guard), steamer (steamer attachment), food_processor.",
       alternatives:
         "Other modes the corpus uses for the same technique, with their own quantiles; included when they cover at least 10 % of the technique's steps or carry a note.",
       "evidence.statsMode":
@@ -1279,7 +1188,6 @@ function orderEntry(e: TechniqueEntry): TechniqueEntry {
   return {
     id: e.id,
     label: e.label,
-    aliases: e.aliases,
     ingredientClasses: e.ingredientClasses,
     device: e.device,
     ...(recommendedModeObserved ? { recommendedModeObserved } : {}),

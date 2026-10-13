@@ -14,7 +14,6 @@ interface Quantiles {
 }
 interface Technique {
   id: string;
-  aliases: { de: string[]; en: string[] };
   ingredientClasses: string[];
   device: {
     mode: string;
@@ -79,7 +78,7 @@ const techniques = load<{ techniques: Technique[] }>("techniques.json").techniqu
 const limits = load<DeviceLimits>("device-limits.json");
 const programs = load<{ modes: ProgramMode[] }>("device-programs.json");
 const timing = load<TimingModel>("timing-model.json");
-const units = load<Units>("units.json");
+const units = load<Units>(path.join("locales", "de-DE", "units.json"));
 
 const within = (x: number, r: Range | undefined) => !r || (x >= r.min && x <= r.max);
 
@@ -89,11 +88,10 @@ describe("techniques.json", () => {
     expect(new Set(techniques.map((t) => t.id)).size).toBe(techniques.length);
   });
 
-  it("names a known mode, aliases in both languages and corpus evidence", () => {
+  it("names a known mode and corpus evidence, and leaves the wording to the locale packs", () => {
     for (const t of techniques) {
       expect(limits.modes[t.device.mode], t.id).toBeDefined();
-      expect(t.aliases.de.length, t.id).toBeGreaterThan(0);
-      expect(t.aliases.en.length, t.id).toBeGreaterThan(0);
+      expect(t, t.id).not.toHaveProperty("aliases");
       expect(t.structure.length, t.id).toBeGreaterThan(0);
       expect(t.evidence.steps, t.id).toBeGreaterThan(0);
       expect(t.evidence.recipes, t.id).toBeGreaterThan(0);
@@ -242,7 +240,7 @@ describe("timing-model.json", () => {
   });
 });
 
-describe("units.json", () => {
+describe("units.json of the de-DE pack", () => {
   it("has contiguous gram rounding bands", () => {
     const bands = units.roundingGrid.grams;
     expect(bands[0]?.band[0]).toBe(0);

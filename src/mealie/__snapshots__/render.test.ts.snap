@@ -1,0 +1,114 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderRecipeForLlm snapshots > renders a free-text v3.25 recipe with sections scaled by 2 1`] = `
+"# Zimtschnecken
+
+Weiche Hefeschnecken mit Zimt&Zucker.
+
+Portionen: 8 (im Rezept nicht angegeben) · Faktor: 2 · Ergibt: 12 Stück · Vorbereitung: 30 Minuten · Garzeit: 20 Minuten · Gesamtzeit: 2 Stunden 15 Minuten
+
+## Zutaten
+
+### Teig
+
+- 1000 g Mehl (Type 550) [Original: 500 g Mehl (Type 550)]
+- 2 Würfel Hefe (42 g) [Original: 1 Würfel Hefe (42 g)]
+- 500 ml Milch (lauwarm) [Original: 250 ml Milch, lauwarm]
+- 160 g Zucker [Original: 80 g Zucker]
+- 1 Prise Salz [Original: 1 Prise Salz]
+- 2 Ei [Original: 1 Ei]
+- 160 g Butter [Original: Butter 80 g]
+- Mehl Type 405 (für die Arbeitsfläche) [Original: Mehl Type 405 für die Arbeitsfläche]
+
+### Für die Füllung
+
+- 200 g Butter (weich) [Original: 100 g Butter, weich]
+- 4 EL Zimt [Original: 2 EL Zimt]
+- 6–8 EL brauner Zucker [Original: 3–4 EL brauner Zucker]
+- [Original: 50 g/ ¼ Tasse gehackte Haselnüsse] — prüfen: ungeparst, Menge nicht skaliert (Faktor 2 anwenden)
+- 2 Handvoll Rosinen (optional) [Original: 1 Handvoll Rosinen (optional)]
+
+### Zum Bestreichen
+
+- 2 Eigelb [Original: 1 Eigelb]
+- Milch (etwas) [Original: etwas Milch]
+- Hagelzucker (nach Belieben) [Original: Hagelzucker nach Belieben]
+
+## Zubereitung
+
+### Teig
+
+1. Hefe in der lauwarmen Milch auflösen.
+   Mit Mehl, Zucker, Salz, Ei und Butter zu einem glatten Teig kneten.
+2. **Gehen lassen**: Zugedeckt an einem warmen Ort 1 Stunde gehen lassen.
+
+### Formen und Backen
+
+3. Teig auf der bemehlten Fläche ausrollen, mit Butter bestreichen und mit Zimt, Zucker und Rosinen bestreuen. Aufrollen und in 12 Scheiben schneiden.
+4. Mit Eigelb und Milch bestreichen, mit Hagelzucker bestreuen und bei 180 °C 20 Minuten backen.
+
+## Notizen
+
+### Aufbewahrung
+
+Luftdicht verpackt zwei Tage frisch.
+"
+`;
+
+exports[`renderRecipeForLlm snapshots > renders a structured v3.28 recipe scaled by 1.5 1`] = `
+"# Kürbis-Linsen-Suppe
+
+Cremige Suppe aus Hokkaido und roten Linsen.
+
+Portionen: 4 → 6 · Faktor: 1,5 · Vorbereitung: 15 Minuten · Garzeit: 35 Minuten · Gesamtzeit: 50 Minuten · Kategorien: Suppe · Tags: Vegetarisch, Herbst
+
+## Zutaten
+
+### Für die Suppe
+
+- 1,5 Zwiebel (fein gewürfelt) — prüfen: Stückzahl nicht ganzzahlig
+- 3 Zehen Knoblauch
+- 3 EL Olivenöl
+- 750 g Hokkaido-Kürbis (entkernt, gewürfelt)
+- 300 g rote Linsen
+- 1,5 l Gemüsebrühe
+- Prise Salz (nach Geschmack)
+
+### Zum Servieren
+
+- 225 ml Kokosmilch
+- 1,5 Bund Koriander (nach Belieben) — prüfen: Stückzahl nicht ganzzahlig
+- 45 g Kürbiskerne (geröstet)
+- 1,5 Handvoll Croûtons — prüfen: Stückzahl nicht ganzzahlig
+
+## Zubereitung
+
+### Vorbereiten
+
+1. Zwiebel und Knoblauch schälen und fein hacken. Den Kürbis waschen, entkernen und würfeln.
+2. **Andünsten**: Öl in einem Topf erhitzen, Zwiebel und Knoblauch darin 3 Minuten glasig dünsten.
+
+### Kochen
+
+3. Kürbis, Linsen und Brühe zugeben und zugedeckt 25 Minuten köcheln lassen.
+   Anschließend fein pürieren.
+4. Mit Salz abschmecken und mit Kokosmilch, Koriander, Kürbiskernen und Croûtons servieren.
+
+## Notizen
+
+### Tipp
+
+Statt Kokosmilch passt auch **Sahne**.
+
+## Nährwerte
+
+Laut Rezept, nicht skaliert.
+
+- Kalorien: 320 kcal
+- Kohlenhydrate: 38 g
+- Fett: 11 g
+- Ballaststoffe: 9 g
+- Eiweiß: 14 g
+- Zucker: 6 g
+"
+`;

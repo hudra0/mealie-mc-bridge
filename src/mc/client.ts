@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { SessionProvider } from "./session.js";
 import {
-  DEFAULT_LOCALE,
+  DEFAULT_MC_LOCALE,
   MC_BASE_URL,
   McApiError,
   McSessionError,
@@ -22,8 +22,10 @@ export const MEDIA_READY_STATUS = "3";
 export const DEFAULT_MEDIA_TIMEOUT_MS = 30_000;
 export const DEFAULT_MEDIA_POLL_INTERVAL_MS = 1_000;
 
-export function mcEditorUrl(id: number): string {
-  return `${MC_BASE_URL}/de/create-recipe?devices=mc-smart&recipe-id=${encodeURIComponent(id)}`;
+// The web editor link of a recipe. The editor path comes from the locale pack.
+export function mcEditorUrl(id: number, editorPath: string = DEFAULT_MC_LOCALE.editorPath): string {
+  const separator = editorPath.includes("?") ? "&" : "?";
+  return `${MC_BASE_URL}${editorPath}${separator}recipe-id=${encodeURIComponent(id)}`;
 }
 
 export interface McUser {
@@ -81,6 +83,8 @@ export interface ListRecipesOptions {
 }
 
 export interface McClientOptions {
+  // Path of the web editor in the account's language, for editor links (mc.json editorPath).
+  editorPath?: string;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   uuid?: () => string;
@@ -210,13 +214,15 @@ export class McClient implements McRecipeSink {
   private readonly uuid: () => string;
   private readonly mediaTimeoutMs: number;
   private readonly mediaPollIntervalMs: number;
+  readonly editorPath: string;
 
+  // The language of every call is the transport's (McTransportOptions.locale).
   constructor(
     private readonly transport: McHttp,
     private readonly session: SessionProvider,
-    readonly locale: string = DEFAULT_LOCALE,
     options: McClientOptions = {},
   ) {
+    this.editorPath = options.editorPath ?? DEFAULT_MC_LOCALE.editorPath;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = options.now ?? Date.now;
     this.uuid = options.uuid ?? randomUUID;
@@ -225,7 +231,7 @@ export class McClient implements McRecipeSink {
   }
 
   editorUrl(recipeId: number): string {
-    return mcEditorUrl(recipeId);
+    return mcEditorUrl(recipeId, this.editorPath);
   }
 
   // Doubles as the session check: cheap, and it fails with McSessionError on a dead session.
@@ -286,7 +292,7 @@ export class McClient implements McRecipeSink {
     return {
       id: recipeId,
       status: echoed.success ? echoed.data.status : status,
-      editorUrl: mcEditorUrl(recipeId),
+      editorUrl: mcEditorUrl(recipeId, this.editorPath),
     };
   }
 
@@ -302,7 +308,7 @@ export class McClient implements McRecipeSink {
     }
     const publicPath = "/api/v1/categories";
     try {
-      const response = await this.transport.publicGet(publicPath, this.locale);
+      const response = await this.transport.publicGet(publicPath);
       const data = parse(categoriesSchema, `public GET ${publicPath}`, response);
       return { source: "public", categories: data.categories.map(toCategory) };
     } catch (error) {
@@ -359,7 +365,11 @@ export class McClient implements McRecipeSink {
   }
 
   private toRef(recipe: { id: number; status: string }): McRecipeRef {
-    return { id: recipe.id, status: recipe.status, editorUrl: mcEditorUrl(recipe.id) };
+    return {
+      id: recipe.id,
+      status: recipe.status,
+      editorUrl: mcEditorUrl(recipe.id, this.editorPath),
+    };
   }
 
   // Every account call goes through here, so a rejected session always reaches the provider.
@@ -377,7 +387,7 @@ export class McClient implements McRecipeSink {
       });
     }
     try {
-      return await this.transport.proxy({ endpoint, method, payload, cookie, lang: this.locale });
+      return await this.transport.proxy({ endpoint, method, payload, cookie });
     } catch (error) {
       if (error instanceof McSessionError) await this.session.onSessionError(error.kind, cookie);
       throw error;

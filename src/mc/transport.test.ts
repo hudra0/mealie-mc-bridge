@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_MC_LOCALE,
   MC_PROXY_BYPASS,
   McApiError,
   McNetworkError,
@@ -104,7 +105,7 @@ describe("McTransport.proxy", () => {
       json(201, { code: 0, data: {} }),
       json(200, { code: 0, data: {} }),
     );
-    const transport = new McTransport({ fetch, locale: "de-DE" });
+    const transport = new McTransport({ fetch, locale: DEFAULT_MC_LOCALE });
     await transport.proxy({ endpoint: "x", method: "POST", payload: { a: 1 }, cookie: COOKIE });
     await transport.proxy({
       endpoint: "y",
@@ -119,6 +120,24 @@ describe("McTransport.proxy", () => {
       payload: { a: 1 },
     });
     expect(calls[1]?.body).toEqual({ endpoint: "y", method: "GET", lang: "de-DE" });
+  });
+
+  it("takes the language, Accept-Language and Referer from the locale settings", async () => {
+    const { fetch, calls } = mockFetch(json(200, { code: 0, data: null }));
+    const transport = new McTransport({
+      fetch,
+      locale: {
+        proxyLang: "en-US",
+        acceptLanguage: "en-US,en",
+        editorPath: "/en/create-recipe?devices=mc-smart",
+      },
+    });
+    await transport.proxy({ endpoint: "x", cookie: COOKIE });
+    expect(calls[0]?.body).toMatchObject({ lang: "en-US" });
+    expect(calls[0]?.headers["Accept-Language"]).toBe("en-US,en");
+    expect(calls[0]?.headers.Referer).toBe(
+      "https://www.monsieur-cuisine.com/en/create-recipe?devices=mc-smart",
+    );
   });
 
   it("sends no Cookie header without a cookie and honours the language override", async () => {

@@ -4,7 +4,7 @@ Sends a recipe from your Mealie instance to a Monsieur Cuisine Smart as a guided
 
 ## Status
 
-Early development. The service runs end to end with one gap: the LLM converter is built separately and not wired in yet. Until it is, every job stops at the conversion step with "converter not configured", and Mealie shows that in the recipe's timeline.
+Early development. The service runs end to end: webhook, conversion with a language model, upload and write-back into Mealie.
 
 What exists:
 
@@ -12,6 +12,7 @@ What exists:
 - the Monsieur Cuisine client (session check, drafts, status change, categories, ingredient search, image upload)
 - the recipe format the converter produces, its validator against the device limits in `knowledge/device-programs.json`, and the builder for the Monsieur Cuisine payload
 - the Mealie side: the recipe action parser, the REST client, ingredient parsing and scaling, and the Markdown input for the converter
+- the converter: OpenAI or Anthropic turns a Mealie recipe into the device format, the validator and the plausibility checks review the result, and `npm run convert` runs it from the command line
 - `npm run mc:smoke`, a command line tool for manual checks against your own account
 
 ## How it works
@@ -33,7 +34,7 @@ A recipe that has not changed since it was last sent is not sent again; the time
 - Docker with Compose
 - Mealie, ideally 3.26 or newer (older versions work without the allow list step)
 - A Monsieur Cuisine account (monsieur-cuisine.com)
-- An API key for a supported LLM provider, once the converter is wired in
+- An API key for a supported LLM provider (OpenAI or Anthropic)
 
 ## Run it
 
@@ -175,6 +176,35 @@ npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publi
 
 `create` adds a real recipe to your account. It is created as a draft, which is visible in the web editor only; `--status private-publish` then saves it on your device only, which is what makes it show up on the machine. If that second step fails, the tool prints the id and editor link of the draft it left behind; set the status there instead of running `create` again. The tool never submits a recipe for publication. Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
 
+## Conversion
+
+A language model turns the Mealie recipe into the recipe format of the device. The bridge then checks the answer twice: the validator against the device limits in `knowledge/device-programs.json`, and a set of plausibility rules for what a limit table cannot see (heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 with the whisk, 1000 g flour per kneading step, 500 g water under the steamer, a text step before every program step, every ingredient of the source recipe listed, amounts neither larger nor smaller than in the source recipe). The heat-up check also covers cold liquid poured onto sautéed food. Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they are reported next to the model's review hints for the cook.
+
+Two providers are supported. Pick one with `LLM_PROVIDER` and put its key into `.env`:
+
+| `LLM_PROVIDER` | Key                 | Model setting                                                                        | How it asks for JSON                                                                              |
+| -------------- | ------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `openai`       | `OPENAI_API_KEY`    | `OPENAI_MODEL` (default `gpt-6.1-sol`), `OPENAI_REASONING_EFFORT` (default `medium`) | Responses API with a strict JSON schema                                                           |
+| `anthropic`    | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` (default `claude-opus-5-5`)                                        | structured output from the recipe schema, cached system prompt, server-side fallback on a refusal |
+
+The model defaults are the ones the bridge was written against. Check that your account offers them. Other settings: `LLM_MAX_CORRECTIONS` (default 3), `KNOWLEDGE_DIR` (default `./knowledge`) and `LLM_PRICES_JSON`, which overrides the price table used for the cost estimate.
+
+`npm run convert` runs the converter from the command line. It never uploads anything. The input is a recipe as Mealie's `GET /api/recipes/{slug}` returns it:
+
+```sh
+npm run convert -- prompt --mealie-json recipe.json                 # print both prompts, no API call
+npm run convert -- convert --mealie-json recipe.json --scale 1.5    # convert and print the steps
+npm run convert -- convert --mealie-json recipe.json --provider anthropic --out result.json
+```
+
+`convert` prints the steps, the warnings, the review hints, the token usage and a cost estimate. The system prompt is about 9 000 tokens and the same for every recipe, so later recipes and correction rounds read it mostly from the provider's prompt cache; the user message adds about 3 000 tokens of techniques and recipe. The category list comes from `--categories <file>` or, without it, from the public Monsieur Cuisine API (no login needed); without a list the command stops, because the model cannot know category ids.
+
+`npm run convert:eval -- --ids 1234,5678` checks the converter against recipes of your own corpus crawl (see [Knowledge base](#knowledge-base)): it converts each recipe from its ingredients and instruction texts and compares the programs, temperatures and times with the original. It refuses to run without `local/corpus`.
+
+Exit codes: 0 done, 1 unreadable input or a recipe that still failed after the last correction, 3 provider error (refusal, cut-off answer, API failure), 64 usage error, 66 no corpus, 78 configuration (missing key, broken knowledge base).
+
+The tests never call a provider. `src/convert/providers/live.test.ts` converts a fixture with the real API when `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set in the environment, and is skipped otherwise and in CI. Each run costs money.
+
 ## Development
 
 ```sh
@@ -198,7 +228,7 @@ See `CONTRIBUTING.md` for the pull request format and the secrets policy. The ar
 
 ## Knowledge base
 
-`knowledge/` holds the data the converter and the validator use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`) and the ingredient catalog (`ingredient-catalog.json`: each ingredient name published recipes use, the id they link it to most, other ids seen for the same name, recipe counts and the ingredient category). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers, ingredient names and rules written in our own words.
+`knowledge/` holds the data the converter and the validator use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), the converter's own tables (`converter-rules.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`; the prompt carries only the prompt rules) and the ingredient catalog (`ingredient-catalog.json`: each ingredient name published recipes use, the id they link it to most, other ids seen for the same name, recipe counts and the ingredient category). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers, ingredient names and rules written in our own words.
 
 To rebuild it from your own crawl:
 
@@ -211,7 +241,7 @@ npm run corpus:build-knowledge  # writes the JSON files in knowledge/
 
 `corpus:crawl` takes `CORPUS_DIR`, `DEVICE` (default `MC3.0`) and `LOCALE` (default `de-DE`) from the environment. `corpus:build-knowledge -- --check` compares instead of writing; a rebuild from the same crawl reproduces the committed files byte for byte. It stops with exit code 1 and names the file when an analyzer output is missing. The ingredient catalog reads `derived/recipes.jsonl`, or the raw `details/` files when the normalizer has not run; the categories always come from `details/`, so a rebuild without them writes `null` categories. The build prints the number of catalog entries.
 
-The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md` and `step-patterns.md` are written by hand from the analyzer reports.
+The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md`, `step-patterns.md` and `converter-rules.json` are written by hand from the analyzer reports.
 
 ## Disclaimer
 

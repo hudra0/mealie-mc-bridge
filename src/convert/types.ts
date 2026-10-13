@@ -1,0 +1,85 @@
+// The converter's contract: what goes in (a rendered Mealie recipe with its scaled
+// ingredients), what comes out (a validated RecipeInput plus usage and hints), and the
+// provider interface each LLM implementation fulfils. The service layer depends on these
+// names only.
+
+import type { NormalizedIngredient } from "../ingredients/index.js";
+import type { RecipeInput } from "../recipe/schema.js";
+import type { ValidationIssue } from "../recipe/validate.js";
+
+export interface ConversionRequest {
+  title: string;
+  // The recipe as Markdown from renderRecipeForLlm, amounts already scaled.
+  rendered: string;
+  // The servings the amounts were scaled to.
+  servings: number;
+  locale: "de-DE";
+  // The scaled ingredients, for the plausibility checks.
+  ingredients: NormalizedIngredient[];
+  // Category names from Mealie, as hints for the category choice.
+  categoryHints?: string[];
+}
+
+export interface TokenUsage {
+  // All input tokens of the request, cached ones included.
+  inputTokens: number;
+  outputTokens: number;
+  // Input tokens served from the provider's prompt cache.
+  cachedInputTokens?: number;
+  // Input tokens written to the prompt cache (billed above the input price by Anthropic).
+  cacheWriteInputTokens?: number;
+  // Estimated from the price table; absent when the model has no price.
+  costUsd?: number;
+}
+
+export interface ConversionResult {
+  recipe: RecipeInput;
+  // Generator calls, the first one included.
+  attempts: number;
+  usage: TokenUsage;
+  // Plausibility warnings of the accepted recipe, in English, uncapped: for the bridge's
+  // own report (log, Mealie note), not for the recipe.
+  warnings: string[];
+  // The model's review hints as the recipe carries them: German, within the recipe's
+  // limits on count and length.
+  reviewHints: string[];
+  provider: string;
+  model: string;
+}
+
+export interface Converter {
+  convert(req: ConversionRequest, opts?: { signal?: AbortSignal }): Promise<ConversionResult>;
+}
+
+export interface GenerationFeedback {
+  errors: ValidationIssue[];
+  // The previous answer, so the model can correct it instead of starting over.
+  previousJson: string;
+}
+
+export interface GenerationInput {
+  system: string;
+  user: string;
+  // JSON Schema of the recipe (recipeInputJsonSchema with the loaded limits). Every
+  // provider builds its structured-output format from it; the loop passes the same object
+  // for every call, so providers may cache the converted format per object.
+  jsonSchema: object;
+  feedback?: GenerationFeedback;
+}
+
+export interface GenerationOutput {
+  // The model's answer: one JSON object as text.
+  json: string;
+  usage: Omit<TokenUsage, "costUsd">;
+  // The model that answered, when the provider reports it (a fallback may differ).
+  model?: string;
+  // Per-model usage when one call ran several models (a server-side fallback); usage is
+  // then their sum, and each attempt is priced at its own model.
+  attempts?: { model: string; usage: Omit<TokenUsage, "costUsd"> }[];
+}
+
+export interface RecipeGenerator {
+  readonly provider: string;
+  readonly model: string;
+  generate(input: GenerationInput, opts?: { signal?: AbortSignal }): Promise<GenerationOutput>;
+}

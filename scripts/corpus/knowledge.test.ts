@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { singularPluralMerged } from "./build-timing-units.js";
 
 const dir = path.join(import.meta.dirname, "..", "..", "knowledge");
 const load = <T>(name: string): T => JSON.parse(readFileSync(path.join(dir, name), "utf8")) as T;
@@ -71,6 +72,7 @@ interface TimingModel {
 interface Units {
   roundingGrid: { grams: { band: [number, number | null]; step: number }[] };
   allowedUnits: { unit: string }[];
+  pieceWeights: { items: { name: string }[] };
 }
 
 const techniques = load<{ techniques: Technique[] }>("techniques.json").techniques;
@@ -246,6 +248,19 @@ describe("units.json", () => {
     expect(bands[0]?.band[0]).toBe(0);
     for (let i = 1; i < bands.length; i++) expect(bands[i]?.band[0]).toBe(bands[i - 1]?.band[1]);
     expect(bands.at(-1)?.band[1]).toBeNull();
+  });
+
+  it("has one piece weight per item, not one per singular and plural spelling", () => {
+    const names = units.pieceWeights.items.map((item) => item.name);
+    expect(names).toContain("Zwiebeln");
+    expect(names).not.toContain("Zwiebel");
+    expect(
+      singularPluralMerged([
+        { name: "Zwiebeln", n: 78 },
+        { name: "Zwiebel", n: 5 },
+        { name: "Zwiebeln, rot", n: 4 },
+      ]).map((item) => item.name),
+    ).toEqual(["Zwiebeln", "Zwiebeln, rot"]);
   });
 
   it("allows the official unit spellings", () => {

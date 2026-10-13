@@ -39,7 +39,7 @@ Terms used below:
 
 ## 4. Titles and descriptions
 
-20. Official working steps carry the program's default title: "Manuelles Kochen" (98.5 % of official manual steps), "Anbraten" (98.0 %), "Dampfgaren" (99.6 %), "Einfaches Kneten" (96.8 %), "Rampe" (98.3 %); the rarer programs use "Pürieren", "Fermentieren", "Slow Cook", "Sous-vide" and "Eier kochen". Member recipes use short custom titles instead ("Verrühren" 193, "Kochen" 165, "Zerkleinern" 149, "Mixen" 87). 89 % of all working-step titles have one or two words.
+20. Official working steps carry the program's default title: "Manuelles Kochen" (98.5 % of official manual steps), "Anbraten" (98.0 %), "Dampfgaren" (99.6 %), "Einfaches Kneten" (96.8 %), "Rampe" (98.3 %); the rarer programs use "Pürieren", "Fermentieren", "Slow Cook", "Sous-vide" and "Eier kochen". Member recipes use short custom titles instead ("Verrühren" 193, "Kochen" 165, "Zerkleinern" 149, "Mixen" 87). 89 % of all working-step titles have one or two words. The converter does not copy the default titles: the device shows only the title of a working step, so prompt-rules.md asks for a short action title instead.
 21. A turbo step's title names the seconds: "Turbo-Taste für 2 Sekunden" (the number matches the programmed time in 99.6 % of 262 such titles).
 22. Official text steps have no separate heading: the title equals the text when it fits in 80 characters (65.7 %) or is the text cut at 80 characters (28.7 %). Member text steps mostly carry a separate heading (76.1 %).
 23. Official text steps are short: median 9 words and 59 characters, p90 18 words and 124 characters, one sentence. 34.1 % exceed the 80-character title; 0.1 % exceed 200 characters. Member text steps run longer (5.9 % above 200 characters).

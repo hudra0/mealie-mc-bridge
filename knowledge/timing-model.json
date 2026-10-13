@@ -31,12 +31,13 @@
       "appliesTo": "same as heatup_too_short",
       "condition": "timeSeconds < 0.87 * tMinSeconds(massGrams, temperature)",
       "severity": "warning",
+      "typicalFactor": 2.3,
       "evidence": "0.87 is the p10 of time/tMin over 346 official first heatings (median 2.3, median headroom 215 s above tMin)."
     },
     {
       "id": "content_already_hot",
       "appliesTo": "heated step after an earlier heated step without emptying the bowl",
-      "condition": "skip the heat-up check",
+      "condition": "heat up from the mixed temperature of the hot contents and any cold additions; skip the check while that stays at or above the rule temperature",
       "evidence": "43.6 % of such steps are shorter than tMin, as expected for hot contents."
     },
     {
@@ -249,7 +250,7 @@
     }
   },
   "kneading": {
-    "note": "Kneading time is a plateau: 120 s up to 1250 g flour.",
+    "note": "Kneading time is a plateau: 120 s whatever the flour mass, up to the 1000 g flour limit per kneading step.",
     "byMode": {
       "kneading": { "typical": 120, "range": [45, 120], "steps": 188, "max": 120 },
       "kneading_soft_dough": { "typical": 120, "range": [60, 207], "steps": 162, "max": 240 },

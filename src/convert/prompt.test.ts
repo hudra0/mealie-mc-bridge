@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { loadDeviceLimits } from "../recipe/limits.js";
 import { STEP_KINDS } from "../recipe/schema.js";
+import { testKnowledge } from "../testing/locale.js";
 import { loadKnowledge, selectTechniques, techniqueById } from "./knowledge.js";
 import {
   SYSTEM_SECTIONS,
@@ -13,13 +14,30 @@ import {
   documentBody,
   formatDuration,
   formatFeedback,
+  hasIngredientIndices,
+  ingredientIndexLines,
   promptText,
   stepFields,
   techniqueDetail,
   usableModes,
   withFeedback,
 } from "./prompt.js";
+import type { NormalizedIngredient } from "../ingredients/index.js";
 import type { ConversionRequest } from "./types.js";
+
+const food = (name: string): NormalizedIngredient => ({
+  index: 0,
+  section: null,
+  quantity: 1,
+  quantityMax: null,
+  unit: null,
+  food: name,
+  note: "",
+  optional: false,
+  source: "structured",
+  original: "",
+  referenceId: null,
+});
 
 const knowledge = await loadKnowledge(fileURLToPath(new URL("../../knowledge", import.meta.url)));
 const limits = await loadDeviceLimits(
@@ -118,6 +136,66 @@ describe("buildSystemPrompt", () => {
     expect(promptText("see timing-model.json and units.json pieceWeights")).toBe(
       "see the Timing section and the piece weights of the Units section",
     );
+  });
+});
+
+// The sections of a prompt that change with the output language.
+function languageSections(prompt: string): string {
+  const sections = prompt.split(/\n(?=# )/);
+  const keep = ["# Role and goal", "# Conversion rules", "# Wording", "# Output contract"];
+  return sections.filter((part) => keep.some((title) => part.startsWith(title))).join("\n");
+}
+
+const english = await testKnowledge("en-US");
+
+describe("prompts per locale", () => {
+  const englishRequest: ConversionRequest = {
+    title: "Pumpkin soup",
+    rendered:
+      "# Pumpkin soup\n\n## Ingredients\n\n- [0] 500 g pumpkin\n- [1] 1 onion\n\n## Instructions\n\n1. Dice the pumpkin and simmer.\n",
+    servings: 4,
+    locale: "en-US",
+    ingredients: [
+      { ...food("pumpkin"), quantity: 500, unit: "g" },
+      { ...food("onion"), quantity: 1, unit: null },
+    ],
+    categoryHints: ["Soup"],
+  };
+
+  it("keeps the language sections of the de-DE prompt", () => {
+    expect(languageSections(system)).toMatchSnapshot();
+  });
+
+  it("keeps the language sections of the en-US prompt", () => {
+    const englishSystem = buildSystemPrompt(english, limits);
+    expect(languageSections(englishSystem)).toMatchSnapshot();
+    expect(englishSystem).not.toMatch(/Mixbehälter|Messbecher|Rühraufsatz|German/);
+    expect(englishSystem).toContain('locale is "en-US"');
+  });
+
+  it("keeps the en-US user message", () => {
+    const { techniques: picked } = selectTechniques(englishRequest, english, undefined, usable);
+    const user = buildUserMessage(englishRequest, categories, {
+      techniques: picked,
+      usable,
+      aliases: english.aliases,
+      languageName: english.pack.mc.language,
+    });
+    expect(user).toMatchSnapshot();
+    expect(user).toContain("- English wording: sauté, sweat, soften");
+    expect(user).toContain("The source ingredient lines carry their index [0] to [1]");
+    expect(user).not.toContain("# Source ingredient indices");
+  });
+
+  it("lists the source indices when the recipe text does not carry them", () => {
+    const plain = { ...englishRequest, rendered: "# Pumpkin soup\n\n- 500 g pumpkin\n- 1 onion\n" };
+    expect(hasIngredientIndices(plain)).toBe(false);
+    expect(hasIngredientIndices(englishRequest)).toBe(true);
+    const user = buildUserMessage(plain, categories);
+    expect(user).toContain("# Source ingredient indices\n\n- [0] 500 g pumpkin\n- [1] 1 onion");
+    expect(ingredientIndexLines({ ingredients: [{ ...food("salt"), original: " " }] })).toEqual([
+      "- [0] 1 salt",
+    ]);
   });
 });
 

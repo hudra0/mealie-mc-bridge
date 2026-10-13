@@ -12,6 +12,7 @@ import { normalizeIngredients, scaleIngredients, servingsFor } from "../../ingre
 import { mealieRecipeSchema, renderRecipeForLlm } from "../../mealie/index.js";
 import { loadDeviceLimits } from "../../recipe/limits.js";
 import { validateRecipeInput } from "../../recipe/validate.js";
+import { deLabels } from "../../testing/locale.js";
 import { createGenerator } from "../index.js";
 import { loadKnowledge } from "../knowledge.js";
 import { createConverter } from "../loop.js";
@@ -46,7 +47,7 @@ async function convertFixture(provider: LlmProvider) {
   });
   const result = await converter.convert({
     title: recipe.name,
-    rendered: renderRecipeForLlm(recipe, { scale: 1, servings, ingredients }),
+    rendered: renderRecipeForLlm(recipe, { scale: 1, servings, ingredients, labels: deLabels }),
     servings,
     locale: "de-DE",
     ingredients,

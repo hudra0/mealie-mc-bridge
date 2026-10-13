@@ -1,8 +1,10 @@
-// Knowledge builder for knowledge/timing-model.json and knowledge/units.json.
+// Knowledge builder for knowledge/timing-model.json, knowledge/units.json and the piece
+// weights of the locale packs.
 //
 // timing-model.json holds time formulas, heat-up rules and mass limits for the validator
-// and the converter; units.json holds the unit vocabulary, free-text unit mapping,
-// rounding grid and piece weights for ingredient lists.
+// and the converter; units.json holds the language-neutral densities and mass totals. The
+// unit vocabulary, mapping, rounding grid and name rules of a language are hand-written in
+// its locale pack; pieceWeightItems derives the pack's piece weights from its corpus.
 //
 // Input (parsed by the caller, produced by npm run corpus:analyze):
 //   local/corpus/derived/steps.jsonl       NormalizedStep rows from corpus:normalize
@@ -423,7 +425,7 @@ export function buildTimingModel(input: TimingUnitsInput) {
 }
 
 // ---------------------------------------------------------------------------
-// units.json
+// units.json (language-neutral) and the piece weights of a locale pack's units.json
 
 // Singular and plural spellings of one item ("Zwiebel", "Zwiebeln") would give the
 // converter two piece weights; only the one with more observations is kept.
@@ -442,219 +444,44 @@ export function singularPluralMerged<T extends { name: string; n: number }>(item
   return items.filter((item) => best.get(key(item.name)) === item);
 }
 
-export function buildUnits(input: TimingUnitsInput) {
-  const pieceWeights = singularPluralMerged(input.ingredients.pieceWeights)
+export interface PieceWeightItem {
+  name: string;
+  unit: string;
+  grams: number;
+  range: [number, number];
+  n: number;
+}
+
+// Grams per piece or package from weights the corpus states, entries with at least 4
+// observations. `unitLabel` renames the analyzer's unit concept ("Stück") for the pack.
+export function pieceWeightItems(
+  ingredients: IngredientsAnalysis,
+  unitLabel: (concept: string) => string = (concept) => concept,
+): PieceWeightItem[] {
+  return singularPluralMerged(ingredients.pieceWeights)
     .filter((p) => p.n >= 4 && !/\(|½/.test(p.name))
     .map((p) => {
       const spread = required(p.spread, "pieceWeights[].spread");
       return {
         name: p.name,
-        unit: p.concept,
+        unit: unitLabel(p.concept),
         grams: round(p.gramsPerUnit),
-        range: [round(spread.p10), round(spread.p90)],
+        range: [round(spread.p10), round(spread.p90)] as [number, number],
         n: p.n,
       };
     });
+}
 
+// The language-neutral unit data: densities per kind of liquid and the mass totals of the
+// reference corpus. The unit vocabulary, the unit mapping, the rounding grid, piece weights
+// and name conventions are language-specific and live in the locale packs
+// (build-locale-pack.ts writes their corpus parts).
+export function buildUnits() {
   return {
     description:
-      "Unit vocabulary, free-text unit mapping and rounding rules for MC Smart ingredient lists (de-DE official style).",
-    version: 1,
+      "Language-neutral unit data for the converter: densities per kind of liquid and the mass totals of official ingredient lists. The unit vocabulary, the free-text unit mapping, the rounding grid, piece weights and name conventions are language-specific and live in the locale packs (knowledge/locales/<locale>/units.json).",
+    version: 2,
     source: SOURCE,
-    allowedUnits: [
-      {
-        unit: "g",
-        officialRows: 7836,
-        use: "Everything that can be weighed, liquids included (water, milk, stock, cream, oil). 65.3 % of official rows.",
-      },
-      {
-        unit: "Stück",
-        officialRows: 1448,
-        use: "Countable items that are not weighed: eggs, garlic cloves, herb stems, slices, bay leaves, whole lemons.",
-      },
-      {
-        unit: "Tl",
-        officialRows: 1412,
-        use: "Spices, salt, baking powder, small amounts. Mixed case; TL appears 35 times.",
-      },
-      {
-        unit: "El",
-        officialRows: 120,
-        use: "Rare in official recipes; tablespoon amounts are converted to g in 88 % of cases.",
-      },
-      { unit: "Prise", officialRows: 249, use: "Amount 1 (or a fraction)." },
-      { unit: "Prisen", officialRows: 269, use: "Amounts above 1 (3 exceptions in the corpus)." },
-      {
-        unit: "Msp.",
-        officialRows: 147,
-        use: "Knife tip, with a dot (Msp without dot 13 times).",
-      },
-      {
-        unit: "",
-        officialRows: 457,
-        use: "To-taste items: purpose suffix in the name, empty amount.",
-      },
-    ],
-    notAllowed: [
-      "ml and l: 3 official rows in total; weigh liquids in g.",
-      "Household units in the unit field (Dose, Päckchen, Bund, Zehe, Scheibe, Tasse, Becher, Handvoll, Glas): map them as in freeTextMapping.",
-    ],
-    amountFormat: {
-      rules: [
-        "A bare number as a string: integer (90.2 % of official rows), unicode fraction (4.8 %), empty (3.6 %), ASCII fraction (1.4 %).",
-        "No decimals for spoon amounts, no ranges, no units inside the amount field.",
-        "Fractions as unicode: ½, ¼, ¾, ⅛, 1 ½.",
-        "In step text official recipes put a space between number and unit: 500 g (official scale steps: 6996 with a space, 1 without; member recipes mix both styles).",
-      ],
-      typicalValues: {
-        Tl: { "1": 545, "½": 437, "¼": 196, "2": 157, "1 ½": 70, "3": 19, "1 ¼": 8, "4": 3 },
-        El: { "1": 71, "2": 34, "3": 7, "4": 6, "1 ½": 3, "5": 1 },
-        Prise: { "1": 246, "2": 147, "3": 84, "4": 26, "5": 6 },
-        Stück: { "1": 459, "2": 283, "3": 145, "4": 177, "5": 62, "6": 45, "7": 112, "8": 35 },
-      },
-    },
-    roundingGrid: {
-      grams: [
-        {
-          band: [0, 10],
-          step: 5,
-          note: "All 240 official amounts below 10 g are exactly 5 g; smaller amounts move to Tl, Prise or Msp.",
-        },
-        { band: [10, 50], step: 5, preferredStep: 10, onPreferred: 0.851 },
-        { band: [50, 100], step: 10, onStep: 0.916 },
-        { band: [100, 250], step: 10, onStep: 0.936, preferredStep: 25, onPreferred: 0.803 },
-        { band: [250, 500], step: 50, onStep: 0.924 },
-        { band: [500, 1000], step: 50, onStep: 0.971, preferredStep: 100 },
-        { band: [1000, null], step: 100, onStep: 1 },
-      ],
-      note: "Bands are [from, to) in grams. Member recipes round less (below 10 g only 53 % on 5 g). Snap converted amounts to the grid; keep the user's amount when it is already on a coarser grid.",
-      spoons: "Tl and El in whole, half or quarter units; Prise and Msp. in whole units.",
-    },
-    freeTextMapping: [
-      { input: ["g", "gramm", "gr", "grams"], target: "g", gramsPerUnit: 1 },
-      { input: ["kg", "kilogramm", "kilogram"], target: "g", gramsPerUnit: 1000 },
-      {
-        input: ["ml", "milliliter", "millilitre"],
-        target: "g",
-        gramsPerUnit: "density",
-        note: "use densities; water-like liquids 1 g/ml",
-      },
-      { input: ["l", "liter", "litre"], target: "g", gramsPerUnit: "1000 * density" },
-      { input: ["cl"], target: "g", gramsPerUnit: "10 * density" },
-      { input: ["dl"], target: "g", gramsPerUnit: "100 * density" },
-      {
-        input: ["EL", "El", "Esslöffel", "tbsp", "tablespoon"],
-        target: "g",
-        fallback: "El",
-        gramsPerUnit: 15,
-        note: "15 g is the default; weigh by food where it differs: seeds, poppy seeds, flour and starch about 10 g, ground nuts about 8 g, oil about 12 g, sugar and salt about 15 g, honey and syrup about 20 g",
-        evidence:
-          "Member El rows with an official counterpart: g 88.2 %, Tl 7.6 %, El 2.3 %. 15 g per El from only 7 stated weights; liquids and powders differ (oil about 12 g, flour about 10 g, honey about 20 g).",
-      },
-      {
-        input: ["TL", "Tl", "Teelöffel", "tsp", "teaspoon"],
-        target: "Tl",
-        alternative: "g for amounts of 5 g or more of sugar, butter or oil",
-        gramsPerUnit: 5,
-        evidence:
-          "Member TL rows: official Tl 55.9 %, g 32.9 %, Prisen 7.9 %. 5 g per Tl from 9 stated weights.",
-      },
-      {
-        input: ["Prise", "Prisen", "pinch"],
-        target: "Prise / Prisen",
-        alternative:
-          "Tl for salt in savory dishes (official gives salt in Tl: Prise rows map to Tl in 65.3 %)",
-        gramsPerUnit: null,
-      },
-      {
-        input: ["Msp", "Msp.", "Messerspitze"],
-        target: "Msp.",
-        alternative: "Tl or Prisen",
-        gramsPerUnit: null,
-      },
-      {
-        input: ["Stück", "Stk", "St.", "piece", "pc", ""],
-        target: "Stück when the item is not weighed by a scale step, otherwise g",
-        gramsPerUnit: "pieceWeights",
-        evidence:
-          "Member Stück rows: official Stück 52.2 %, g 31.5 %, empty 15.8 %. Median stated piece weight 80 g over 979 annotations.",
-      },
-      {
-        input: ["Zehe", "Zehen", "clove"],
-        target: "Stück",
-        nameRule:
-          "write the clove into the name: Knoblauchzehen (290 official rows, plural even for 1)",
-      },
-      {
-        input: ["Dose", "Dosen", "can", "tin"],
-        target: "g",
-        gramsPerUnit: 400,
-        nameRule: "name ends in 'aus der Dose/Glas' (202 official rows)",
-      },
-      {
-        input: ["Glas", "Gläser", "jar"],
-        target: "g",
-        gramsPerUnit: null,
-        nameRule:
-          "name ends in 'aus der Dose/Glas'; take the drained or net weight from the source",
-      },
-      {
-        input: ["Päckchen", "Pkg", "Pck.", "P.", "packet", "sachet"],
-        target: "g",
-        gramsPerUnit: {
-          Vanillezucker: 8,
-          Backpulver: 16,
-          Trockenhefe: 7,
-          Vanillepuddingpulver: 37,
-        },
-      },
-      { input: ["Würfel", "cube"], target: "g", gramsPerUnit: { "Hefe, frisch": 40 } },
-      {
-        input: ["Bund", "bunch"],
-        target: "g or Stück of stems",
-        gramsPerUnit: 125,
-        evidence: "9 stated weights, spread 50-300 g: low confidence",
-      },
-      {
-        input: ["Stiel", "Stiele", "Zweig", "Zweige", "sprig"],
-        target: "Stück",
-        nameRule:
-          "write the stem into the name: Petersilienstiele, Thymianstiele (327 official rows)",
-      },
-      {
-        input: ["Scheibe", "Scheiben", "slice"],
-        target: "Stück",
-        nameRule: "name ends in 'in Scheiben' (35 official rows with Stück, 7 with g)",
-        gramsPerUnit: 30,
-      },
-      { input: ["Blatt", "Blätter", "leaf"], target: "Stück" },
-      {
-        input: ["Becher", "tub"],
-        target: "g",
-        gramsPerUnit: 200,
-        evidence: "2 stated weights: low confidence; use the package size from the source",
-      },
-      {
-        input: ["Handvoll", "handful"],
-        target: "g",
-        gramsPerUnit: null,
-        note: "no stated weight in the corpus; estimate and add a review hint",
-      },
-      {
-        input: ["Spritzer", "Tropfen", "dash", "drop"],
-        target: "g or empty amount",
-        gramsPerUnit: null,
-      },
-      {
-        input: ["Tasse", "cup"],
-        target: "g",
-        gramsPerUnit: "240 ml * density",
-        note: "US cup; not in the corpus. 240 ml × density holds for liquids only; for solids use: flour about 125 g, sugar about 200 g, rice about 185 g, grated hard cheese about 90 g, whole cherry tomatoes about 150 g per cup.",
-      },
-      { input: ["oz", "ounce"], target: "g", gramsPerUnit: 28.35 },
-      { input: ["lb", "pound"], target: "g", gramsPerUnit: 453.6 },
-      { input: ["fl oz"], target: "g", gramsPerUnit: "29.57 * density" },
-    ],
     densities: {
       note: "g per ml. The corpus gives no densities; these are standard values the ingredient analysis used.",
       water: 1,
@@ -665,58 +492,6 @@ export function buildUnits(input: TimingUnitsInput) {
       oil: 0.92,
       honey: 1.4,
       syrup: 1.4,
-    },
-    pieceWeights: {
-      note: 'Grams per piece or package from weights stated in the corpus ("1 Zwiebel (80 g)", scale steps, "à 170 g" in names). Entries with at least 4 observations.',
-      items: pieceWeights,
-    },
-    nameConventions: [
-      "Use the catalog spelling: 99.2 % of official rows link a catalog id; ids and names map one to one.",
-      "Counted items use the plural catalog name even for 1: Knoblauchzehen, Eier (Größe M).",
-      "Qualifiers go in parentheses (fat content, egg size, flour type: 17.5 % of official names) or after a comma (schwarz, gemahlen, getrocknet: 26 %).",
-      "To-taste items: purpose suffix in the name and an empty amount, for example 'Salz zum Abschmecken' (210 rows) or 'Mehl zum Verarbeiten' (81). 96.8 % of official 'zum ...' rows have no amount.",
-      "Optional markers (n. B., nach Belieben, etwas) are a member habit (12.1 % of member rows have one); official recipes almost never mark items optional.",
-      "Equipment listed as an ingredient (jars, baking paper, moulds) goes into a ZUBEHÖR group and never counts toward the bowl mass (348 corpus rows).",
-    ],
-    groups: {
-      shareOfficialWithoutGroups: 0.367,
-      style:
-        "Upper case (99.6 %): FÜR DEN/DIE/DAS <component> (56 %), yield header such as FÜR 12 STÜCKE (31 %), AUSSERDEM (8 %), ZUBEHÖR (4 %).",
-      mostFrequent: {
-        "FÜR DEN TEIG": 475,
-        AUSSERDEM: 468,
-        "FÜR DIE FÜLLUNG": 275,
-        ZUBEHÖR: 273,
-        "FÜR DEN BELAG": 161,
-        "FÜR DIE SAUCE": 135,
-      },
-    },
-    perPortionMedians: {
-      note: "Median amount per portion over recipes counted in Portionen; a sanity check for scaled amounts.",
-      items: {
-        Salz: "¼ Tl",
-        "Pfeffer, schwarz, gemahlen": "⅛ Tl",
-        Butter: "10 g",
-        Olivenöl: "6 g",
-        Zucker: "12 g",
-        Zwiebeln: "20 g",
-        "Eier (Größe M)": "0.7 Stück",
-        Knoblauchzehen: "0.4 Stück",
-        "Mehl (Type 405)": "12.5 g",
-        "Sahne (30 % Fett)": "37.5 g",
-        "Gemüsebrühe, zubereitet": "130 g",
-        Möhren: "37.5 g",
-        "Kartoffeln, festkochend": "150 g",
-      },
-    },
-    servings: {
-      default: "4 Portionen (750 of 2221 recipes; median 4 for Portionen recipes)",
-      units: ["Portionen", "Portion", "Stück", "Stücke", "Gläser", "Glas", "Flaschen"],
-      byDishType: {
-        Backen: "1 Stück or 12 Stücke",
-        Getränke: "Flaschen or Gläser",
-        "Marmelade & Gelee": "3 Gläser",
-      },
     },
     massTotals: {
       note: "Sum of g over the ingredient list, not the bowl content.",

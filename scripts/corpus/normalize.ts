@@ -29,6 +29,7 @@ import {
   type RawStep,
   type UnitNorm,
 } from "./types.js";
+import { parseCorpusArgs } from "./locale.js";
 
 // ---------------------------------------------------------------------------
 // Amounts and units
@@ -624,5 +625,5 @@ function isMain(): boolean {
 }
 
 if (isMain()) {
-  run(process.env.CORPUS_DIR ?? path.join("local", "corpus"));
+  run(parseCorpusArgs(process.argv.slice(2)).corpusDir);
 }

@@ -2,7 +2,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadConfig } from "../config.js";
 import { tempDir } from "../testing/temp.js";
 import {
   INGREDIENT_CATALOG_FILE,
@@ -124,7 +123,7 @@ describe("loadIngredientCatalog", () => {
 
   it("loads the committed catalog", async () => {
     const catalog = await loadIngredientCatalog(
-      fileURLToPath(new URL("../../knowledge", import.meta.url)),
+      fileURLToPath(new URL("../../knowledge/locales/de-DE", import.meta.url)),
     );
     expect(catalog.entries.length).toBeGreaterThan(1000);
     expect(catalog.byName.size).toBe(catalog.entries.length);
@@ -138,11 +137,19 @@ describe("loadConfiguredCatalog", () => {
     cleanup = null;
   });
 
-  it("reads the catalog from KNOWLEDGE_DIR", async () => {
+  it("reads the catalog from the locale pack of MC_LOCALE in KNOWLEDGE_DIR", async () => {
     const temp = tempDir();
     cleanup = temp.cleanup;
-    writeFileSync(join(temp.dir, INGREDIENT_CATALOG_FILE), JSON.stringify(file));
-    const catalog = await loadConfiguredCatalog(loadConfig({ KNOWLEDGE_DIR: temp.dir }));
+    mkdirSync(join(temp.dir, "locales", "en-US"), { recursive: true });
+    writeFileSync(
+      join(temp.dir, "locales", "en-US", INGREDIENT_CATALOG_FILE),
+      JSON.stringify(file),
+    );
+    const catalog = await loadConfiguredCatalog({
+      KNOWLEDGE_DIR: temp.dir,
+      MC_LOCALE: "en-US",
+      MC_RESOLVE_INGREDIENTS: "exact",
+    });
     expect(catalog && lookupCatalog(catalog, "Testzutat A")).toBe(9001);
   });
 
@@ -150,14 +157,21 @@ describe("loadConfiguredCatalog", () => {
     const temp = tempDir();
     cleanup = temp.cleanup;
     await expect(
-      loadConfiguredCatalog(
-        loadConfig({ KNOWLEDGE_DIR: temp.dir, MC_RESOLVE_INGREDIENTS: "exact" }),
-      ),
+      loadConfiguredCatalog({
+        KNOWLEDGE_DIR: temp.dir,
+        MC_LOCALE: "de-DE",
+        MC_RESOLVE_INGREDIENTS: "exact",
+      }),
     ).rejects.toThrow(IngredientCatalogError);
   });
 
   it("loads nothing when resolution is off", async () => {
-    const config = loadConfig({ KNOWLEDGE_DIR: "/nonexistent", MC_RESOLVE_INGREDIENTS: "off" });
-    await expect(loadConfiguredCatalog(config)).resolves.toBeNull();
+    await expect(
+      loadConfiguredCatalog({
+        KNOWLEDGE_DIR: "/nonexistent",
+        MC_LOCALE: "de-DE",
+        MC_RESOLVE_INGREDIENTS: "off",
+      }),
+    ).resolves.toBeNull();
   });
 });

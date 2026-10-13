@@ -8,12 +8,16 @@
 // whoami, categories and create need MC_COOKIE: the Cookie header of a logged-in
 // www.monsieur-cuisine.com session. It is a secret. Pass it through the environment, never
 // as an argument, and never commit it. dry-run works offline and needs no session.
+//
+// The recipe's locale picks the locale pack (KNOWLEDGE_DIR/locales/<locale>) for the payload
+// and the language of the calls; whoami and categories use MC_LOCALE.
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { loadConfig } from "../src/config.js";
+import { LocalePackError, loadLocalePack, type McLocale } from "../src/locale/pack.js";
 import {
   McClient,
   McSessionError,
@@ -106,15 +110,20 @@ async function dispatch(args: readonly string[], ctx: SmokeContext): Promise<num
   }
 
   const config = loadConfig(ctx.env);
+  const configured = async () => (await loadLocalePack(config.KNOWLEDGE_DIR, config.MC_LOCALE)).mc;
   switch (command) {
     case "whoami": {
-      const user = await client(config.MC_COOKIE, ctx).getCurrentUser();
+      const user = await client(config.MC_COOKIE, ctx, await configured()).getCurrentUser();
       const name = user.displayName ? `, display name ${user.displayName}` : "";
       ctx.out(`Session is valid. Account id ${user.id}${name}.`);
       return EXIT.ok;
     }
     case "categories": {
-      const { source, categories } = await client(config.MC_COOKIE, ctx).getCategories();
+      const { source, categories } = await client(
+        config.MC_COOKIE,
+        ctx,
+        await configured(),
+      ).getCategories();
       ctx.out(`${categories.length} categories (from the ${source} API):`);
       for (const category of [...categories].sort((a, b) => a.id - b.id)) {
         ctx.out(`  ${String(category.id).padStart(4)}  ${category.name}`);
@@ -125,7 +134,8 @@ async function dispatch(args: readonly string[], ctx: SmokeContext): Promise<num
       const limits = await loadDeviceLimits(config.DEVICE_PROGRAMS_PATH);
       const recipe = await validated(file as string, limits, {}, ctx);
       if (!recipe) return EXIT.invalidInput;
-      ctx.out(JSON.stringify(buildMcPayload(recipe, limits, { status: "draft" }), null, 2));
+      const locale = (await loadLocalePack(config.KNOWLEDGE_DIR, recipe.locale)).mc;
+      ctx.out(JSON.stringify(buildMcPayload(recipe, limits, { locale, status: "draft" }), null, 2));
       return EXIT.ok;
     }
     case "create":
@@ -146,7 +156,10 @@ async function create(
     throw new UsageError(`--status must be draft or private-publish, not ${status}`);
   }
   const limits = await loadDeviceLimits(config.DEVICE_PROGRAMS_PATH);
-  const mc = client(config.MC_COOKIE, ctx);
+  const locale = (
+    await loadLocalePack(config.KNOWLEDGE_DIR, await fileLocale(file, config.MC_LOCALE))
+  ).mc;
+  const mc = client(config.MC_COOKIE, ctx, locale);
   // Only the live catalog says which category ids exist.
   const { categories } = await mc.getCategories();
   const known = { knownCategoryIds: categories.map((category) => category.id) };
@@ -162,6 +175,7 @@ async function create(
   }
   // The server creates every recipe as a draft; the status change is a second call.
   const payload = buildMcPayload(recipe, limits, {
+    locale,
     status: "draft",
     detailsMediaId: media?.detailsMediaId ?? null,
     thumbnailMediaId: media?.thumbnailMediaId ?? null,
@@ -218,6 +232,19 @@ async function validated(
   return result.recipe;
 }
 
+// The locale a recipe file names, or the fallback when it names none. The validator checks
+// the file properly afterwards.
+async function fileLocale(file: string, fallback: string): Promise<string> {
+  try {
+    const value = JSON.parse((await readInput(file, "recipe file")).toString("utf8")) as unknown;
+    const locale = (value as { locale?: unknown } | null)?.locale;
+    return typeof locale === "string" && locale !== "" ? locale : fallback;
+  } catch (error) {
+    if (error instanceof InputError) throw error;
+    return fallback;
+  }
+}
+
 async function readInput(file: string, label: string): Promise<Buffer> {
   try {
     return await readFile(resolve(file));
@@ -227,7 +254,7 @@ async function readInput(file: string, label: string): Promise<Buffer> {
   }
 }
 
-function client(cookie: string | undefined, ctx: SmokeContext): McClient {
+function client(cookie: string | undefined, ctx: SmokeContext, locale: McLocale): McClient {
   if (!cookie) {
     throw new McSessionError({
       kind: "invalid",
@@ -238,13 +265,11 @@ function client(cookie: string | undefined, ctx: SmokeContext): McClient {
       message: "MC_COOKIE is not set",
     });
   }
-  const transport = new McTransport(ctx.fetch ? { fetch: ctx.fetch } : {});
-  return new McClient(
-    transport,
-    new StaticSessionProvider(cookie),
-    "de-DE",
-    ctx.sleep ? { sleep: ctx.sleep } : {},
-  );
+  const transport = new McTransport({ locale, ...(ctx.fetch ? { fetch: ctx.fetch } : {}) });
+  return new McClient(transport, new StaticSessionProvider(cookie), {
+    editorPath: locale.editorPath,
+    ...(ctx.sleep ? { sleep: ctx.sleep } : {}),
+  });
 }
 
 function report(error: unknown, ctx: SmokeContext): number {
@@ -264,6 +289,11 @@ function report(error: unknown, ctx: SmokeContext): number {
   if (error instanceof DeviceLimitsError) {
     ctx.err("Check DEVICE_PROGRAMS_PATH; it must point at knowledge/device-programs.json.");
   }
+  if (error instanceof LocalePackError) {
+    ctx.err(
+      "Check KNOWLEDGE_DIR and the recipe's locale; the locale needs a pack in knowledge/locales.",
+    );
+  }
   return exitCodeOf(error);
 }
 
@@ -272,7 +302,7 @@ function exitCodeOf(error: unknown): number {
   if (error instanceof InputError || error instanceof UnsupportedImageError) {
     return EXIT.invalidInput;
   }
-  if (error instanceof DeviceLimitsError) return EXIT.config;
+  if (error instanceof DeviceLimitsError || error instanceof LocalePackError) return EXIT.config;
   // API failures, image processing timeouts and anything unexpected.
   return EXIT.api;
 }

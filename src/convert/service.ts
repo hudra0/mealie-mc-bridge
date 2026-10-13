@@ -46,7 +46,7 @@ export async function createServiceConverter(
   makeGenerator: (config: Config) => RecipeGenerator = (config) => createGenerator(config),
 ): Promise<Converter> {
   const config = loadConfig(context.env);
-  const knowledge = await loadKnowledge(config.KNOWLEDGE_DIR);
+  const knowledge = await loadKnowledge(config.KNOWLEDGE_DIR, config.MC_LOCALE);
   const prices = priceTable(config.LLM_PRICES_JSON);
   let generator: RecipeGenerator | undefined;
   return {

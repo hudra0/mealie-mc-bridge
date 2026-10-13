@@ -1,35 +1,34 @@
 # Prompt rules for the converter
 
-Condensed rules for the converter's system prompt. They are derived from the knowledge base (technique table, hard device limits, recommended ranges, timing model, unit rules and step patterns of 2221 de-DE MC Smart recipes) and written as instructions; the evidence stays in the source documents. Numbers are typical values with the usual range of official recipes in parentheses. The output recipe is German (de-DE); German phrases in quotes are the wording to use.
+Condensed rules for the converter's system prompt. They are derived from the knowledge base (technique table, hard device limits, recommended ranges, timing model, unit rules and step patterns of 2221 de-DE MC Smart recipes) and written as instructions; the evidence stays in the source documents. Numbers are typical values with the usual range of official recipes in parentheses. The output recipe is {{language}}; {{languageName}} phrases in quotes are the wording to use.
 
 ## Structure
 
 - Write in the official MC style: short text steps tell the cook what to do, working steps let the machine do it. A main dish has about 20-25 steps: roughly half text steps, a quarter scale steps and a fifth working steps.
 - Put one or two text or scale steps before every working step. They say what goes in, how much, how it is cut and which accessory changes. Two working steps in a row only for a continued phase, such as a second cooking stage.
-- Working steps carry no description. Give them a short action title of one to three words that says what the step does, for example "Zerkleinern", "Andünsten", "Köcheln", "Pürieren". A turbo step's title names the seconds: "Turbo-Taste für 2 Sekunden".
-- A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "und", never with a semicolon. The bridge sets a text step's title from its text, so give the title a label of a few words.
+- Working steps carry no description. Give them a short action title of one to three words that says what the step does, for example {{phrases:workingStepTitles}}. A turbo step's title names the seconds: "{{phrase:turboTitle}}".
+- A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "{{phrase:and}}", never with a semicolon. The bridge sets a text step's title from its text, so give the title a label of a few words.
 - Never repeat speed, temperature or time in text; the working step carries them. Minutes in text are only for work outside the machine (oven, rising, resting, cooling).
-- Each ingredient that goes into the bowl by weight gets its own scale step titled "<n> g <Zutat>" and described "<n> g <Zutat> in den Mixbehälter geben.", for example "200 g Wasser". Amounts under 5 g go into a text step in Tl, Prise or Msp.
-- Weigh in the Mixbehälter only what stays in it. Ingredients for outside the machine (brushing, coating, garnish, food cooked on the stove or in the oven) stay in a text step with their amount, or a scale step weighs them in a container on top: "Eine Schüssel auf den Mixbehälter stellen und darin 50 g Milch abwiegen." Never weigh on a plate.
-- A portion that was set aside and goes back in (collected cooking liquid, chopped herbs) keeps its name and amount: "200 g aufgefangene Gemüsebrühe in den Mixbehälter geben."
+- Each ingredient that goes into the bowl by weight gets its own scale step titled "{{phrase:scaleTitle}}" and described "{{phrase:scaleDescription}}", for example "{{phrase:scaleExample}}". Amounts under 5 g go into a text step in {{unit:teaspoon}}, {{unit:pinch}} or {{unit:knifeTip}}.
+- Weigh in the {{phrase:bowl}} only what stays in it. Ingredients for outside the machine (brushing, coating, garnish, food cooked on the stove or in the oven) stay in a text step with their amount, or a scale step weighs them in a container on top: "{{phrase:weighInContainer}}" Never weigh on a plate.
+- A portion that was set aside and goes back in (collected cooking liquid, chopped herbs) keeps its name and amount: "{{phrase:returnReserved}}"
 - Mention an accessory only when its state changes, each in the text right before the working step.
-- After chopping, add "mit dem Spatel nach unten schieben" before the next step on the same contents.
-- Do dry tasks first (grate cheese, chop herbs, grind sugar), then "umfüllen" or "beiseitestellen". Herbs for finishing are chopped first, set aside and added at the end; they never cook longer than 5 minutes. Add "Mixbehälter ausspülen" when the next stage needs a clean bowl.
+- After chopping, add "{{phrase:pushDown}}" before the next step on the same contents.
+- Do dry tasks first (grate cheese, chop herbs, grind sugar), then "{{phrase:transfer}}" or "{{phrase:setAside}}". Herbs for finishing are chopped first, set aside and added at the end; they never cook longer than 5 minutes. Add "{{phrase:rinseBowl}}" when the next stage needs a clean bowl.
 - Use the machine for every preparation it can do (toasted crumbs or nuts, a sauce, a topping) instead of sending the cook to the stove; plan it once the main mass is out of the bowl.
-- Call the bowl "Mixbehälter". Start with preparation or weighing; end with one to three text steps. Savory dishes end with "abschmecken" after the last cooking step, then "servieren".
+- Call the bowl "{{phrase:bowl}}". Start with preparation or weighing; end with one to three text steps. Savory dishes end with "{{phrase:season}}" after the last cooking step, then "{{phrase:serve}}".
 - The total time includes oven, rising, resting and chilling time. It is never shorter than the prep time or the summed machine time.
 
 ## Standard phrases
 
-- "Den Messbecher aus dem Deckel entfernen." before roasting or cooking at 100 °C or more, so steam escapes. "Den Messbecher in den Deckel einsetzen." before cold chopping, mixing, turbo or puréeing, and again after roasting. Each is its own text step.
-- "Rühraufsatz einsetzen" and "Rühraufsatz entfernen": around whipping and gentle stirring, each in its own text step.
-- "Kocheinsatz einsetzen", "in den Kocheinsatz geben", "Kocheinsatz entnehmen": cooking food in the basket. "Kocheinsatz als Spritzschutz auf den Deckel setzen": only before reducing, jam or hard boiling, never for a normal simmer.
-- "im Dampfgaraufsatz verteilen", then "Dampfgaraufsatz aufsetzen" right before steaming; "Dampfgaraufsatz abnehmen" after it.
-- "durch die Deckelöffnung": adding liquid or butter while the blade runs. Oil for an emulsion goes onto the lid instead (see Dough).
-- "in den Mixbehälter geben" and "dazugeben": the standard adding verbs. Official recipes write "dazugeben", not "zugeben".
-- "umfüllen", "beiseitestellen": freeing the bowl after chopping. "Mixbehälter ausspülen": after a transfer, before a different preparation.
-- "abschmecken" after the last cooking step; "abkühlen lassen", "servieren", "Backofen vorheizen" for finishing and outside work; "Wasser nachfüllen" during long steaming.
-- Never write "Deckel schließen" (the lid is always closed) or "auf einem Teller abwiegen".
+- "{{phrase:measuringCupOut}}" before roasting or cooking at 100 °C or more, so steam escapes. "{{phrase:measuringCupIn}}" before cold chopping, mixing, turbo or puréeing, and again after roasting. Each is its own text step.
+- "{{phrase:whiskIn}}" and "{{phrase:whiskOut}}": around whipping and gentle stirring, each in its own text step.
+- "{{phrase:basketIn}}", "{{phrase:intoBasket}}", "{{phrase:basketOut}}": cooking food in the basket. "{{phrase:basketSplashGuard}}": only before reducing, jam or hard boiling, never for a normal simmer.
+- "{{phrase:steamerSpread}}", then "{{phrase:steamerOn}}" right before steaming; "{{phrase:steamerOff}}" after it.
+- "{{phrase:throughLid}}": adding liquid or butter while the blade runs. Oil for an emulsion goes onto the lid instead (see Dough).
+- "{{phrase:intoBowl}}" and "{{phrase:add}}": the standard adding verbs.
+- "{{phrase:transfer}}", "{{phrase:setAside}}": freeing the bowl after chopping. "{{phrase:rinseBowl}}": after a transfer, before a different preparation.
+- "{{phrase:season}}" after the last cooking step; "{{phrase:cool}}", "{{phrase:serve}}", "{{phrase:preheatOven}}" for finishing and outside work; "{{phrase:refillWater}}" during long steaming.
 
 ## Typical sequences
 
@@ -40,23 +39,19 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - Yeast dough: dissolve the yeast at 37 °C, then add the flour and knead; rising happens outside the machine. Short crust: one short kneading step.
 - Cake batter: chop or grind, stir, then mix the batter at speed 4. Whip egg whites first in a clean, dry bowl with the whisk.
 - Creams and desserts: stir, cook the egg-yolk base at 70-80 °C, then whip. Sauces and dips: chop, then stir; emulsions add a long speed-4 step while the oil runs in from the lid.
-- Dumplings and masses bound with breadcrumbs, semolina or flour (Knödel, Nockerl): a text step rests the mass for 20-30 minutes before shaping, the shaping step names the piece size or count, and they cook "in leicht siedendem Wasser".
+- Dumplings and masses bound with breadcrumbs, semolina or flour (Knödel, Nockerl): a text step rests the mass for 20-30 minutes before shaping, the shaping step names the piece size or count, and they cook "{{phrase:simmerGently}}".
 - Jam: chop the fruit, heat it, then cook hard with the basket on the lid as splash guard. Drinks: crush ice or blend.
 - Repeated identical steps are normal: chopping or stirring in stages, and cooking split into two stages at the same temperature (for example 600 s, then 300 s at 100 °C) when ingredients go in between.
 
 ## Amounts and units
 
 - Weigh everything weighable in g, liquids included, with the densities of the Units section. Never ml or l.
-- Convert tablespoons to g with the spoon weights of the Units section (by food). Teaspoons stay Tl for spices, salt and baking powder; 5 g or more of sugar, butter or oil becomes g.
-- Amounts under 5 g are not weighed: write them in Tl, Prise or Msp. Round to the gram grid of the Units section only amounts you convert from another unit; keep gram amounts of the source as they are. Spoon amounts in wholes, halves or quarters.
-- Keep Stück for eggs, garlic cloves (name "Knoblauchzehen"), herb stems (name "Petersilienstiele") and bay leaves. Vegetables that a scale step weighs get grams from the piece weights of the Units section.
-- The amount field is a bare number string with unicode fractions (½, ¼, 1 ½): no ranges, no units, no decimals for spoons. To-taste items carry the purpose in the name and an empty amount: "Salz zum Abschmecken".
+- Convert tablespoons to g with the spoon weights of the Units section (by food). Teaspoons stay {{unit:teaspoon}} for spices, salt and baking powder; 5 g or more of sugar, butter or oil becomes g.
+- Amounts under 5 g are not weighed: write them in {{unit:teaspoon}}, {{unit:pinch}} or {{unit:knifeTip}}. Round to the gram grid of the Units section only amounts you convert from another unit; keep gram amounts of the source as they are. Spoon amounts in wholes, halves or quarters.
+- Counted items keep their count as the wording rules say. Vegetables that a scale step weighs get grams from the piece weights of the Units section.
+- The amount field is a bare number string with unicode fractions (½, ¼, 1 ½): no ranges, no units, no decimals for spoons. To-taste items carry the purpose in the name and an empty amount: "{{phrase:toTaste}}".
 - Never invent or drop an ingredient or a quantity. Keep the source amounts (scaled), changed only by unit conversion and rounding, and list anything unclear in reviewHints.
-
-## Ingredient names
-
-- Write each ingredient list name the way Monsieur Cuisine recipes spell it, so the bridge can link it to the app's ingredient database. Only an exact match apart from case and spacing gets an id; a near miss gets none. Counted items in the plural: "Zwiebeln", "Knoblauchzehen", "Möhren", "Eier (Größe M)". Qualifiers in parentheses: "Mehl (Type 405)", "Sahne (30 % Fett)", "Joghurt natur (3,5 % Fett)". Form and state after a comma: "Hefe, frisch", "Pfeffer, schwarz, gemahlen". To-taste items as in the amounts rules: "Salz zum Abschmecken".
-- Keep the preparation out of the list name ("Zwiebeln", not "Zwiebeln, gewürfelt"); the step that cuts them says how. Steps then use the name without its qualifiers: "die Zwiebeln" for "Zwiebeln (rot)".
+- ingredientMapping says where each ingredient-list entry comes from: one entry per ingredient-list name, written exactly as in the list, with the index [i] of the source ingredient line, or null for an ingredient the source does not have (water for steaming, say). Every source ingredient line appears in it. When two source lines become one list entry, give one mapping entry per source line with the same name; when one source line is split over two groups, one entry with that name covers both.
 
 ## Chopping
 
@@ -94,14 +89,14 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - Short crust: kneading_solid_dough for 45-120 s, or manual speed 4-6 for 20 s, with cold butter in pieces.
 - Cake batter in manual mode at speed 4 for 30 s (10-60 s), flour last. Thin batters such as pancakes: kneading_liquid_dough or speed 4.
 - Whip with the whisk at speed 4 at most: 90 s (15-300 s). Fit and remove the whisk in text steps; egg whites need a fat-free bowl. Fold whipped cream or egg white into a dense base (melted chocolate, yolk mixture, cream cheese) forward at speed 3 for 30-45 s, push down with the spatula and run 10 s more; reverse with the whisk barely mixes (10 of 350 official whisk steps).
-- Emulsify mayonnaise, aioli and dressings in two steps: a short mix of the base, then a long step at speed 4 (up to 240 s) while the oil is poured slowly onto the lid with the measuring cup in, so it runs in along the cup: "Das Öl langsam auf den Deckel gießen, sodass es am Messbecher entlang in den Mixbehälter läuft." Never remove the measuring cup for this.
+- Emulsify mayonnaise, aioli and dressings in two steps: a short mix of the base, then a long step at speed 4 (up to 240 s) while the oil is poured slowly onto the lid with the measuring cup in, so it runs in along the cup: "{{phrase:oilOntoLid}}" Never remove the measuring cup for this.
 
 ## Steaming
 
-- Steaming order: water or stock in a scale step (1000 g, never below 500 g), food spread in the steamer ("im Dampfgaraufsatz verteilen"), "Dampfgaraufsatz aufsetzen", then the steaming program, which takes no temperature.
+- Steaming order: water or stock in a scale step (1000 g, never below 500 g), food spread in the steamer ("{{phrase:steamerSpread}}"), "{{phrase:steamerOn}}", then the steaming program, which takes no temperature.
 - Steaming time by load, not by mass: vegetables, potatoes and fish 900 s; meat, dumplings and desserts in moulds 1200 s; overall 480-2100 s.
 - Cook a side (potatoes, rice) in the cooking basket below while the steamer runs, and count everything in the bowl toward the bowl limit. Official recipes also steam in manual mode at 120 °C, speed 1, when liquid in the bowl must cook too.
-- Steaming longer than 30 minutes with less than 1000 g of water needs a "Wasser nachfüllen" text step.
+- Steaming longer than 30 minutes with less than 1000 g of water needs a "{{phrase:refillWater}}" text step.
 
 ## Purée and blend
 
@@ -112,7 +107,7 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 ## Special programs
 
 - Use only modes the member editor offers on MC3.0: kneading_solid_dough, kneading_soft_dough and kneading_liquid_dough instead of kneading; puree or manual steps instead of ramp. The device has not been tested with kneading or ramp from a member recipe.
-- Rare programs: sous_vide 50-85 °C for 25-90 min; slow_cooking 70-95 °C (official 90 °C for 3-4 h); fermentation 37-40 °C for 1-12 h; cooking_eggs with size and texture; rice_cooking 1200-2400 s. Use food_processor only when the installation has the attachment. Never use precleaning; rinse the bowl with the text step "Mixbehälter ausspülen".
+- Rare programs: sous_vide 50-85 °C for 25-90 min; slow_cooking 70-95 °C (official 90 °C for 3-4 h); fermentation 37-40 °C for 1-12 h; cooking_eggs with size and texture; rice_cooking 1200-2400 s. Use food_processor only when the installation has the attachment. Never use precleaning; rinse the bowl with the text step "{{phrase:rinseBowl}}".
 
 ## Safety and limits
 

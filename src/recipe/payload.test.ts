@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import type { McWritableStatus } from "../mc/types.js";
 import { parseDeviceLimits } from "./limits.js";
 import { buildMcPayload, formatAmount } from "./payload.js";
+import { dePack, enPack } from "../testing/locale.js";
 import { RecipeInputSchema, type RecipeInput } from "./schema.js";
+
+const de = dePack.mc;
 
 const sample = (): RecipeInput =>
   RecipeInputSchema.parse(
@@ -22,11 +25,12 @@ const limits = parseDeviceLimits(
 );
 
 const steps = (input: RecipeInput) =>
-  buildMcPayload(input, limits, { status: "draft" }).servingSizes[0].steps;
+  buildMcPayload(input, limits, { locale: de, status: "draft" }).servingSizes[0].steps;
 
 describe("buildMcPayload", () => {
   it("builds the all-modes sample", () => {
     const payload = buildMcPayload(sample(), limits, {
+      locale: de,
       status: "draft",
       detailsMediaId: 700002,
       thumbnailMediaId: 700001,
@@ -35,7 +39,7 @@ describe("buildMcPayload", () => {
   });
 
   it("sets the constant fields the server expects", () => {
-    const payload = buildMcPayload(sample(), limits, { status: "draft" });
+    const payload = buildMcPayload(sample(), limits, { locale: de, status: "draft" });
     expect(payload).toMatchObject({
       source: "member",
       languageLocale: "de-DE",
@@ -53,27 +57,43 @@ describe("buildMcPayload", () => {
     ["hard", 104],
   ])("maps complexity %s to id %i", (complexity, id) => {
     expect(
-      buildMcPayload({ ...sample(), complexity }, limits, { status: "draft" }).complexityId,
+      buildMcPayload({ ...sample(), complexity }, limits, { locale: de, status: "draft" })
+        .complexityId,
     ).toBe(id);
   });
 
   it.each<McWritableStatus>(["draft", "private-publish"])(
     "takes the status %s from the caller",
     (status) => {
-      expect(buildMcPayload(sample(), limits, { status }).status).toBe(status);
+      expect(buildMcPayload(sample(), limits, { locale: de, status }).status).toBe(status);
     },
   );
+
+  it("takes the language, complexity ids and default group name from the locale pack", () => {
+    const english = { ...sample(), locale: "en-US", complexity: "medium" as const };
+    english.servingSize.ingredientGroups[0]!.name = "";
+    const payload = buildMcPayload(english, limits, { locale: enPack.mc, status: "draft" });
+    expect(payload).toMatchObject({ languageLocale: "en-US", complexityId: 16 });
+    expect(payload.servingSizes[0]?.ingredientGroups[0]?.name).toBe("General ingredients");
+  });
+
+  it("refuses a recipe written for another locale", () => {
+    expect(() => buildMcPayload(sample(), limits, { locale: enPack.mc, status: "draft" })).toThrow(
+      "The recipe is written for de-DE, but the payload is built for en-US",
+    );
+  });
 
   it("refuses statuses that would publish the recipe", () => {
     for (const status of ["pending", "publish", "rejected", undefined]) {
       expect(() =>
-        buildMcPayload(sample(), limits, { status: status as McWritableStatus }),
+        buildMcPayload(sample(), limits, { locale: de, status: status as McWritableStatus }),
       ).toThrow(`Refusing to build a payload with status "${String(status)}"`);
     }
   });
 
   it("sets both orientations to the uploaded media ids", () => {
     const payload = buildMcPayload(sample(), limits, {
+      locale: de,
       status: "draft",
       detailsMediaId: 11,
       thumbnailMediaId: 12,
@@ -93,21 +113,31 @@ describe("buildMcPayload", () => {
   });
 
   it("sends null media ids without an image", () => {
-    const payload = buildMcPayload(sample(), limits, { status: "draft", detailsMediaId: null });
+    const payload = buildMcPayload(sample(), limits, {
+      locale: de,
+      status: "draft",
+      detailsMediaId: null,
+    });
     expect(payload.detailsImage).toMatchObject({ portraitMediaId: null, landscapeMediaId: null });
     expect(payload.thumbnail).toMatchObject({ portraitMediaId: null, landscapeMediaId: null });
   });
 
   it("uses the category ids from the options over those of the input", () => {
-    expect(buildMcPayload(sample(), limits, { status: "draft" }).categoryIds).toEqual([228]);
+    expect(buildMcPayload(sample(), limits, { locale: de, status: "draft" }).categoryIds).toEqual([
+      228,
+    ]);
     const ids = [260, 471];
-    const payload = buildMcPayload(sample(), limits, { status: "draft", categoryIds: ids });
+    const payload = buildMcPayload(sample(), limits, {
+      locale: de,
+      status: "draft",
+      categoryIds: ids,
+    });
     expect(payload.categoryIds).toEqual([260, 471]);
     expect(payload.categoryIds).not.toBe(ids);
   });
 
   it("rounds nutrients to whole numbers and adds their units", () => {
-    expect(buildMcPayload(sample(), limits, { status: "draft" }).nutrients).toEqual([
+    expect(buildMcPayload(sample(), limits, { locale: de, status: "draft" }).nutrients).toEqual([
       { name: "calories", unit: "kCal", amount: 300 },
       { name: "carbohydrate", unit: "g", amount: 60 },
       { name: "fat", unit: "g", amount: 1 },
@@ -119,7 +149,7 @@ describe("buildMcPayload", () => {
     const input = sample();
     delete input.nutrients;
     delete input.servingSize.instruction;
-    const payload = buildMcPayload(input, limits, { status: "draft" });
+    const payload = buildMcPayload(input, limits, { locale: de, status: "draft" });
     expect(payload.nutrients).toEqual([]);
     expect(payload.servingSizes[0].instruction).toBe("");
   });
@@ -130,7 +160,7 @@ describe("buildMcPayload", () => {
       name: "  ",
       ingredients: [{ name: "Öl", amount: 0.1 + 0.2, unit: "EL", isOptional: false }],
     });
-    const groups = buildMcPayload(input, limits, { status: "draft" }).servingSizes[0]
+    const groups = buildMcPayload(input, limits, { locale: de, status: "draft" }).servingSizes[0]
       .ingredientGroups;
     expect(groups.map(({ name, isDefault, order }) => ({ name, isDefault, order }))).toEqual([
       { name: "Zutaten", isDefault: true, order: 0 },
@@ -163,6 +193,7 @@ describe("buildMcPayload", () => {
     const input = sample();
     input.servingSize.ingredientGroups[0]!.ingredients[3]!.name = "  MEHL ";
     const ids = buildMcPayload(input, limits, {
+      locale: de,
       status: "draft",
       ingredientIds,
     }).servingSizes[0].ingredientGroups[0]?.ingredients.map((item) => [
@@ -244,12 +275,12 @@ describe("buildMcPayload", () => {
     const input = sample();
     const broken = { kind: "customized", title: "Kochen", temperature: 0, minutes: 1, seconds: 0 };
     input.servingSize.steps = [broken as RecipeInput["servingSize"]["steps"][number]];
-    expect(() => buildMcPayload(input, limits, { status: "draft" })).toThrow(
+    expect(() => buildMcPayload(input, limits, { locale: de, status: "draft" })).toThrow(
       "customized has no value for speed",
     );
     const eggs = { kind: "cooking_eggs", title: "Eier", size: "small" };
     input.servingSize.steps = [eggs as RecipeInput["servingSize"]["steps"][number]];
-    expect(() => buildMcPayload(input, limits, { status: "draft" })).toThrow(
+    expect(() => buildMcPayload(input, limits, { locale: de, status: "draft" })).toThrow(
       "cooking_eggs has no value for texture",
     );
   });

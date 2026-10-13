@@ -59,3 +59,10 @@ export function parseJsonOutput(answer: string): ParsedOutput {
     };
   }
 }
+
+// Sets the locale of a parsed answer, in place: the converter writes recipes for one
+// locale, so the code decides it, not the model.
+export function setLocale(value: unknown, locale: string): void {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return;
+  (value as Record<string, unknown>).locale = locale;
+}

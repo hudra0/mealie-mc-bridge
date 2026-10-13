@@ -1,19 +1,35 @@
-// Loads the knowledge base the prompt and the plausibility checks use: cooking techniques,
-// the timing model, unit rules, recommended device ranges, the converter's own tables and
-// the prompt rules. step-patterns.md stays in the directory as the evidence behind the
-// prompt rules; the converter does not read it.
+// Loads the knowledge base the prompt and the plausibility checks use: the language-neutral
+// files in KNOWLEDGE_DIR (cooking techniques, the timing model, densities, recommended
+// device ranges, the converter's own tables, the neutral prompt rules) and the locale pack
+// of the output language under KNOWLEDGE_DIR/locales/<locale>/ (unit vocabulary, phrases,
+// technique wording, language-specific prompt rules). The technique wording of every other
+// pack joins the selection of techniques, so a source recipe in any of those languages finds
+// its techniques. step-patterns.md stays in the directory as the evidence behind the prompt
+// rules; the converter does not read it.
+//
 // Each JSON file is checked leniently: only the fields this module reads must be present,
-// everything else passes through. A missing file or a missing field fails the load, so a
-// broken knowledge base never reaches a conversion.
+// everything else passes through. A missing file, a missing field or a placeholder the pack
+// cannot fill fails the load, so a broken knowledge base never reaches a conversion.
 
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import {
+  DEFAULT_LOCALE,
+  LocalePackError,
+  loadAllLocalePacks,
+  loadLocalePack,
+  type LocalePack,
+  type PackUnits,
+} from "../locale/pack.js";
+import { fillPlaceholders } from "../locale/placeholders.js";
 import { DEFAULT_KNOWLEDGE_DIR } from "./settings.js";
+import { createTextRules, type TextRules } from "./text.js";
 import type { ConversionRequest } from "./types.js";
 
 export { DEFAULT_KNOWLEDGE_DIR } from "./settings.js";
 
+// The language-neutral files, in the order a missing one is reported.
 export const KNOWLEDGE_FILES = {
   techniques: "techniques.json",
   timing: "timing-model.json",
@@ -45,10 +61,6 @@ const speed = z.looseObject({ typical: z.number(), max: z.number().optional() })
 const techniqueSchema = z.looseObject({
   id: z.string().min(1),
   label: z.string(),
-  aliases: z.looseObject({
-    de: z.array(z.string()).default([]),
-    en: z.array(z.string()).default([]),
-  }),
   ingredientClasses: z.array(z.string()),
   device: z.looseObject({
     mode: z.string().min(1),
@@ -142,33 +154,9 @@ const timingFileSchema = z.looseObject({
   durations: z.looseObject({ rule: z.string().optional() }).optional(),
 });
 
-const gramsPerUnit = z.union([z.number(), z.string(), z.record(z.string(), z.number()), z.null()]);
-
+// The neutral part of the unit rules: densities in g per ml by kind of liquid.
 const unitsFileSchema = z.looseObject({
-  allowedUnits: z.array(z.looseObject({ unit: z.string(), use: z.string() })).min(1),
-  notAllowed: z.array(z.string()).default([]),
-  amountFormat: z.looseObject({ rules: z.array(z.string()) }),
-  roundingGrid: z.looseObject({
-    grams: z.array(
-      z.looseObject({ band: z.tuple([z.number(), z.number().nullable()]), step: z.number() }),
-    ),
-    spoons: z.string().optional(),
-  }),
-  freeTextMapping: z.array(
-    z.looseObject({
-      input: z.array(z.string()),
-      target: z.string(),
-      gramsPerUnit: gramsPerUnit.optional(),
-      nameRule: z.string().optional(),
-      note: z.string().optional(),
-    }),
-  ),
   densities: z.record(z.string(), z.union([z.number(), z.string()])),
-  pieceWeights: z.looseObject({
-    items: z.array(z.looseObject({ name: z.string(), unit: z.string(), grams: z.number() })),
-  }),
-  nameConventions: z.array(z.string()).default([]),
-  groups: z.looseObject({ style: z.string().optional() }).optional(),
 });
 
 const recommendedFileSchema = z.looseObject({
@@ -183,18 +171,13 @@ const recommendedFileSchema = z.looseObject({
 });
 
 const converterRulesFileSchema = z.looseObject({
-  ingredientClassWords: z.looseObject({
-    classes: z.record(z.string(), z.array(z.string().min(1)).min(1)),
-  }),
-  amountBalance: z.looseObject({
-    tolerance: z.number().min(0).max(1),
-    volumeLiquids: z.looseObject({ words: z.array(z.string().min(1)).min(1) }),
-  }),
+  amountBalance: z.looseObject({ tolerance: z.number().min(0).max(1) }),
 });
 
 export type Technique = z.infer<typeof techniqueSchema>;
 export type TimingModel = z.infer<typeof timingFileSchema>;
-export type UnitsKnowledge = z.infer<typeof unitsFileSchema>;
+// The unit rules of the output language with the neutral densities.
+export type UnitsKnowledge = PackUnits & { densities: Record<string, number | string> };
 export type RecommendedLimits = z.infer<typeof recommendedFileSchema>;
 export type MassLimit = z.infer<typeof massLimitSchema>;
 
@@ -210,22 +193,31 @@ export interface HeatUpThresholds {
 }
 
 export interface Knowledge {
+  // The output locale and its pack.
+  locale: string;
+  pack: LocalePack;
   techniques: Technique[];
   timing: TimingModel;
   units: UnitsKnowledge;
   recommended: RecommendedLimits;
-  // The prompt rules as written, Markdown.
+  // The neutral prompt rules with the pack's wording filled in, Markdown.
   promptRules: string;
+  // The pack's own prompt rules, Markdown.
+  languageRules: string;
   heatUp: HeatUpThresholds;
   massLimits: ReadonlyMap<string, MassLimit>;
-  // German words per ingredient class of techniques.json (converter-rules.json). A word
-  // matches the start of a word in the recipe, so "zwiebel" also finds "Zwiebeln".
+  // Wording of each technique in the output language (technique-aliases.json).
+  aliases: Readonly<Record<string, readonly string[]>>;
+  // Aliases of every pack, lower case, for picking techniques on a source recipe in any
+  // language.
+  selectionAliases: Readonly<Record<string, readonly string[]>>;
+  // Words per ingredient class of techniques.json, of every pack. A word matches the start
+  // of a word in the recipe, so "zwiebel" also finds "Zwiebeln".
   ingredientClassWords: Readonly<Record<string, readonly string[]>>;
   // Share by which an amount may exceed or fall short of the input (converter-rules.json).
   amountTolerance: number;
-  // Words for liquids, German and English: a cup of anything else is a volume of a solid,
-  // which the amount check skips (converter-rules.json).
-  volumeLiquidWords: readonly string[];
+  // The text heuristics of the plausibility checks for the output language.
+  text: TextRules;
 }
 
 // Techniques every prompt carries: the scale step, chopping, sautéing and simmering cover
@@ -249,6 +241,8 @@ export type RequiredMassLimit = (typeof REQUIRED_MASS_LIMITS)[number];
 export const REQUIRED_RULES = ["speed_max_whisk", "turbo_content_temperature"] as const;
 export type RequiredRule = (typeof REQUIRED_RULES)[number];
 export const REQUIRED_TECHNIQUES = [...ALWAYS_SELECTED, "sear_roast"] as const;
+// Standard phrases the checks quote in their messages.
+export const REQUIRED_PHRASES = ["whiskOut", "rinseBowl"] as const;
 
 async function readText(dir: string, file: string): Promise<string> {
   const path = join(dir, file);
@@ -323,12 +317,39 @@ export interface KnowledgeTexts {
   promptRules: string;
 }
 
-// Checks the file contents and builds the knowledge object.
-export function buildKnowledge(files: KnowledgeTexts): Knowledge {
+// Fills the placeholders of every string in a parsed knowledge value.
+function fillDeep<T>(value: T, fill: (text: string) => string): T {
+  if (typeof value === "string") return fill(value) as T;
+  if (Array.isArray(value)) return value.map((item: unknown) => fillDeep(item, fill)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, fillDeep(item, fill)]),
+    ) as T;
+  }
+  return value;
+}
+
+function withPack<T>(where: string, action: () => T): T {
+  try {
+    return action();
+  } catch (error) {
+    if (error instanceof LocalePackError) throw new KnowledgeError(error.message, { cause: error });
+    throw new KnowledgeError(`${where}: ${String(error)}`, { cause: error });
+  }
+}
+
+// Checks the file contents and builds the knowledge object for the output language of
+// `pack`. `packs` are all packs whose technique wording joins the technique selection; the
+// output pack always counts.
+export function buildKnowledge(
+  files: KnowledgeTexts,
+  pack: LocalePack,
+  packs: readonly LocalePack[] = [pack],
+): Knowledge {
   const F = KNOWLEDGE_FILES;
-  const techniques = parseJson(techniquesFileSchema, files.techniques, F.techniques).techniques;
+  const parsedTechniques = parseJson(techniquesFileSchema, files.techniques, F.techniques);
   const timing = parseJson(timingFileSchema, files.timing, F.timing);
-  const units = parseJson(unitsFileSchema, files.units, F.units);
+  const neutralUnits = parseJson(unitsFileSchema, files.units, F.units);
   const recommended = parseJson(recommendedFileSchema, files.recommended, F.recommended);
   const converterRules = parseJson(
     converterRulesFileSchema,
@@ -336,6 +357,9 @@ export function buildKnowledge(files: KnowledgeTexts): Knowledge {
     F.converterRules,
   );
 
+  const fill = (where: string) => (text: string) =>
+    withPack(where, () => fillPlaceholders(text, pack, where));
+  const techniques = fillDeep(parsedTechniques.techniques, fill(F.techniques));
   const ids = new Set<string>();
   for (const technique of techniques) {
     if (ids.has(technique.id)) {
@@ -360,23 +384,61 @@ export function buildKnowledge(files: KnowledgeTexts): Knowledge {
       throw new KnowledgeError(`${F.recommended}: rule ${id} with a value is missing`);
     }
   }
+  for (const id of REQUIRED_PHRASES) {
+    if (pack.phrases.standardPhrases[id] === undefined) {
+      throw new KnowledgeError(`${pack.locale}: the standard phrase ${id} is missing`);
+    }
+  }
+
+  const all = [...new Set([pack, ...packs])];
+  const selectionAliases: Record<string, string[]> = {};
+  const ingredientClassWords: Record<string, string[]> = {};
+  for (const source of all) {
+    for (const [id, entry] of Object.entries(source.techniqueAliases.techniques)) {
+      if (!ids.has(id)) {
+        throw new KnowledgeError(
+          `locales/${source.locale}/technique-aliases.json: technique ${id} is not in ${F.techniques}`,
+        );
+      }
+      const merged = [
+        ...(selectionAliases[id] ?? []),
+        ...entry.aliases.map((a) => a.toLowerCase()),
+      ];
+      selectionAliases[id] = [...new Set(merged)];
+    }
+    for (const [name, list] of Object.entries(source.techniqueAliases.ingredientClassWords)) {
+      ingredientClassWords[name] = [...new Set([...(ingredientClassWords[name] ?? []), ...list])];
+    }
+  }
+  const aliases = Object.fromEntries(
+    Object.entries(pack.techniqueAliases.techniques).map(([id, entry]) => [id, entry.aliases]),
+  );
+
   return {
+    locale: pack.locale,
+    pack,
     techniques,
     timing,
-    units,
+    units: { ...pack.units, densities: neutralUnits.densities },
     recommended,
-    promptRules: markdown(files.promptRules, F.promptRules),
+    promptRules: markdown(fill(F.promptRules)(files.promptRules), F.promptRules),
+    languageRules: fill(`locales/${pack.locale}/prompt-rules.md`)(pack.promptRules),
     heatUp: heatUpThresholds(timing),
     massLimits,
-    ingredientClassWords: converterRules.ingredientClassWords.classes,
+    aliases,
+    selectionAliases,
+    ingredientClassWords,
     amountTolerance: converterRules.amountBalance.tolerance,
-    volumeLiquidWords: converterRules.amountBalance.volumeLiquids.words,
+    text: createTextRules(pack, all),
   };
 }
 
-// Reads the knowledge base from a directory. A relative path resolves against the working
-// directory, like DEVICE_PROGRAMS_PATH.
-export async function loadKnowledge(dir: string = DEFAULT_KNOWLEDGE_DIR): Promise<Knowledge> {
+// Reads the knowledge base from a directory for one output locale. A relative path
+// resolves against the working directory, like DEVICE_PROGRAMS_PATH.
+export async function loadKnowledge(
+  dir: string = DEFAULT_KNOWLEDGE_DIR,
+  locale: string = DEFAULT_LOCALE,
+): Promise<Knowledge> {
   const absolute = resolve(dir);
   const F = KNOWLEDGE_FILES;
   const names = Object.keys(F) as (keyof typeof F)[];
@@ -387,7 +449,16 @@ export async function loadKnowledge(dir: string = DEFAULT_KNOWLEDGE_DIR): Promis
   if (failed) throw failed.reason;
   const contents = results.map((result) => (result.status === "fulfilled" ? result.value : ""));
   const files = Object.fromEntries(names.map((name, i) => [name, contents[i] ?? ""]));
-  return buildKnowledge(files as unknown as KnowledgeTexts);
+  let pack: LocalePack;
+  let packs: LocalePack[];
+  try {
+    pack = await loadLocalePack(absolute, locale);
+    packs = await loadAllLocalePacks(absolute);
+  } catch (error) {
+    if (error instanceof LocalePackError) throw new KnowledgeError(error.message, { cause: error });
+    throw error;
+  }
+  return buildKnowledge(files as unknown as KnowledgeTexts, pack, packs);
 }
 
 // A mass limit the loader guaranteed to exist, with its gram value.
@@ -408,6 +479,11 @@ export function ruleValue(knowledge: Knowledge, id: RequiredRule): number {
   return value;
 }
 
+// A standard phrase of the output language the loader guaranteed to exist.
+export function phrase(knowledge: Knowledge, id: (typeof REQUIRED_PHRASES)[number]): string {
+  return knowledge.pack.phrases.standardPhrases[id] ?? id;
+}
+
 export function techniqueById(knowledge: Knowledge, id: string): Technique | undefined {
   return knowledge.techniques.find((technique) => technique.id === id);
 }
@@ -424,7 +500,7 @@ const anyMode: ModeFilter = () => true;
 // Techniques the prompt never offers, with the reason. The device has a precleaning
 // program, but official recipes rinse the bowl in a text step instead.
 export const PROMPT_EXCLUDED_TECHNIQUES: Readonly<Record<string, string>> = {
-  preclean: 'use the text step "Mixbehälter ausspülen" instead',
+  preclean: "official recipes rinse the bowl in a text step instead",
 };
 
 // The techniques the prompt may offer: their main program runs on this installation.
@@ -449,10 +525,6 @@ function occurs(text: string, phrase: string): boolean {
 function countHits(text: string, phrases: readonly string[]): number {
   return phrases.filter((phrase) => occurs(text, phrase)).length;
 }
-
-const aliasesOf = (technique: Technique) => [
-  ...new Set([...technique.aliases.de, ...technique.aliases.en].map((a) => a.toLowerCase())),
-];
 
 function rangeText(value: { typical: number; range?: [number, number] | undefined }): string {
   const [low, high] = value.range ?? [value.typical, value.typical];
@@ -485,10 +557,10 @@ export function techniqueSummaryLine(technique: Technique): string {
 // dough for a custard; at a quarter they only decide between techniques of the same verb.
 export const CLASS_HIT_SCORE = 0.25;
 
-// Picks the offered techniques whose German or English aliases or ingredient classes occur
-// in the recipe. The techniques of ALWAYS_SELECTED are always in; the others rank by score, ties
-// in knowledge-file order. An alias hit scores 3 divided by the number of techniques that
-// share the alias ("zerkleinern" names five chopping techniques), an ingredient class
+// Picks the offered techniques whose aliases (of any pack) or ingredient classes occur in
+// the recipe. The techniques of ALWAYS_SELECTED are always in; the others rank by score,
+// ties in knowledge-file order. An alias hit scores 3 divided by the number of techniques
+// that share the alias ("zerkleinern" names five chopping techniques), an ingredient class
 // with a hit scores CLASS_HIT_SCORE, so the ingredients decide between techniques of the
 // same verb.
 export function selectTechniques(
@@ -500,6 +572,7 @@ export function selectTechniques(
   const text = [request.title, request.rendered, ...request.ingredients.map((i) => i.food)]
     .join("\n")
     .toLowerCase();
+  const aliasesOf = (technique: Technique) => knowledge.selectionAliases[technique.id] ?? [];
   const shared = new Map<string, number>();
   for (const technique of knowledge.techniques) {
     for (const alias of aliasesOf(technique)) shared.set(alias, (shared.get(alias) ?? 0) + 1);

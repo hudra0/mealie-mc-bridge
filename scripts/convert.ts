@@ -5,6 +5,9 @@
 //   npm run convert -- prompt --mealie-json recipe.json [--scale 1.5]
 //   npm run convert:eval -- --ids 101,102 [--corpus-dir local/corpus] [--provider openai]
 //
+// --locale picks the output language and its locale pack (default MC_LOCALE); eval reads
+// local/corpus for de-DE and local/corpus/<locale> otherwise.
+//
 // The Mealie file is a recipe as GET /api/recipes/{slug} returns it. The API key of the
 // selected provider comes from the environment (.env is read when it exists), never from
 // an argument. The category list comes from --categories (a JSON file), else from the
@@ -43,8 +46,14 @@ import {
   servingsFor,
   type NormalizedIngredient,
 } from "../src/ingredients/index.js";
+import { LOCALE_PATTERN, type LocalePack } from "../src/locale/pack.js";
 import { McTransport, type FetchLike } from "../src/mc/index.js";
-import { mealieRecipeSchema, renderRecipeForLlm } from "../src/mealie/index.js";
+import {
+  mealieRecipeSchema,
+  renderLabels,
+  renderRecipeForLlm,
+  type RenderLabels,
+} from "../src/mealie/index.js";
 import { DeviceLimitsError, loadDeviceLimits, type DeviceLimits } from "../src/recipe/limits.js";
 import { stepSeconds } from "../src/recipe/modes.js";
 import type { RecipeInput, RecipeStep } from "../src/recipe/schema.js";
@@ -71,11 +80,13 @@ Commands:
   prompt --mealie-json <file>    print the system prompt and the user message
       --scale <factor>
   eval --ids <id,id,...>         convert corpus recipes and compare the programs with the originals
-      --corpus-dir <dir>         default local/corpus
+      --corpus-dir <dir>         default the corpus of the locale (see below)
       --provider <name>
       --out <file>               write the converted recipes as JSON
 
-Every command takes --categories <file>: a JSON list of {id, name}, or a category
+Every command takes --locale <locale> (default MC_LOCALE), the output language: it needs a
+locale pack in KNOWLEDGE_DIR/locales; eval reads local/corpus for de-DE and
+local/corpus/<locale> otherwise. Every command takes --categories <file>: a JSON list of {id, name}, or a category
 response of the Monsieur Cuisine API. Without it the list is fetched from the API;
 when that fails, the command stops. The provider's API key is read from
 OPENAI_API_KEY or ANTHROPIC_API_KEY, the price table from LLM_PRICES_JSON.`;
@@ -101,15 +112,17 @@ export type Command =
       provider?: LlmProvider;
       out?: string;
       categories?: string;
+      locale?: string;
     }
-  | { name: "prompt"; mealieJson: string; scale: number; categories?: string }
+  | { name: "prompt"; mealieJson: string; scale: number; categories?: string; locale?: string }
   | {
       name: "eval";
-      corpusDir: string;
+      corpusDir?: string;
       ids: number[];
       provider?: LlmProvider;
       out?: string;
       categories?: string;
+      locale?: string;
     }
   | { name: "help" };
 
@@ -130,6 +143,7 @@ export function parseCommand(args: readonly string[]): Command {
         categories: { type: "string" },
         "corpus-dir": { type: "string" },
         ids: { type: "string" },
+        locale: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
     });
@@ -145,6 +159,10 @@ export function parseCommand(args: readonly string[]): Command {
   const provider = values.provider;
   if (provider !== undefined && !(PROVIDERS as readonly string[]).includes(provider)) {
     throw new UsageError(`--provider must be openai or anthropic, not ${provider}`);
+  }
+  const locale = values.locale;
+  if (locale !== undefined && !LOCALE_PATTERN.test(locale)) {
+    throw new UsageError(`--locale must look like de-DE, not ${locale}`);
   }
   const scale = values.scale === undefined ? 1 : Number(values.scale);
   if (!Number.isFinite(scale) || scale <= 0 || scale > 100) {
@@ -165,13 +183,19 @@ export function parseCommand(args: readonly string[]): Command {
     case "prompt": {
       reject(
         name === "convert"
-          ? ["mealie-json", "scale", "provider", "out", "categories"]
-          : ["mealie-json", "scale", "categories"],
+          ? ["mealie-json", "scale", "provider", "out", "categories", "locale"]
+          : ["mealie-json", "scale", "categories", "locale"],
       );
       const mealieJson = values["mealie-json"];
       if (!mealieJson) throw new UsageError(`${name} needs --mealie-json <file>`);
       if (name === "prompt") {
-        return { name, mealieJson, scale, ...optional("categories", values.categories) };
+        return {
+          name,
+          mealieJson,
+          scale,
+          ...optional("categories", values.categories),
+          ...optional("locale", locale),
+        };
       }
       return {
         name,
@@ -180,10 +204,11 @@ export function parseCommand(args: readonly string[]): Command {
         ...optional("provider", provider as LlmProvider | undefined),
         ...optional("out", values.out),
         ...optional("categories", values.categories),
+        ...optional("locale", locale),
       };
     }
     case "eval": {
-      reject(["corpus-dir", "ids", "provider", "out", "categories"]);
+      reject(["corpus-dir", "ids", "provider", "out", "categories", "locale"]);
       const ids = (values.ids ?? "")
         .split(",")
         .map((id) => id.trim())
@@ -192,16 +217,23 @@ export function parseCommand(args: readonly string[]): Command {
       if (ids.some((id) => !/^\d+$/.test(id))) throw new UsageError("--ids takes recipe numbers");
       return {
         name,
-        corpusDir: values["corpus-dir"] ?? "local/corpus",
+        ...optional("corpusDir", values["corpus-dir"]),
         ids: ids.map(Number),
         ...optional("provider", provider as LlmProvider | undefined),
         ...optional("out", values.out),
         ...optional("categories", values.categories),
+        ...optional("locale", locale),
       };
     }
     default:
       throw new UsageError(`Unknown command ${name}`);
   }
+}
+
+// The corpus of a locale: local/corpus for the de-DE reference corpus, local/corpus/<locale>
+// for the others.
+export function defaultCorpusDir(locale: string): string {
+  return locale === "de-DE" ? "local/corpus" : `local/corpus/${locale}`;
 }
 
 export async function runConvert(args: readonly string[], ctx: ConvertContext): Promise<number> {
@@ -213,16 +245,24 @@ export async function runConvert(args: readonly string[], ctx: ConvertContext): 
     }
     const config = loadConfig(ctx.env);
     const limits = await loadDeviceLimits(config.DEVICE_PROGRAMS_PATH);
-    const knowledge = await loadKnowledge(config.KNOWLEDGE_DIR);
+    const knowledge = await loadKnowledge(config.KNOWLEDGE_DIR, command.locale ?? config.MC_LOCALE);
+    const pack = knowledge.pack;
     if (command.name === "eval") return await runEval(command, config, limits, knowledge, ctx);
-    const request = await mealieRequest(command.mealieJson, command.scale, limits);
-    const categories = await loadCategories(command.categories, ctx);
+    const request = await mealieRequest(command.mealieJson, command.scale, limits, pack);
+    const categories = await loadCategories(command.categories, ctx, pack);
     if (command.name === "prompt") {
       const usable = usableModes(limits);
       const { techniques } = selectTechniques(request, knowledge, undefined, usable);
       ctx.out(buildSystemPrompt(knowledge, limits));
       ctx.out("\n---- user message ----\n");
-      ctx.out(buildUserMessage(request, categories, { techniques, usable }));
+      ctx.out(
+        buildUserMessage(request, categories, {
+          techniques,
+          usable,
+          aliases: knowledge.aliases,
+          languageName: pack.mc.language,
+        }),
+      );
       return EXIT.ok;
     }
     const generator = (ctx.generator ?? defaultGenerator)(
@@ -285,6 +325,7 @@ export function buildRequest(
   recipeJson: unknown,
   scale: number,
   limits: DeviceLimits,
+  pack: LocalePack,
 ): ConversionRequest {
   const parsed = mealieRecipeSchema.safeParse(recipeJson);
   if (!parsed.success) {
@@ -293,20 +334,21 @@ export function buildRequest(
   const recipe = parsed.data;
   const ingredients = scaleIngredients(normalizeIngredients(recipe), scale);
   const servings = servingsFor(recipe, scale, limits.recipe.servings);
-  const rendered = renderRecipeForLlm(recipe, { scale, servings, ingredients });
+  const labels = renderLabels(pack);
+  const rendered = renderRecipeForLlm(recipe, { scale, servings, ingredients, labels });
   const hints = recipe.recipeCategory.map((category) => category.name).filter(Boolean);
   return {
     title: recipe.name,
     rendered,
     servings,
-    locale: "de-DE",
+    locale: pack.locale,
     ingredients,
     ...(hints.length > 0 ? { categoryHints: hints } : {}),
   };
 }
 
-async function mealieRequest(file: string, scale: number, limits: DeviceLimits) {
-  return buildRequest(await readJson(file, "Mealie recipe"), scale, limits);
+async function mealieRequest(file: string, scale: number, limits: DeviceLimits, pack: LocalePack) {
+  return buildRequest(await readJson(file, "Mealie recipe"), scale, limits, pack);
 }
 
 const categoryList = z.array(z.looseObject({ id: z.number().int(), name: z.string() }));
@@ -325,11 +367,18 @@ export function parseCategories(json: unknown): Category[] {
   return parsed.data.map(({ id, name }) => ({ id, name }));
 }
 
-async function loadCategories(file: string | undefined, ctx: ConvertContext): Promise<Category[]> {
+async function loadCategories(
+  file: string | undefined,
+  ctx: ConvertContext,
+  pack: LocalePack,
+): Promise<Category[]> {
   if (file) return parseCategories(await readJson(file, "category file"));
   try {
-    const transport = new McTransport(ctx.fetch ? { fetch: ctx.fetch } : {});
-    const response = await transport.publicGet("/api/v1/categories", "de-DE");
+    const transport = new McTransport({
+      locale: pack.mc,
+      ...(ctx.fetch ? { fetch: ctx.fetch } : {}),
+    });
+    const response = await transport.publicGet("/api/v1/categories");
     return parseCategories({ data: response.data });
   } catch (error) {
     throw new InputError(
@@ -422,8 +471,12 @@ interface ProgramStep {
 }
 
 // A corpus recipe as the converter would see it: ingredients and the instruction texts
-// of text and scale steps, without any device setting.
-export function corpusRequest(raw: RawRecipe): {
+// of text and scale steps, without any device setting. The headings follow the locale pack
+// of the output language, and the ingredient lines carry their index [i].
+export function corpusRequest(
+  raw: RawRecipe,
+  pack: Pick<LocalePack, "locale" | "phrases">,
+): {
   request: ConversionRequest;
   original: ProgramStep[];
 } {
@@ -467,23 +520,31 @@ export function corpusRequest(raw: RawRecipe): {
     .map((step) => stepText(step))
     .filter(Boolean);
   const servings = Math.max(1, Math.round(Number(serving?.amount ?? 4)) || 4);
-  const title = raw.name?.trim() || `Rezept ${raw.id}`;
+  const labels: Pick<RenderLabels, "servings" | "ingredients" | "steps" | "untitled"> =
+    pack.phrases.sectionLabels;
+  const title = raw.name?.trim() || `${labels.untitled} ${raw.id}`;
   const lines = [
     `# ${title}`,
     "",
-    `Portionen: ${servings}${serving?.servingUnit ? ` ${serving.servingUnit}` : ""}`,
+    `${labels.servings}: ${servings}${serving?.servingUnit ? ` ${serving.servingUnit}` : ""}`,
     "",
-    "## Zutaten",
+    `## ${labels.ingredients}`,
     "",
   ];
   let section: string | null = null;
-  for (const item of ingredients) {
+  ingredients.forEach((item, position) => {
     if (item.section !== section && item.section !== null)
       lines.push("", `### ${item.section}`, "");
     section = item.section;
-    lines.push(`- ${item.original}`);
-  }
-  lines.push("", "## Zubereitung", "", ...instructions.map((text, i) => `${i + 1}. ${text}`), "");
+    lines.push(`- [${position}] ${item.original}`);
+  });
+  lines.push(
+    "",
+    `## ${labels.steps}`,
+    "",
+    ...instructions.map((text, i) => `${i + 1}. ${text}`),
+    "",
+  );
   const original = steps.flatMap((step): ProgramStep[] => {
     const setting = step.deviceSetting;
     if (!setting || setting.mode === "scale") return [];
@@ -508,7 +569,7 @@ export function corpusRequest(raw: RawRecipe): {
       title,
       rendered: lines.join("\n"),
       servings,
-      locale: "de-DE",
+      locale: pack.locale,
       ingredients,
       ...(hints.length > 0 ? { categoryHints: hints } : {}),
     },
@@ -620,14 +681,16 @@ async function runEval(
   knowledge: Knowledge,
   ctx: ConvertContext,
 ): Promise<number> {
-  const details = join(resolve(command.corpusDir), "details");
+  // The corpus of the language the recipes are converted into, so the comparison is like for like.
+  const corpusDir = command.corpusDir ?? defaultCorpusDir(knowledge.pack.locale);
+  const details = join(resolve(corpusDir), "details");
   if (!existsSync(details)) {
     ctx.err(
-      `No corpus at ${command.corpusDir} (expected ${details}). Build one with npm run corpus:crawl; the corpus stays local and is never committed.`,
+      `No corpus at ${corpusDir} (expected ${details}). Build one with npm run corpus:crawl; the corpus stays local and is never committed.`,
     );
     return EXIT.noInput;
   }
-  const categories = await loadCategories(command.categories, ctx);
+  const categories = await loadCategories(command.categories, ctx, knowledge.pack);
   const generator = (ctx.generator ?? defaultGenerator)(
     config,
     command.provider ?? config.LLM_PROVIDER,
@@ -672,7 +735,7 @@ async function runEval(
       );
       continue;
     }
-    const { request, original } = corpusRequest(raw);
+    const { request, original } = corpusRequest(raw, knowledge.pack);
     ctx.err(`Converting ${id} "${request.title}" ...`);
     try {
       const result = await converter.convert(request);

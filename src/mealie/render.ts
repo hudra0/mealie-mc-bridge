@@ -1,7 +1,9 @@
 // Renders a Mealie recipe as Markdown for the language model: title, meta data, the
 // scaled ingredients grouped by section, the steps, notes and nutrition. The output is
-// deterministic for the same input and contains no HTML. Headings are German because the
-// generated Monsieur Cuisine recipe is German.
+// deterministic for the same input and contains no HTML. The labels and the decimal
+// separator come from the locale pack of the output language (phrases.json sectionLabels,
+// units.json decimalSeparator). Every ingredient line carries its index [i] in the
+// ingredient list, which the converter's ingredientMapping refers to.
 
 import {
   mentionsOptional,
@@ -10,12 +12,23 @@ import {
   type ScaledIngredient,
   type ScaleFlag,
 } from "../ingredients/index.js";
-import { NUTRITION_KEYS, type MealieRecipe, type NutritionKey } from "./types.js";
+import type { LocalePack, SectionLabelKey } from "../locale/pack.js";
+import { NUTRITION_KEYS, type MealieRecipe } from "./types.js";
+
+export type RenderLabels = Readonly<Record<SectionLabelKey, string>> & {
+  nutrients: Readonly<Record<string, string>>;
+  decimalSeparator: "," | ".";
+};
+
+export function renderLabels(pack: LocalePack): RenderLabels {
+  return { ...pack.phrases.sectionLabels, decimalSeparator: pack.units.decimalSeparator };
+}
 
 export interface RenderOptions {
   scale: number;
   servings: number;
   ingredients: readonly ScaledIngredient[];
+  labels: RenderLabels;
 }
 
 function unitText(item: ScaledIngredient): string {
@@ -23,20 +36,6 @@ function unitText(item: ScaledIngredient): string {
   const plural = item.quantityMax !== null || (item.quantity !== null && item.quantity > 1);
   return unitLabel(item.unit, plural);
 }
-
-const NUTRITION_LABELS: Readonly<Record<NutritionKey, string>> = {
-  calories: "Kalorien",
-  carbohydrateContent: "Kohlenhydrate",
-  cholesterolContent: "Cholesterin",
-  fatContent: "Fett",
-  fiberContent: "Ballaststoffe",
-  proteinContent: "Eiweiß",
-  saturatedFatContent: "Gesättigte Fettsäuren",
-  sodiumContent: "Natrium",
-  sugarContent: "Zucker",
-  transFatContent: "Transfette",
-  unsaturatedFatContent: "Ungesättigte Fettsäuren",
-};
 
 const ENTITIES: Readonly<Record<string, string>> = {
   amp: "&",
@@ -47,9 +46,9 @@ const ENTITIES: Readonly<Record<string, string>> = {
   nbsp: " ",
 };
 
-// German number format with up to three decimals: 0.5 becomes "0,5".
-export function formatNumber(value: number): string {
-  return String(Math.round(value * 1000) / 1000).replace(".", ",");
+// A number with up to three decimals: 0.5 becomes "0,5" with a decimal comma.
+export function formatNumber(value: number, separator: "," | "." = ","): string {
+  return String(Math.round(value * 1000) / 1000).replace(".", separator);
 }
 
 // Mealie text is Markdown, but imported recipes sometimes carry HTML. Tags are dropped,
@@ -70,99 +69,117 @@ export function plainText(text: string | null | undefined): string {
     .trim();
 }
 
-function amountText(item: ScaledIngredient): string {
+function amountText(item: ScaledIngredient, labels: RenderLabels): string {
   if (item.quantity === null) return "";
-  const max = item.quantityMax === null ? "" : `–${formatNumber(item.quantityMax)}`;
-  return `${formatNumber(item.quantity)}${max}`;
+  const number = (value: number) => formatNumber(value, labels.decimalSeparator);
+  const max = item.quantityMax === null ? "" : `–${number(item.quantityMax)}`;
+  return `${number(item.quantity)}${max}`;
 }
 
-function flagText(flags: readonly ScaleFlag[], item: ScaledIngredient, scale: number): string[] {
+function flagText(
+  flags: readonly ScaleFlag[],
+  item: ScaledIngredient,
+  scale: number,
+  labels: RenderLabels,
+): string[] {
   const texts: string[] = [];
   if (item.source === "unparsed") {
     texts.push(
       flags.includes("unscaled")
-        ? `ungeparst, Menge nicht skaliert (Faktor ${formatNumber(scale)} anwenden)`
-        : "ungeparst",
+        ? `${labels.unparsed}, ${labels.unscaled.replace("{factor}", formatNumber(scale, labels.decimalSeparator))}`
+        : labels.unparsed,
     );
   }
-  if (flags.includes("checkRounding")) texts.push("Stückzahl nicht ganzzahlig");
+  if (flags.includes("checkRounding")) texts.push(labels.fractionalCount);
   return texts;
 }
 
-function ingredientLine(item: ScaledIngredient, scale: number): string {
+function ingredientLine(
+  item: ScaledIngredient,
+  index: number,
+  scale: number,
+  labels: RenderLabels,
+): string {
   const parts: string[] = [];
   if (item.source === "unparsed") {
-    parts.push(`[Original: ${item.original || item.food}]`);
+    parts.push(`[${labels.original}: ${item.original || item.food}]`);
   } else {
-    const main = [amountText(item), unitText(item), item.food]
+    const main = [amountText(item, labels), unitText(item), item.food]
       .filter((part) => part !== "")
       .join(" ");
     parts.push(main);
     let note = item.note;
-    if (item.optional && !mentionsOptional(note)) note = note ? `${note}, optional` : "optional";
+    if (item.optional && !mentionsOptional(note)) {
+      note = note ? `${note}, ${labels.optional}` : labels.optional;
+    }
     if (note) parts.push(`(${note})`);
-    if (item.source === "parsed" && item.original) parts.push(`[Original: ${item.original}]`);
+    if (item.source === "parsed" && item.original) {
+      parts.push(`[${labels.original}: ${item.original}]`);
+    }
   }
-  const flags = flagText(item.flags, item, scale);
+  const flags = flagText(item.flags, item, scale, labels);
   const line = parts.join(" ");
-  return `- ${line}${flags.length > 0 ? ` — prüfen: ${flags.join("; ")}` : ""}`;
+  return `- [${index}] ${line}${flags.length > 0 ? ` — ${labels.check}: ${flags.join("; ")}` : ""}`;
 }
 
 function metaLine(recipe: MealieRecipe, options: RenderOptions): string {
+  const { labels } = options;
+  const number = (value: number) => formatNumber(value, labels.decimalSeparator);
   const parts: string[] = [];
   // The same base as Mealie's servings scaler: servings, else the yield quantity.
   const base = scalerBase(recipe);
   const fromYield = base !== null && !(recipe.recipeServings > 0);
-  const source = fromYield ? " (aus der Ergibt-Menge)" : "";
+  const source = fromYield ? ` (${labels.fromYield})` : "";
   if (base === null) {
-    parts.push(`Portionen: ${options.servings} (im Rezept nicht angegeben)`);
+    parts.push(`${labels.servings}: ${options.servings} (${labels.servingsNotGiven})`);
   } else if (base !== options.servings) {
-    parts.push(`Portionen: ${formatNumber(base)} → ${options.servings}${source}`);
+    parts.push(`${labels.servings}: ${number(base)} → ${options.servings}${source}`);
   } else {
-    parts.push(`Portionen: ${options.servings}${source}`);
+    parts.push(`${labels.servings}: ${options.servings}${source}`);
   }
-  if (options.scale !== 1) parts.push(`Faktor: ${formatNumber(options.scale)}`);
+  if (options.scale !== 1) parts.push(`${labels.factor}: ${number(options.scale)}`);
   const yieldText = [
-    recipe.recipeYieldQuantity > 0 ? formatNumber(recipe.recipeYieldQuantity) : "",
+    recipe.recipeYieldQuantity > 0 ? number(recipe.recipeYieldQuantity) : "",
     plainText(recipe.recipeYield),
   ]
     .filter(Boolean)
     .join(" ");
-  if (yieldText) parts.push(`Ergibt: ${yieldText}`);
+  if (yieldText) parts.push(`${labels.yield}: ${yieldText}`);
   const times: Array<[string, string | null]> = [
-    ["Vorbereitung", recipe.prepTime],
-    ["Kochzeit", recipe.cookTime],
-    ["Garzeit", recipe.performTime],
-    ["Gesamtzeit", recipe.totalTime],
+    [labels.prepTime, recipe.prepTime],
+    [labels.cookTime, recipe.cookTime],
+    [labels.performTime, recipe.performTime],
+    [labels.totalTime, recipe.totalTime],
   ];
   for (const [label, value] of times) {
     const text = plainText(value);
     if (text) parts.push(`${label}: ${text}`);
   }
   const categories = recipe.recipeCategory.map((category) => category.name).filter(Boolean);
-  if (categories.length > 0) parts.push(`Kategorien: ${categories.join(", ")}`);
+  if (categories.length > 0) parts.push(`${labels.categories}: ${categories.join(", ")}`);
   const tags = recipe.tags.map((tag) => tag.name).filter(Boolean);
-  if (tags.length > 0) parts.push(`Tags: ${tags.join(", ")}`);
+  if (tags.length > 0) parts.push(`${labels.tags}: ${tags.join(", ")}`);
   return parts.join(" · ");
 }
 
 function ingredientsSection(options: RenderOptions): string[] {
-  const lines: string[] = ["## Zutaten", ""];
-  if (options.ingredients.length === 0) return [...lines, "Keine Zutaten angegeben."];
+  const { labels } = options;
+  const lines: string[] = [`## ${labels.ingredients}`, ""];
+  if (options.ingredients.length === 0) return [...lines, labels.noIngredients];
   let section: string | null = null;
-  for (const item of options.ingredients) {
+  options.ingredients.forEach((item, index) => {
     if (item.section !== section && item.section !== null) {
       if (lines[lines.length - 1] !== "") lines.push("");
       lines.push(`### ${plainText(item.section)}`, "");
     }
     section = item.section;
-    lines.push(ingredientLine(item, options.scale));
-  }
+    lines.push(ingredientLine(item, index, options.scale, labels));
+  });
   return lines;
 }
 
-function stepsSection(recipe: MealieRecipe): string[] {
-  const lines: string[] = ["## Zubereitung", ""];
+function stepsSection(recipe: MealieRecipe, labels: RenderLabels): string[] {
+  const lines: string[] = [`## ${labels.steps}`, ""];
   let number = 0;
   for (const step of recipe.recipeInstructions) {
     const text = plainText(step.text);
@@ -179,16 +196,16 @@ function stepsSection(recipe: MealieRecipe): string[] {
     const indent = " ".repeat(prefix.length);
     lines.push(prefix + body.replace(/\n+/g, `\n${indent}`));
   }
-  if (number === 0) lines.push("Keine Schritte angegeben.");
+  if (number === 0) lines.push(labels.noSteps);
   return lines;
 }
 
-function notesSection(recipe: MealieRecipe): string[] {
+function notesSection(recipe: MealieRecipe, labels: RenderLabels): string[] {
   const notes = recipe.notes
     .map((note) => ({ title: plainText(note.title), text: plainText(note.text) }))
     .filter((note) => note.title || note.text);
   if (notes.length === 0) return [];
-  const lines: string[] = ["## Notizen"];
+  const lines: string[] = [`## ${labels.notes}`];
   for (const note of notes) {
     lines.push("");
     if (note.title) lines.push(`### ${note.title}`, "");
@@ -197,7 +214,7 @@ function notesSection(recipe: MealieRecipe): string[] {
   return lines;
 }
 
-function nutritionSection(recipe: MealieRecipe): string[] {
+function nutritionSection(recipe: MealieRecipe, labels: RenderLabels): string[] {
   const nutrition = recipe.nutrition;
   if (!nutrition) return [];
   const entries = NUTRITION_KEYS.map((key) => [key, plainText(nutrition[key])] as const).filter(
@@ -205,24 +222,25 @@ function nutritionSection(recipe: MealieRecipe): string[] {
   );
   if (entries.length === 0) return [];
   return [
-    "## Nährwerte",
+    `## ${labels.nutrition}`,
     "",
-    "Laut Rezept, nicht skaliert.",
+    labels.nutritionNote,
     "",
-    ...entries.map(([key, value]) => `- ${NUTRITION_LABELS[key]}: ${value}`),
+    ...entries.map(([key, value]) => `- ${labels.nutrients[key] ?? key}: ${value}`),
   ];
 }
 
 export function renderRecipeForLlm(recipe: MealieRecipe, options: RenderOptions): string {
-  const blocks: string[][] = [[`# ${plainText(recipe.name) || "Ohne Titel"}`]];
+  const { labels } = options;
+  const blocks: string[][] = [[`# ${plainText(recipe.name) || labels.untitled}`]];
   const description = plainText(recipe.description);
   if (description) blocks.push([description]);
   blocks.push([metaLine(recipe, options)]);
   blocks.push(ingredientsSection(options));
-  blocks.push(stepsSection(recipe));
-  const notes = notesSection(recipe);
+  blocks.push(stepsSection(recipe, labels));
+  const notes = notesSection(recipe, labels);
   if (notes.length > 0) blocks.push(notes);
-  const nutrition = nutritionSection(recipe);
+  const nutrition = nutritionSection(recipe, labels);
   if (nutrition.length > 0) blocks.push(nutrition);
   return `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`;
 }

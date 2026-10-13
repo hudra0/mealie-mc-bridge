@@ -13,8 +13,20 @@ export const MC_BASE_URL = "https://www.monsieur-cuisine.com";
 export const MC_PUBLIC_API_URL = "https://mc-api.tecpal.com";
 // The website sends this fixed value with every API call.
 export const MC_PROXY_BYPASS = "cd844315-77c4-46ba-83fe-7702d13b12b2";
-export const MC_EDITOR_REFERER = `${MC_BASE_URL}/de/create-recipe?devices=mc-smart`;
-export const DEFAULT_LOCALE = "de-DE";
+// What the website needs per language: the proxy envelope's lang, the Accept-Language header
+// and the editor path, which is also the Referer of every proxy call. A locale pack's
+// mc.json carries them (src/locale/pack.ts); the default is the verified de-DE setting.
+export interface McLocaleSettings {
+  proxyLang: string;
+  acceptLanguage: string;
+  editorPath: string;
+}
+export const DEFAULT_MC_LOCALE: McLocaleSettings = {
+  proxyLang: "de-DE",
+  acceptLanguage: "de-DE",
+  editorPath: "/de/create-recipe?devices=mc-smart",
+};
+export const MC_EDITOR_REFERER = `${MC_BASE_URL}${DEFAULT_MC_LOCALE.editorPath}`;
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -118,7 +130,7 @@ export interface McTransportOptions {
   fetch?: FetchLike;
   baseUrl?: string;
   publicApiUrl?: string;
-  locale?: string;
+  locale?: McLocaleSettings;
   timeoutMs?: number;
   proxyBypass?: string;
   referer?: string;
@@ -132,6 +144,7 @@ export interface ProxyRequest {
   method?: HttpMethod;
   payload?: unknown;
   cookie?: string | null;
+  // Overrides the transport's language for this call (envelope and Accept-Language).
   lang?: string;
   // Whether sending the call twice has the same effect as sending it once. Only such calls
   // are retried after a network error. Defaults to true for every method but POST.
@@ -173,7 +186,9 @@ interface Exchange {
 }
 
 export class McTransport implements McHttp {
-  readonly locale: string;
+  // The proxy envelope's lang and the Accept-Language header of every call.
+  readonly lang: string;
+  readonly acceptLanguage: string;
   private readonly fetchImpl: FetchLike;
   private readonly baseUrl: string;
   private readonly publicApiUrl: string;
@@ -188,10 +203,12 @@ export class McTransport implements McHttp {
     this.fetchImpl = options.fetch ?? ((url, init) => fetch(url, init));
     this.baseUrl = (options.baseUrl ?? MC_BASE_URL).replace(/\/+$/, "");
     this.publicApiUrl = (options.publicApiUrl ?? MC_PUBLIC_API_URL).replace(/\/+$/, "");
-    this.locale = options.locale ?? DEFAULT_LOCALE;
+    const locale = options.locale ?? DEFAULT_MC_LOCALE;
+    this.lang = locale.proxyLang;
+    this.acceptLanguage = locale.acceptLanguage;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.proxyBypass = options.proxyBypass ?? MC_PROXY_BYPASS;
-    this.referer = options.referer ?? MC_EDITOR_REFERER;
+    this.referer = options.referer ?? `${this.baseUrl}${locale.editorPath}`;
     this.userAgent = options.userAgent ?? "Mozilla/5.0";
     this.requestId = options.requestId ?? randomUUID;
     this.logger = options.logger;
@@ -201,7 +218,8 @@ export class McTransport implements McHttp {
   // throws McSessionError, McNetworkError or McApiError otherwise.
   async proxy(request: ProxyRequest): Promise<McResponse> {
     const method = request.method ?? "GET";
-    const lang = request.lang ?? this.locale;
+    const lang = request.lang ?? this.lang;
+    const acceptLanguage = request.lang ?? this.acceptLanguage;
     const label = `${method} ${request.endpoint}`;
     const cookie = request.cookie ?? null;
     if (cookie !== null && !cookiePattern.test(cookie)) {
@@ -221,7 +239,7 @@ export class McTransport implements McHttp {
       `${this.baseUrl}/proxy-api`,
       () => ({
         method: "POST",
-        headers: this.proxyHeaders(lang, cookie),
+        headers: this.proxyHeaders(acceptLanguage, cookie),
         body: JSON.stringify(body),
       }),
       request.idempotent ?? method !== "POST",
@@ -230,7 +248,7 @@ export class McTransport implements McHttp {
   }
 
   // GET on the public read API, which needs no login.
-  async publicGet(path: string, lang: string = this.locale): Promise<McResponse> {
+  async publicGet(path: string, lang: string = this.acceptLanguage): Promise<McResponse> {
     const label = `public GET ${path}`;
     const exchange = await this.exchange(
       label,
@@ -282,14 +300,14 @@ export class McTransport implements McHttp {
     }
   }
 
-  private proxyHeaders(lang: string, cookie: string | null): Record<string, string> {
+  private proxyHeaders(acceptLanguage: string, cookie: string | null): Record<string, string> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "User-Agent": this.userAgent,
       "X-Request-ID": this.requestId(),
       "x-bypass-cdn": this.proxyBypass,
       "device-type": "web",
-      "Accept-Language": lang,
+      "Accept-Language": acceptLanguage,
       Referer: this.referer,
     };
     if (cookie !== null) headers.Cookie = cookie;

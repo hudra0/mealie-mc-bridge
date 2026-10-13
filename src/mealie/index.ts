@@ -8,6 +8,6 @@ export type {
 } from "./client.js";
 export { parseRecipeActionBody, InvalidRecipeActionError, MAX_SCALE } from "./webhook.js";
 export type { RecipeAction } from "./webhook.js";
-export { renderRecipeForLlm, formatNumber, plainText } from "./render.js";
-export type { RenderOptions } from "./render.js";
+export { renderRecipeForLlm, renderLabels, formatNumber, plainText } from "./render.js";
+export type { RenderLabels, RenderOptions } from "./render.js";
 export * from "./types.js";

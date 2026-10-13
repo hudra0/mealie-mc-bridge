@@ -29,13 +29,16 @@ import {
   type FakeMcOptions,
   type FakeNotifier,
 } from "../testing/fakes.js";
+import { deLocale, enLocale } from "../testing/locale.js";
 import { steppingClock, tempStore, type TempStore } from "../testing/temp.js";
 import type { Job } from "../store/jobs.js";
 import { createIngredientCatalog } from "../ingredients/catalog.js";
 import type { McIngredientSuggestion } from "../mc/index.js";
-import { CATEGORY_CACHE_KEY } from "./categories.js";
+import { CATEGORY_CACHE_KEY, categoryCacheKey } from "./categories.js";
 import { ConverterNotConfiguredError, type Converter } from "./converter-port.js";
 import { IngredientResolver, type ResolveMode } from "./ingredient-resolver.js";
+import type { PipelineLocale } from "./locale.js";
+import { prepareRecipe } from "./prepare.js";
 import { isTransient, runJob, type PipelineConfig, type RunJobDeps } from "./run-job.js";
 
 const sessionExpired = () =>
@@ -76,6 +79,7 @@ function setup(
     config?: Partial<PipelineConfig>;
     prepareImage?: RunJobDeps["prepareImage"];
     ingredients?: RunJobDeps["ingredients"];
+    locale?: PipelineLocale;
   } = {},
 ): Setup {
   const clock = steppingClock();
@@ -91,10 +95,11 @@ function setup(
     mc,
     converter,
     limits,
+    locale: options.locale ?? deLocale,
     config: {
       MC_RECIPE_STATUS: "private-publish",
       TAG_NAME: "Monsieur Cuisine",
-      TIMELINE_LANGUAGE: "de",
+      UI_LANGUAGE: "de",
       ...options.config,
     },
     logger: silentLogger(),
@@ -864,6 +869,113 @@ describe("runJob ingredient ids", () => {
     const ingredients = s.mc.payloads[0]?.servingSizes[0]?.ingredientGroups[0]?.ingredients;
     expect(ingredients?.map((item) => item.systemIngredientId)).toEqual([null, null]);
     expect(s.store.jobs.get(job.id)?.ingredients).toBeNull();
+  });
+});
+
+describe("runJob in another language", () => {
+  it("writes an en-US recipe and reports in English with UI_LANGUAGE en", async () => {
+    const english = conversionResult({
+      recipe: convertedRecipe({
+        locale: "en-US",
+        title: "Pumpkin lentil soup",
+        complexity: "easy",
+      }),
+      reviewHints: ["Check the cooking time of the lentils"],
+    });
+    const s = setup({
+      locale: enLocale,
+      converter: fakeConverter(english),
+      config: { UI_LANGUAGE: "en" },
+    });
+    const job = s.claim();
+    const outcome = await runJob(job, s.deps);
+    expect(outcome.status).toBe("done");
+
+    // The converter is asked for an en-US recipe with English labels in its input.
+    const request = s.converter.requests[0];
+    expect(request?.locale).toBe("en-US");
+    expect(request?.rendered).toContain("## Ingredients");
+    expect(request?.rendered).toContain("- [0] ");
+
+    // The payload carries the language and the complexity ids of the en-US pack.
+    const payload = s.mc.payloads[0];
+    expect(payload).toMatchObject({ languageLocale: "en-US", complexityId: 22 });
+
+    // The categories are cached per locale.
+    expect(s.store.settings.getJson(categoryCacheKey("en-US"))).toMatchObject({
+      categories: CATEGORIES,
+    });
+    expect(s.store.settings.getJson(CATEGORY_CACHE_KEY)).toBeNull();
+
+    // The timeline entry is English.
+    const entry = s.mealie.timeline[0]?.event;
+    expect(entry?.subject).toBe("Monsieur Cuisine: draft created");
+    expect(entry?.eventMessage).toContain(`[Open in the editor](${mcEditorUrl(4242)})`);
+    expect(entry?.eventMessage).toContain("- Servings: 4");
+    expect(entry?.eventMessage).toContain("saved privately, visible on your device only");
+    expect(entry?.eventMessage).toContain(
+      "**Please check:**\n- Check the cooking time of the lentils",
+    );
+  });
+
+  it("sends a recipe again after MC_LOCALE changed instead of skipping it", async () => {
+    const s = setup();
+    await runJob(s.claim(), s.deps);
+    const english = fakeConverter(
+      conversionResult({ recipe: convertedRecipe({ locale: "en-US" }) }),
+    );
+    const enDeps: RunJobDeps = { ...s.deps, locale: enLocale, converter: english };
+
+    const outcome = await runJob(s.claim(), enDeps);
+    expect(outcome.status).toBe("done");
+    expect(english.requests).toHaveLength(1);
+    expect(s.mc.payloads.at(-1)).toMatchObject({ languageLocale: "en-US" });
+  });
+
+  it("does not reuse a stored conversion written in another locale", async () => {
+    const s = setup({ mc: { upload: networkError() } });
+    const job = s.claim();
+    expect((await runJob(job, s.deps, { finalAttempt: false })).status).toBe("retry");
+    const english = fakeConverter(
+      conversionResult({ recipe: convertedRecipe({ locale: "en-US" }) }),
+    );
+    const enDeps: RunJobDeps = { ...s.deps, locale: enLocale, converter: english };
+    const retried = s.store.jobs.get(job.id)!;
+    // The stored de-DE conversion even carries the fingerprint of the en-US run.
+    const hash = prepareRecipe(s.mealie.recipe, 1, limits, enLocale).hash;
+    s.store.jobs.update(job.id, {
+      conversion: { sourceHash: hash, result: retried.conversion!.result },
+    });
+
+    const outcome = await runJob(s.store.jobs.get(job.id)!, enDeps);
+    expect(outcome.status).toBe("done");
+    expect(english.requests).toHaveLength(1);
+    expect(s.mc.payloads.at(-1)).toMatchObject({ languageLocale: "en-US" });
+  });
+
+  it("reports a failure and a waiting job in English", async () => {
+    const failing = setup({
+      locale: enLocale,
+      converter: fakeConverter(new Error("model refused")),
+      config: { UI_LANGUAGE: "en" },
+    });
+    await runJob(failing.claim(), failing.deps);
+    expect(failing.mealie.timeline[0]?.event.subject).toBe(
+      "Monsieur Cuisine: error – conversion failed",
+    );
+    expect(failing.mealie.timeline[0]?.event.eventMessage).toContain(
+      "Conversion failed: model refused",
+    );
+
+    const waiting = setup({
+      locale: enLocale,
+      mc: { create: sessionExpired() },
+      converter: fakeConverter(conversionResult({ recipe: convertedRecipe({ locale: "en-US" }) })),
+      config: { UI_LANGUAGE: "en" },
+    });
+    await runJob(waiting.claim(), waiting.deps);
+    expect(waiting.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: session expired");
+    expect(waiting.mealie.timeline[0]?.event.eventMessage).toContain("The job waits");
   });
 });
 

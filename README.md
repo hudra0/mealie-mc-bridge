@@ -14,6 +14,7 @@ What exists:
 - the Mealie side: the recipe action parser, the REST client, ingredient parsing and scaling, and the Markdown input for the converter
 - the converter: OpenAI or Anthropic turns a Mealie recipe into the device format, the validator and the plausibility checks review the result, and `npm run convert` runs it from the command line
 - `npm run mc:smoke`, a command line tool for manual checks against your own account
+- locale packs for the recipe language: German (de-DE, verified on a device) and English (en-US, generated from the English recipe catalog, not verified on a device); timeline entries, mails and admin pages in German or English
 
 ## How it works
 
@@ -27,7 +28,24 @@ A recipe that has not changed since it was last sent is not sent again; the time
 
 `MC_RECIPE_STATUS` controls the last step of step 3. The default, `private-publish`, is what makes the recipe show up on the machine. `draft` stops after creating the draft; a draft is visible in the web editor only and does not show up on the device, so use it for debugging.
 
-`MC_RESOLVE_INGREDIENTS` controls the ingredient ids. Every published Monsieur Cuisine recipe links each ingredient to an id from the site's ingredient database; the app uses it for the shopping list and the ingredient filters. With the default, `exact`, the bridge looks each ingredient name up in a catalog built from published recipes (`ingredient-catalog.json` in `KNOWLEDGE_DIR`, by default `./knowledge`), then in a local cache, then in the site's ingredient search, and takes an id only when the name is exactly the same apart from case and spacing. It never guesses: "Karotten" gets no id, because published recipes say "Möhren", and the search's first hit is never used on its own. Singular and plural are separate names, and the catalog may give them different ids. Names it cannot match go out without an id; the job page lists them. The device shows no ingredient icons either way, and a recipe without ids cooks the same. Searches are limited to one per second, and a name the search does not know is not searched again for seven days. `off` sends every ingredient without an id and makes no searches.
+`MC_RESOLVE_INGREDIENTS` controls the ingredient ids. Every published Monsieur Cuisine recipe links each ingredient to an id from the site's ingredient database; the app uses it for the shopping list and the ingredient filters. With the default, `exact`, the bridge looks each ingredient name up in a catalog built from published recipes of the recipe language (`locales/<MC_LOCALE>/ingredient-catalog.json` in `KNOWLEDGE_DIR`, by default `./knowledge`), then in a local cache, then in the site's ingredient search, and takes an id only when the name is exactly the same apart from case and spacing. It never guesses: "Karotten" gets no id, because published recipes say "Möhren", and the search's first hit is never used on its own. Singular and plural are separate names, and the catalog may give them different ids. Names it cannot match go out without an id; the job page lists them. The device shows no ingredient icons either way, and a recipe without ids cooks the same. Searches are limited to one per second, and a name the search does not know is not searched again for seven days. `off` sends every ingredient without an id and makes no searches.
+
+## Languages
+
+Monsieur Cuisine publishes recipes in several languages, and each recipe carries its language. The bridge keeps three languages apart:
+
+| What                        | Setting                      | What it decides                                                                                                                                                                                                                             |
+| --------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The Mealie recipe           | none                         | The converter reads any language; ingredient lines are parsed in German and English.                                                                                                                                                        |
+| The Monsieur Cuisine recipe | `MC_LOCALE`, default `de-DE` | The language of the steps and ingredients, their units and standard phrases, the ingredient catalog, and what Monsieur Cuisine needs per language: `languageLocale`, the complexity ids, the editor link and the language of the API calls. |
+| What you read               | `UI_LANGUAGE`, `de` or `en`  | Timeline entries in Mealie, mails and the admin pages. It defaults to the language of `MC_LOCALE` when there are texts for it, otherwise English. Logs and command line output are English.                                                 |
+
+`MC_LOCALE` needs a locale pack in `knowledge/locales/<locale>/`; the bridge refuses to start with a locale it has no pack for and lists the ones it has. Two packs ship:
+
+- `de-DE` is verified: recipes created with it show up and cook on a Monsieur Cuisine Smart, and the settings were checked against the web editor.
+- `en-US` is generated from the 1015 English MC Smart recipes of the public recipe API and marked `verifiedOnDevice: false`. Its complexity ids (22, 16, 20) and editor path (`/en/create-recipe`) come from another project's source and are unchecked, and its default group name is a translation; the vocabulary, phrases and technique wording are written from the most frequent spellings of the English recipes. The bridge logs a warning on start with an unverified pack. Check the first recipes in the web editor before you cook them, and please report what you find.
+
+A Mealie recipe in English converted to a German recipe (or the other way round) is checked through the ingredient mapping the converter returns: each ingredient of the Monsieur Cuisine recipe names the line of the Mealie recipe it comes from, so amounts and missing ingredients are compared without comparing names across languages. Adding a language is a data change; see "Adding a language" in `CONTRIBUTING.md`. `UI_LANGUAGE` replaces the former `TIMELINE_LANGUAGE`, which is no longer read.
 
 ## Requirements
 
@@ -140,7 +158,7 @@ Paste a fresh cookie on the dashboard (step 5 above). The waiting jobs then run 
 
 ### Mail
 
-Set `SMTP_URL` (for example `smtps://user:password@mail.example.com:465`) and `NOTIFY_EMAIL`. `SMTP_FROM` sets the sender; it defaults to the recipient. The bridge mails when the session stops working (once per change), when a job fails for good (once per job) and when the session check itself fails, for example because the site is down. Mails are short German plain text, whatever `TIMELINE_LANGUAGE` says, and never contain cookies or tokens.
+Set `SMTP_URL` (for example `smtps://user:password@mail.example.com:465`) and `NOTIFY_EMAIL`. `SMTP_FROM` sets the sender; it defaults to the recipient. The bridge mails when the session stops working (once per change), when a job fails for good (once per job) and when the session check itself fails, for example because the site is down. Mails are short plain text in `UI_LANGUAGE` and never contain cookies or tokens.
 
 ### Jobs
 
@@ -172,13 +190,13 @@ npm run mc:smoke -- dry-run recipe.json           # validate and print the paylo
 npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publish]
 ```
 
-`.env` is gitignored. If you prefer an environment variable, set it without echoing the value, for example `read -rs MC_COOKIE && export MC_COOKIE` in bash.
+The recipe file's `locale` picks the locale pack for the payload (`languageLocale`, complexity id, default group name) and the language of the calls; `whoami` and `categories` use `MC_LOCALE`. `.env` is gitignored. If you prefer an environment variable, set it without echoing the value, for example `read -rs MC_COOKIE && export MC_COOKIE` in bash.
 
 `create` adds a real recipe to your account. It is created as a draft, which is visible in the web editor only; `--status private-publish` then saves it on your device only, which is what makes it show up on the machine. If that second step fails, the tool prints the id and editor link of the draft it left behind; set the status there instead of running `create` again. The tool never submits a recipe for publication. Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
 
 ## Conversion
 
-A language model turns the Mealie recipe into the recipe format of the device. The bridge then checks the answer twice: the validator against the device limits in `knowledge/device-programs.json`, and a set of plausibility rules for what a limit table cannot see (heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 with the whisk, 1000 g flour per kneading step, 500 g water under the steamer, a text step before every program step, every ingredient of the source recipe listed, amounts neither larger nor smaller than in the source recipe). The heat-up check also covers cold liquid poured onto sautéed food. The amount check counts an amount in a text step only where the sentence adds it to the bowl, and only warns when an ingredient may come back in as a portion set aside earlier. Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they are reported next to the model's review hints for the cook. The bridge sets the title of each text step from its text, the way the device editor does.
+A language model turns the Mealie recipe into the recipe format of the device. The bridge then checks the answer twice: the validator against the device limits in `knowledge/device-programs.json`, and a set of plausibility rules for what a limit table cannot see (heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 with the whisk, 1000 g flour per kneading step, 500 g water under the steamer, a text step before every program step, every ingredient of the source recipe listed, amounts neither larger nor smaller than in the source recipe). The source ingredients go to the model numbered, and the model returns an `ingredientMapping` from each ingredient of its recipe to the source line it comes from; the completeness and amount checks follow that mapping, so they work when the Mealie recipe and the Monsieur Cuisine recipe are in different languages. The words the checks read in step texts (adding, emptying, setting aside) come from the locale pack. The heat-up check also covers cold liquid poured onto sautéed food. The amount check counts an amount in a text step only where the sentence adds it to the bowl, and only warns when an ingredient may come back in as a portion set aside earlier. Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they are reported next to the model's review hints for the cook. The bridge sets the title of each text step from its text, the way the device editor does.
 
 Two providers are supported. Pick one with `LLM_PROVIDER` and put its key into `.env`:
 
@@ -195,11 +213,12 @@ The model defaults are the ones the bridge was written against. Check that your 
 npm run convert -- prompt --mealie-json recipe.json                 # print both prompts, no API call
 npm run convert -- convert --mealie-json recipe.json --scale 1.5    # convert and print the steps
 npm run convert -- convert --mealie-json recipe.json --provider anthropic --out result.json
+npm run convert -- convert --mealie-json recipe.json --locale en-US   # write an English recipe
 ```
 
 `convert` prints the steps, the warnings, the review hints, the token usage and a cost estimate. The system prompt is about 9 000 tokens and the same for every recipe, so later recipes and correction rounds read it mostly from the provider's prompt cache; the user message adds about 3 000 tokens of techniques and recipe. The category list comes from `--categories <file>` or, without it, from the public Monsieur Cuisine API (no login needed); without a list the command stops, because the model cannot know category ids.
 
-`npm run convert:eval -- --ids 1234,5678` checks the converter against recipes of your own corpus crawl (see [Knowledge base](#knowledge-base)): it converts each recipe from its ingredients and instruction texts and compares the programs, temperatures and times with the original. It prints the token usage and the cost of the run. `--out` writes each result with the errors of every correction round, and for a recipe that failed the errors, the usage and the last answer. It refuses to run without `local/corpus`.
+`npm run convert:eval -- --ids 1234,5678` checks the converter against recipes of your own corpus crawl (see [Knowledge base](#knowledge-base)): it converts each recipe from its ingredients and instruction texts and compares the programs, temperatures and times with the original. It prints the token usage and the cost of the run. `--out` writes each result with the errors of every correction round, and for a recipe that failed the errors, the usage and the last answer. It converts into the language of `--locale`, else `MC_LOCALE`, and reads the corpus of that locale: `local/corpus` for de-DE, `local/corpus/<locale>` for the others (`--corpus-dir` overrides it). It refuses to run without that corpus.
 
 Exit codes: 0 done, 1 unreadable input or a recipe that still failed after the last correction, 3 provider error (refusal, cut-off answer, API failure), 64 usage error, 66 no corpus, 78 configuration (missing key, broken knowledge base).
 
@@ -228,7 +247,9 @@ See `CONTRIBUTING.md` for the pull request format and the secrets policy. The ar
 
 ## Knowledge base
 
-`knowledge/` holds the data the converter and the validator use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), the converter's own tables (`converter-rules.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`; the prompt carries only the prompt rules) and the ingredient catalog (`ingredient-catalog.json`: each ingredient name that at least one official recipe or two member recipes use, the id they link it to most, other ids seen for the same name, recipe counts and the ingredient category). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers, ingredient names and rules written in our own words.
+`knowledge/` holds the data the converter and the validator use. The language-neutral files: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques with their device settings (`techniques.json`), timing rules (`timing-model.json`), densities (`units.json`), the converter's own tables (`converter-rules.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`; the prompt carries only the prompt rules). They come from the German reference corpus and name standard phrases and units by placeholder (`{{phrase:pushDown}}`, `{{unit:teaspoon}}`).
+
+Everything that depends on the recipe language lives in a locale pack, `knowledge/locales/<locale>/`: the Monsieur Cuisine settings of the locale (`mc.json`), the unit vocabulary and unit rules (`units.json`), standard phrases, title conventions, the labels of the converter input and the words the checks read in step texts (`phrases.json`), the wording per technique (`technique-aliases.json`), the language-specific prompt rules (`prompt-rules.md`) and the ingredient catalog (`ingredient-catalog.json`: each ingredient name that at least one official recipe or two member recipes of that language use, the id they link it to most, other ids seen for the same name, recipe counts and the ingredient category, which is `null` where the recipes of a locale do not agree on one, as in en-US). The packs are distilled from published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers, ingredient names, short standard device phrases and rules written in our own words.
 
 To rebuild it from your own crawl:
 
@@ -236,12 +257,16 @@ To rebuild it from your own crawl:
 npm run corpus:crawl            # public recipe API, 1 request/s, resumable, writes local/corpus/
 npm run corpus:normalize        # flat JSON lines under local/corpus/derived/
 npm run corpus:analyze          # normalizes again and runs the five analyzers
-npm run corpus:build-knowledge  # writes the JSON files in knowledge/
+npm run corpus:build-knowledge  # writes the neutral files and the de-DE pack in knowledge/
+
+npm run corpus:crawl -- --locale en-US            # local/corpus/en-US
+npm run corpus:analyze -- --locale en-US
+npm run corpus:build-knowledge -- --locale en-US  # only the generated files of the en-US pack
 ```
 
-`corpus:crawl` takes `CORPUS_DIR`, `DEVICE` (default `MC3.0`) and `LOCALE` (default `de-DE`) from the environment. `corpus:build-knowledge -- --check` compares instead of writing; a rebuild from the same crawl reproduces the committed files byte for byte. It stops with exit code 1 and names the file when an analyzer output is missing. The ingredient catalog reads `derived/recipes.jsonl`, or the raw `details/` files when the normalizer has not run; the categories always come from `details/`, so a rebuild without them writes `null` categories. The build prints the number of catalog entries.
+Every corpus command takes `--locale` (default `de-DE`); the de-DE reference corpus lives in `local/corpus`, every other locale in `local/corpus/<locale>`, and `CORPUS_DIR` overrides the directory. `corpus:crawl` also takes `DEVICE` (default `MC3.0`) and `LOCALE` from the environment. `corpus:build-knowledge -- --locale <locale>` writes the ingredient catalog of that pack, its piece weights and the corpus tables in its `units.json` and `phrases.json`, and leaves the hand-written parts of the pack and the neutral files alone. `corpus:build-knowledge -- --check` compares instead of writing; a rebuild from the same crawl reproduces the committed files byte for byte. It stops with exit code 1 and names the file when an analyzer output is missing. The ingredient catalog reads `derived/recipes.jsonl`, or the raw `details/` files when the normalizer has not run; the categories always come from `details/`, so a rebuild without them writes `null` categories. The build prints the number of catalog entries.
 
-The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md`, `step-patterns.md` and `converter-rules.json` are written by hand from the analyzer reports.
+The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md`, `step-patterns.md` and `converter-rules.json` are written by hand from the analyzer reports, and so are `mc.json`, `technique-aliases.json`, `prompt-rules.md` and the hand-written parts of `units.json` and `phrases.json` in each locale pack.
 
 ## Disclaimer
 

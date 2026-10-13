@@ -48,7 +48,7 @@ function setup(responses: Response[], options: McClientOptions = {}, session?: S
     return next ? Promise.resolve(next) : Promise.reject(new Error("unexpected fetch call"));
   });
   const provider = session ?? new StaticSessionProvider(COOKIE);
-  const client = new McClient(new McTransport({ fetch }), provider, "de-DE", options);
+  const client = new McClient(new McTransport({ fetch }), provider, options);
   return { client, calls, fetch, provider };
 }
 
@@ -82,9 +82,26 @@ describe("McClient with a fake transport", () => {
         method: "GET",
         payload: undefined,
         cookie: COOKIE,
-        lang: "de-DE",
       },
     ]);
+  });
+
+  it("links the editor of the account's language", () => {
+    const http: McHttp = {
+      proxy: () => Promise.reject(new Error("not used")),
+      publicGet: () => Promise.reject(new Error("not used")),
+      putSignedUrl: () => Promise.reject(new Error("not used")),
+    };
+    const english = new McClient(http, new StaticSessionProvider(COOKIE), {
+      editorPath: "/en/create-recipe?devices=mc-smart",
+    });
+    expect(english.editorUrl(5)).toBe(
+      "https://www.monsieur-cuisine.com/en/create-recipe?devices=mc-smart&recipe-id=5",
+    );
+    expect(mcEditorUrl(6, "/fr/creer-une-recette")).toBe(
+      "https://www.monsieur-cuisine.com/fr/creer-une-recette?recipe-id=6",
+    );
+    expect(new McClient(http, new StaticSessionProvider(COOKIE)).editorUrl(7)).toBe(mcEditorUrl(7));
   });
 });
 

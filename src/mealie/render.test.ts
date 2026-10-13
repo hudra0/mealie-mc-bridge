@@ -8,6 +8,7 @@ import {
   type ScaledIngredient,
 } from "../ingredients/index.js";
 import { loadDeviceLimits } from "../recipe/limits.js";
+import { deLabels, enLabels } from "../testing/locale.js";
 import { formatNumber, plainText, renderRecipeForLlm } from "./render.js";
 import { mealieRecipeSchema, type MealieRecipe } from "./types.js";
 
@@ -29,6 +30,7 @@ function render(recipe: MealieRecipe, scale: number): string {
     scale,
     servings: servingsFor(recipe, scale, limits.recipe.servings),
     ingredients,
+    labels: deLabels,
   });
 }
 
@@ -79,12 +81,14 @@ describe("renderRecipeForLlm details", () => {
     const text = render(fixture("recipe-structured-v3.28.json"), 1);
     expect(text).toContain("Portionen: 4 · Vorbereitung");
     expect(text).not.toContain("Faktor");
-    expect(text).toContain("- 1 Zwiebel (fein gewürfelt)\n");
+    expect(text).toContain("- [0] 1 Zwiebel (fein gewürfelt)\n");
   });
 
   it("marks unparsed lines at factor 1 without asking for scaling", () => {
     const text = render(fixture("recipe-freetext-v3.25.json"), 1);
-    expect(text).toContain("- [Original: 50 g/ ¼ Tasse gehackte Haselnüsse] — prüfen: ungeparst\n");
+    expect(text).toContain(
+      "- [11] [Original: 50 g/ ¼ Tasse gehackte Haselnüsse] — prüfen: ungeparst\n",
+    );
   });
 
   it("writes placeholders for a recipe without content", () => {
@@ -92,6 +96,7 @@ describe("renderRecipeForLlm details", () => {
       scale: 1,
       servings: 4,
       ingredients: [],
+      labels: deLabels,
     });
     expect(text).toBe(
       [
@@ -122,14 +127,15 @@ describe("renderRecipeForLlm details", () => {
         scaled({ quantity: 2, unit: "Prise", food: "Salz", optional: true, note: "fein" }),
         scaled({ quantity: 1, unit: "Handvoll", food: "Nüsse", optional: true, note: "optional" }),
       ],
+      labels: deLabels,
     });
     expect(text).toContain(
       [
-        "- 2–3 Zehen Knoblauch",
-        "- 1 Zehe Knoblauch",
-        "- 0,25 TL Chili (optional)",
-        "- 2 Prisen Salz (fein, optional)",
-        "- 1 Handvoll Nüsse (optional)",
+        "- [0] 2–3 Zehen Knoblauch",
+        "- [1] 1 Zehe Knoblauch",
+        "- [2] 0,25 TL Chili (optional)",
+        "- [3] 2 Prisen Salz (fein, optional)",
+        "- [4] 1 Handvoll Nüsse (optional)",
       ].join("\n"),
     );
   });
@@ -143,15 +149,16 @@ describe("renderRecipeForLlm details", () => {
         scaled({ quantity: 3, unit: "Glas", food: "Gurken" }),
         scaled({ quantity: 8, unit: "floz", food: "Sahne" }),
       ],
+      labels: deLabels,
     });
-    expect(text).toContain("- 2 Köpfe Salat\n- 3 Gläser Gurken\n- 8 fl oz Sahne\n");
+    expect(text).toContain("- [0] 2 Köpfe Salat\n- [1] 3 Gläser Gurken\n- [2] 8 fl oz Sahne\n");
   });
 
   it("shows the parsed text as the original when the display is stale", () => {
     const recipe = minimal({
       recipeIngredient: [{ quantity: 1, note: "500 g Mehl", display: "1 500 g Mehl" }],
     });
-    expect(render(recipe, 3)).toContain("- 1500 g Mehl [Original: 500 g Mehl]\n");
+    expect(render(recipe, 3)).toContain("- [0] 1500 g Mehl [Original: 500 g Mehl]\n");
   });
 
   it("counts servings from the yield quantity like Mealie's scaler", () => {
@@ -173,7 +180,12 @@ describe("renderRecipeForLlm details", () => {
         { text: "Erster<br/>Absatz<p>Zweiter</p>" },
       ],
     });
-    const text = renderRecipeForLlm(recipe, { scale: 1, servings: 4, ingredients: [] });
+    const text = renderRecipeForLlm(recipe, {
+      scale: 1,
+      servings: 4,
+      ingredients: [],
+      labels: deLabels,
+    });
     expect(text).toContain(
       "### Vorbereiten\n\n1. **Nur Titel**\n2. Erster\n   Absatz\n   Zweiter\n",
     );
@@ -187,7 +199,12 @@ describe("renderRecipeForLlm details", () => {
       ],
       nutrition: { calories: "" },
     });
-    const text = renderRecipeForLlm(recipe, { scale: 1, servings: 4, ingredients: [] });
+    const text = renderRecipeForLlm(recipe, {
+      scale: 1,
+      servings: 4,
+      ingredients: [],
+      labels: deLabels,
+    });
     expect(text).toContain("## Notizen\n\nNur Text\n");
     expect(text).not.toContain("## Nährwerte");
   });
@@ -197,8 +214,44 @@ describe("renderRecipeForLlm details", () => {
       scale: 2,
       servings: 4,
       ingredients: [],
+      labels: deLabels,
     });
     expect(text).toContain("Portionen: 2 → 4 · Faktor: 2 · Ergibt: 1 Blech");
+  });
+});
+
+describe("renderRecipeForLlm in English", () => {
+  it("writes the labels and the decimal point of the en-US pack", () => {
+    const recipe = minimal({
+      name: "Bread",
+      recipeServings: 0,
+      recipeYieldQuantity: 2,
+      recipeYield: "loaves",
+      recipeInstructions: [{ text: "Knead." }],
+    });
+    const text = renderRecipeForLlm(recipe, {
+      scale: 1.5,
+      servings: 3,
+      ingredients: [scaled({ quantity: 1.5, unit: "cup", food: "flour" })],
+      labels: enLabels,
+    });
+    expect(text).toContain("Servings: 2 → 3 (from the yield) · Factor: 1.5 · Yield: 2 loaves");
+    expect(text).toContain("## Ingredients\n\n- [0] 1.5 cups flour\n");
+    expect(text).toContain("## Instructions\n\n1. Knead.");
+  });
+
+  it("marks unparsed lines with the pack wording", () => {
+    const text = renderRecipeForLlm(minimal({ name: "x" }), {
+      scale: 2,
+      servings: 4,
+      ingredients: [
+        scaled({ source: "unparsed", original: "a handful of nuts", flags: ["unscaled"] }),
+      ],
+      labels: enLabels,
+    });
+    expect(text).toContain(
+      "- [0] [Original: a handful of nuts] — check: not parsed, amount not scaled (apply the factor 2)",
+    );
   });
 });
 
@@ -210,6 +263,10 @@ describe("formatNumber", () => {
     [1.25, "1,25"],
   ])("formats %d as %s", (value, text) => {
     expect(formatNumber(value)).toBe(text);
+  });
+
+  it("writes a decimal point when asked", () => {
+    expect(formatNumber(0.5, ".")).toBe("0.5");
   });
 });
 

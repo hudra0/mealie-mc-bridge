@@ -3,8 +3,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { NormalizedIngredient } from "../ingredients/index.js";
 import { loadDeviceLimits } from "../recipe/limits.js";
-import { RecipeInputSchema, type RecipeInput, type RecipeStep } from "../recipe/schema.js";
-import { loadKnowledge } from "./knowledge.js";
+import {
+  RecipeInputSchema,
+  type IngredientMapping,
+  type RecipeInput,
+  type RecipeStep,
+} from "../recipe/schema.js";
+import { testKnowledge } from "../testing/locale.js";
+import type { Knowledge } from "./knowledge.js";
 import {
   SANITY_RULES,
   amountBalanceRule,
@@ -14,7 +20,7 @@ import {
   duplicateAdditionRule,
   flourRule,
   heatUpRule,
-  ingredientListedRule,
+  ingredientMappingRule,
   ingredientReferencedRule,
   machineStepDescriptionRule,
   parseListAmount,
@@ -28,7 +34,8 @@ import {
   type SanityRule,
 } from "./sanity.js";
 
-const knowledge = await loadKnowledge(fileURLToPath(new URL("../../knowledge", import.meta.url)));
+const knowledge = await testKnowledge("de-DE");
+const englishKnowledge = await testKnowledge("en-US");
 const limits = await loadDeviceLimits(
   fileURLToPath(new URL("../../knowledge/device-programs.json", import.meta.url)),
 );
@@ -55,10 +62,15 @@ const ingredient = (
 
 type ListEntry = RecipeInput["servingSize"]["ingredientGroups"][number]["ingredients"][number];
 
-const recipeWith = (steps: RecipeStep[], list: ListEntry[] = []): RecipeInput => ({
+const recipeWith = (
+  steps: RecipeStep[],
+  list: ListEntry[] = [],
+  mapping?: IngredientMapping[],
+  locale = "de-DE",
+): RecipeInput => ({
   title: "Test",
   description: "",
-  locale: "de-DE",
+  locale,
   complexity: "easy",
   categoryIds: [1],
   servingSize: {
@@ -75,6 +87,7 @@ const recipeWith = (steps: RecipeStep[], list: ListEntry[] = []): RecipeInput =>
     ],
     steps,
   },
+  ...(mapping ? { ingredientMapping: mapping } : {}),
 });
 
 const text = (description: string): RecipeStep => ({
@@ -105,16 +118,41 @@ const manual = (
 });
 const turbo: RecipeStep = { kind: "turbo", title: "Turbo", description: "Turbo 2 s", seconds: 2 };
 
+const listEntry = (input: NormalizedIngredient): ListEntry => ({
+  name: input.food,
+  amount: input.quantity ?? "",
+  unit: input.unit ?? "",
+  isOptional: input.optional,
+});
+
+// Runs one rule. Without a list, the list carries every input under its own name; without a
+// mapping, each input maps to the list entry of the same name. mapping: null leaves the
+// recipe without an ingredientMapping.
 function run(
   rule: SanityRule,
   steps: RecipeStep[],
   ingredients: NormalizedIngredient[] = [],
-  options: { list?: ListEntry[]; servings?: number } = {},
+  options: {
+    list?: ListEntry[];
+    mapping?: IngredientMapping[] | null;
+    servings?: number;
+    knowledge?: Knowledge;
+  } = {},
 ) {
+  const list = options.list ?? ingredients.map(listEntry);
+  const names = new Set(list.map((entry) => entry.name));
+  const mapping =
+    options.mapping === null
+      ? undefined
+      : (options.mapping ??
+        ingredients.flatMap((input, inputIndex) =>
+          names.has(input.food) ? [{ name: input.food, inputIndex }] : [],
+        ));
+  const k = options.knowledge ?? knowledge;
   return checkSanity(
-    recipeWith(steps, options.list),
+    recipeWith(steps, list, mapping, k.locale),
     { servings: options.servings ?? 4, ingredients },
-    knowledge,
+    k,
     limits,
     [rule],
   );
@@ -292,8 +330,8 @@ describe("text_before_machine_step", () => {
   });
 });
 
-describe("ingredient_referenced (translated recipe)", () => {
-  it("gives one warning when most ingredients are not named in any step", () => {
+describe("ingredient_referenced (most names missing)", () => {
+  it("gives one warning when most list entries are not named in any step", () => {
     const english = [
       ingredient("pasta", 230, "g"),
       ingredient("red onion", 1, null),
@@ -301,8 +339,25 @@ describe("ingredient_referenced (translated recipe)", () => {
     ];
     const { warnings } = run(ingredientReferencedRule, [text("Nudeln kochen.")], english);
     expect(warnings).toEqual([
-      "3 of 3 ingredients of the recipe are not named in any step, as in a translated recipe; check that each is used",
+      "3 of 3 ingredients of the list are not named in any step; check that each is used",
     ]);
+  });
+
+  it("reads the list against steps in the same language, whatever the source language", () => {
+    const english = [ingredient("pasta", 230, "g"), ingredient("cucumber", 1, null)];
+    const list: ListEntry[] = [
+      { name: "Nudeln", amount: "230", unit: "g", isOptional: false },
+      { name: "Gurke", amount: "1", unit: "Stück", isOptional: false },
+    ];
+    const steps = [text("Die Nudeln kochen."), text("Die Gurke würfeln.")];
+    const mapping = [
+      { name: "Nudeln", inputIndex: 0 },
+      { name: "Gurke", inputIndex: 1 },
+    ];
+    expect(run(ingredientReferencedRule, steps, english, { list, mapping })).toEqual({
+      errors: [],
+      warnings: [],
+    });
   });
 });
 
@@ -511,53 +566,289 @@ describe("amount_balance", () => {
   });
 });
 
-describe("ingredient_listed", () => {
+describe("ingredient_mapping", () => {
   const soup = [
     ingredient("Gemüsebrühe", 1500, "g"),
     ingredient("Karotten", 500, "g"),
     ingredient("Zwiebeln", 1, null),
     ingredient("Croûtons", null, null, { optional: true }),
   ];
-  const entry = (name: string): ListEntry => ({ name, amount: "1", unit: "", isOptional: false });
+  const entry = (name: string, amount = "1", unit = ""): ListEntry => ({
+    name,
+    amount,
+    unit,
+    isOptional: false,
+  });
 
   it("rejects a dropped ingredient", () => {
-    const list = [entry("Gemüsebrühe"), entry("Zwiebeln")];
-    const { errors } = run(ingredientListedRule, [text("x")], soup, { list });
+    const list = [entry("Gemüsebrühe", "1500", "g"), entry("Zwiebeln")];
+    const mapping = [
+      { name: "Gemüsebrühe", inputIndex: 0 },
+      { name: "Zwiebeln", inputIndex: 2 },
+    ];
+    const { errors } = run(ingredientMappingRule, [text("x")], soup, { list, mapping });
     expect(errors).toEqual([
       expect.objectContaining({
-        path: "servingSize.ingredientGroups",
-        message: expect.stringContaining('"Karotten"') as unknown,
+        path: "ingredientMapping",
+        message: expect.stringContaining('[1] "Karotten"') as unknown,
       }),
     ]);
-    const full = [...list, entry("Karotten")];
-    expect(run(ingredientListedRule, [text("x")], soup, { list: full })).toEqual({
-      errors: [],
-      warnings: [],
-    });
-  });
-
-  it("accepts the Monsieur Cuisine name for a regional name", () => {
-    const austrian = [ingredient("Topfen", 500, "g"), ingredient("Karotten", 2, null)];
-    const list = [entry("Quark (20 % Fett)"), entry("Möhren")];
-    expect(run(ingredientListedRule, [text("x")], austrian, { list })).toEqual({
-      errors: [],
-      warnings: [],
-    });
+    const full = [...list, entry("Karotten", "500", "g")];
+    const fullMapping = [...mapping, { name: "Karotten", inputIndex: 1 }];
     expect(
-      run(ingredientReferencedRule, [text("Möhren und Quark verrühren.")], austrian).warnings,
-    ).toEqual([]);
+      run(ingredientMappingRule, [text("x")], soup, { list: full, mapping: fullMapping }),
+    ).toEqual({
+      errors: [],
+      warnings: [],
+    });
   });
 
-  it("only warns when most names differ, as in a translated recipe", () => {
+  it("accepts a translated recipe through its mapping", () => {
+    const english = [
+      ingredient("vegetable stock", 1500, "g"),
+      ingredient("carrots", 500, "g"),
+      ingredient("onion", 1, null),
+    ];
+    const list = [
+      entry("Gemüsebrühe", "1500", "g"),
+      entry("Möhren", "500", "g"),
+      entry("Zwiebeln"),
+    ];
+    const mapping = [
+      { name: "Gemüsebrühe", inputIndex: 0 },
+      { name: "Möhren", inputIndex: 1 },
+      { name: "Zwiebeln", inputIndex: 2 },
+    ];
+    for (const rule of SANITY_RULES) {
+      const { errors, warnings } = run(
+        rule,
+        [text("Möhren, Zwiebeln und Gemüsebrühe verrühren.")],
+        english,
+        {
+          list,
+          mapping,
+        },
+      );
+      expect(errors, rule.id).toEqual([]);
+      expect(warnings, rule.id).toEqual([]);
+    }
+  });
+
+  it("only warns when a recipe without a mapping differs by name, as in a translated recipe", () => {
     const english = [
       ingredient("vegetable stock", 1500, "g"),
       ingredient("carrots", 500, "g"),
       ingredient("onion", 1, null),
     ];
     const list = [entry("Gemüsebrühe"), entry("Karotten"), entry("Zwiebeln")];
-    const { errors, warnings } = run(ingredientListedRule, [text("x")], english, { list });
+    const { errors, warnings } = run(ingredientMappingRule, [text("x")], english, {
+      list,
+      mapping: null,
+    });
     expect(errors).toEqual([]);
-    expect(warnings[0]).toContain("3 of 3 ingredients");
+    expect(warnings).toEqual([
+      "3 of 3 ingredients of the recipe are not found by name in the ingredient list, and the recipe has no ingredientMapping; check that none was dropped",
+    ]);
+  });
+
+  it("accepts the Monsieur Cuisine name for a regional name without a mapping", () => {
+    const austrian = [ingredient("Topfen", 500, "g"), ingredient("Karotten", 2, null)];
+    const list = [entry("Quark (20 % Fett)"), entry("Möhren")];
+    expect(run(ingredientMappingRule, [text("x")], austrian, { list, mapping: null })).toEqual({
+      errors: [],
+      warnings: [],
+    });
+    expect(
+      run(ingredientReferencedRule, [text("Möhren und Quark verrühren.")], austrian, { list })
+        .warnings,
+    ).toEqual([]);
+  });
+
+  it("rejects mapping entries that name no list entry or no source line", () => {
+    const list = [entry("Gemüsebrühe"), entry("Karotten"), entry("Zwiebeln")];
+    const mapping = [
+      { name: "Gemüsebrühe", inputIndex: 0 },
+      { name: "Sellerie", inputIndex: 1 },
+      { name: "Karotten", inputIndex: 1 },
+      { name: "Zwiebeln", inputIndex: 9 },
+    ];
+    const { errors } = run(ingredientMappingRule, [text("x")], soup, { list, mapping });
+    expect(errors.map((issue) => issue.path)).toEqual([
+      "ingredientMapping[1].name",
+      "ingredientMapping[3].inputIndex",
+    ]);
+    expect(errors[1]?.message).toContain("[0] to [3]");
+  });
+
+  it("reports a misspelled mapping name once, not also as a dropped source line", () => {
+    const english = [
+      ingredient("vegetable stock", 1500, "g"),
+      ingredient("carrots", 500, "g"),
+      ingredient("onion", 1, null),
+    ];
+    const list = [entry("Gemüsebrühe"), entry("Möhren"), entry("Zwiebeln")];
+    const mapping = [
+      { name: "Gemüsebrühe", inputIndex: 0 },
+      { name: "Pastinaken", inputIndex: 1 },
+      { name: "Zwiebeln", inputIndex: 2 },
+    ];
+    const { errors } = run(ingredientMappingRule, [text("x")], english, { list, mapping });
+    expect(errors.map((issue) => issue.path)).toEqual(["ingredientMapping[1].name"]);
+  });
+
+  it("finds a list entry whose name the mapping writes with other qualifiers", () => {
+    const list = [entry("Zwiebeln (rot)"), entry("Gemüsebrühe"), entry("Karotten")];
+    const mapping = [
+      { name: "Zwiebeln, rot", inputIndex: 2 },
+      { name: "Gemüsebrühe", inputIndex: 0 },
+      { name: "Karotten", inputIndex: 1 },
+    ];
+    expect(run(ingredientMappingRule, [text("x")], soup, { list, mapping }).errors).toEqual([]);
+  });
+
+  it("warns about list entries without a mapping entry and source lines matched by name", () => {
+    const list = [entry("Gemüsebrühe"), entry("Karotten"), entry("Zwiebeln"), entry("Wasser")];
+    const mapping = [
+      { name: "Gemüsebrühe", inputIndex: 0 },
+      { name: "Zwiebeln", inputIndex: 2 },
+    ];
+    const { errors, warnings } = run(ingredientMappingRule, [text("x")], soup, { list, mapping });
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([
+      '1 source ingredient(s) have no ingredientMapping entry and were matched by name: [1] "Karotten"; check their amounts',
+      'The ingredient list has entries without an ingredientMapping entry ("Karotten", "Wasser"); their amounts were not compared with the recipe',
+    ]);
+  });
+
+  it("does not require optional or unparsed source lines", () => {
+    const inputs = [
+      ingredient("Gemüsebrühe", 1500, "g"),
+      ingredient("irgendwas", null, null, { source: "unparsed" }),
+      ingredient("Croûtons", null, null, { optional: true }),
+    ];
+    const list = [entry("Gemüsebrühe")];
+    const mapping = [{ name: "Gemüsebrühe", inputIndex: 0 }];
+    expect(run(ingredientMappingRule, [text("x")], inputs, { list, mapping }).errors).toEqual([]);
+  });
+});
+
+describe("amount_balance through the mapping", () => {
+  it("compares amounts across languages", () => {
+    const english = [ingredient("vegetable broth", 1, "cup")];
+    const list: ListEntry[] = [
+      { name: "Gemüsebrühe", amount: "240", unit: "g", isOptional: false },
+    ];
+    const mapping = [{ name: "Gemüsebrühe", inputIndex: 0 }];
+    expect(run(amountBalanceRule, [scale(240, "Gemüsebrühe")], english, { list, mapping })).toEqual(
+      {
+        errors: [],
+        warnings: [],
+      },
+    );
+    const { errors } = run(amountBalanceRule, [scale(500, "Gemüsebrühe")], english, {
+      list,
+      mapping,
+    });
+    expect(errors[0]?.message).toContain('500 g of "Gemüsebrühe"');
+  });
+
+  it("compares an English count with the counted list entry", () => {
+    const english = [ingredient("onions", 2, null)];
+    const counted = (amount: string): ListEntry[] => [
+      { name: "Zwiebeln", amount, unit: "Stück", isOptional: false },
+    ];
+    const mapping = [{ name: "Zwiebeln", inputIndex: 0 }];
+    expect(
+      run(amountBalanceRule, [text("x")], english, { list: counted("2"), mapping }).errors,
+    ).toEqual([]);
+    expect(
+      run(amountBalanceRule, [text("x")], english, { list: counted("4"), mapping }).errors,
+    ).toHaveLength(1);
+  });
+
+  it("sums source lines merged into one entry and entries split from one line", () => {
+    const salt = [ingredient("Salz", 1, "TL"), ingredient("Salz", 1, "TL", { section: "Teig" })];
+    const list: ListEntry[] = [{ name: "Salz", amount: "2", unit: "Tl", isOptional: false }];
+    const mapping = [
+      { name: "Salz", inputIndex: 0 },
+      { name: "Salz", inputIndex: 1 },
+    ];
+    expect(run(amountBalanceRule, [text("2 Tl Salz dazugeben.")], salt, { list, mapping })).toEqual(
+      {
+        errors: [],
+        warnings: [],
+      },
+    );
+    const tooMuch: ListEntry[] = [{ name: "Salz", amount: "3", unit: "Tl", isOptional: false }];
+    expect(
+      run(amountBalanceRule, [text("x")], salt, { list: tooMuch, mapping }).errors,
+    ).toHaveLength(1);
+    const butter = [ingredient("Butter", 200, "g")];
+    const split: ListEntry[] = [
+      { name: "Butter", amount: "100", unit: "g", isOptional: false },
+      { name: "Butter (weich)", amount: "100", unit: "g", isOptional: false },
+    ];
+    const splitMapping = [
+      { name: "Butter", inputIndex: 0 },
+      { name: "Butter (weich)", inputIndex: 0 },
+    ];
+    expect(
+      run(
+        amountBalanceRule,
+        [scale(100, "Butter"), text("x"), scale(100, "Butter (weich)")],
+        butter,
+        {
+          list: split,
+          mapping: splitMapping,
+        },
+      ).errors,
+    ).toEqual([]);
+  });
+
+  it("skips clusters it cannot sum and ingredients the source does not have", () => {
+    const mixed = [ingredient("Butter", 1, "EL"), ingredient("Butter", 50, "g")];
+    const list: ListEntry[] = [{ name: "Butter", amount: "500", unit: "g", isOptional: false }];
+    const mapping = [
+      { name: "Butter", inputIndex: 0 },
+      { name: "Butter", inputIndex: 1 },
+    ];
+    expect(run(amountBalanceRule, [scale(500, "Butter")], mixed, { list, mapping }).errors).toEqual(
+      [],
+    );
+    const added: ListEntry[] = [{ name: "Wasser", amount: "1000", unit: "g", isOptional: false }];
+    expect(
+      run(amountBalanceRule, [scale(1000, "Wasser")], [], {
+        list: added,
+        mapping: [{ name: "Wasser", inputIndex: null }],
+      }).errors,
+    ).toEqual([]);
+    // A provider that drops null fields leaves the index out: it still means null.
+    expect(
+      run(ingredientMappingRule, [scale(1000, "Wasser")], [], {
+        list: added,
+        mapping: [{ name: "Wasser" }],
+      }),
+    ).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("checks English steps with the en-US words", () => {
+    const cream = [ingredient("cream", 200, "g")];
+    const list: ListEntry[] = [
+      { name: "cream (30% fat)", amount: "200", unit: "g", isOptional: false },
+    ];
+    const mapping = [{ name: "cream (30% fat)", inputIndex: 0 }];
+    const step: RecipeStep = {
+      kind: "scale",
+      title: "400 g cream",
+      description: "Put 400 g cream into the blender jug.",
+      grams: 400,
+    };
+    const { errors } = run(amountBalanceRule, [step], cream, {
+      list,
+      mapping,
+      knowledge: englishKnowledge,
+    });
+    expect(errors[0]?.message).toContain('400 g of "cream (30% fat)"');
   });
 });
 
@@ -668,7 +959,7 @@ describe("checkSanity", () => {
       "flour_max_per_knead",
       "steaming_liquid_min",
       "text_before_machine_step",
-      "ingredient_listed",
+      "ingredient_mapping",
       "ingredient_referenced",
       "amount_balance",
       "machine_step_description",

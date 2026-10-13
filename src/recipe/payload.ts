@@ -1,9 +1,10 @@
 // Builds the Monsieur Cuisine API payload from a validated RecipeInput.
 //
-// Field layout ported from SmartRecipe src/recipes/payload.ts, complexity ids from
-// src/catalogs/catalogs.ts (MIT, https://github.com/gerkensm/smart-recipe), checked against
-// the live API on 2026-10-13: one serving size, ingredient order from 1, group and step
-// order from 0, amounts as strings, integer nutrients, empty descriptions on program steps.
+// Field layout ported from SmartRecipe src/recipes/payload.ts (MIT,
+// https://github.com/gerkensm/smart-recipe), checked against the live API on 2026-10-13:
+// one serving size, ingredient order from 1, group and step order from 0, amounts as
+// strings, integer nutrients, empty descriptions on program steps. The language, the
+// complexity ids and the default group name come from the locale pack (mc.json).
 
 import { normalizeIngredientName } from "../ingredients/catalog.js";
 import {
@@ -19,17 +20,14 @@ import type { DeviceLimits, ModeLimits } from "./limits.js";
 import { MODES, apiModeSettings, apiSettings } from "./modes.js";
 import type { IngredientGroup, MachineStep, RecipeInput, RecipeStep } from "./schema.js";
 
-// Complexity ids differ per locale.
-export const COMPLEXITY_IDS: Readonly<
-  Record<RecipeInput["locale"], Record<RecipeInput["complexity"], number>>
-> = {
-  "de-DE": { easy: 142, medium: 99, hard: 104 },
-};
-
-// The name the web editor gives an unnamed ingredient group.
-export const DEFAULT_GROUP_NAMES: Readonly<Record<RecipeInput["locale"], string>> = {
-  "de-DE": "Allgemeine Zutaten",
-};
+// What the payload needs to know about the locale: its id (languageLocale), the complexity
+// ids, which differ per locale, and the name the web editor gives an unnamed ingredient
+// group. The mc.json of a locale pack has these fields.
+export interface PayloadLocale {
+  locale: string;
+  complexityIds: Readonly<Record<RecipeInput["complexity"], number>>;
+  defaultGroupName: string;
+}
 
 export const NUTRIENT_UNITS: Readonly<Record<string, string>> = {
   calories: "kCal",
@@ -39,6 +37,8 @@ export const NUTRIENT_UNITS: Readonly<Record<string, string>> = {
 };
 
 export interface BuildPayloadOptions {
+  // The locale the recipe is written for; it must match the recipe's locale.
+  locale: PayloadLocale;
   // Set by the code, never by the model. The server creates every recipe as a draft;
   // "private-publish" takes effect through McClient.setStatus.
   status: McWritableStatus;
@@ -61,17 +61,23 @@ export function buildMcPayload(
   if (!isWritableStatus(options.status)) {
     throw new TypeError(`Refusing to build a payload with status "${String(options.status)}"`);
   }
+  const locale = options.locale;
+  if (input.locale !== locale.locale) {
+    throw new TypeError(
+      `The recipe is written for ${input.locale}, but the payload is built for ${locale.locale}`,
+    );
+  }
   const serving = input.servingSize;
   return {
     status: options.status,
     source: "member",
-    languageLocale: input.locale,
+    languageLocale: locale.locale,
     deviceTypeIds: [...limits.recipe.deviceTypeIds],
     title: input.title,
     description: input.description,
     thumbnail: mediaRef(options.thumbnailMediaId),
     detailsImage: mediaRef(options.detailsMediaId),
-    complexityId: COMPLEXITY_IDS[input.locale][input.complexity],
+    complexityId: locale.complexityIds[input.complexity],
     allowSocialSharing: false,
     categoryIds: [...(options.categoryIds ?? input.categoryIds)],
     nutrients: (input.nutrients ?? []).map((nutrient) => ({
@@ -89,7 +95,7 @@ export function buildMcPayload(
         preparationTime: serving.preparationTime,
         readyInTime: serving.readyInTime,
         ingredientGroups: serving.ingredientGroups.map((group, index) =>
-          toGroup(group, index, DEFAULT_GROUP_NAMES[input.locale], options.ingredientIds),
+          toGroup(group, index, locale.defaultGroupName, options.ingredientIds),
         ),
         steps: serving.steps.map((step, order) => toStep(step, order, limits)),
         order: 0,

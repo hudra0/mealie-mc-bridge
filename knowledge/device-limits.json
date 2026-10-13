@@ -37,7 +37,7 @@
     },
     {
       "id": "speed_max_whisk",
-      "rule": "speed <= 4 while the whisk attachment (Rühraufsatz) is fitted",
+      "rule": "speed <= 4 while the butterfly whisk attachment is fitted",
       "value": 4,
       "severity": "error",
       "sources": ["official recipe guide", "SmartRecipe prompt"],
@@ -204,7 +204,7 @@
       "lowEvidence": false,
       "memberEditor": true,
       "notes": [
-        "The editor and SmartRecipe allow up to 5000 g (the hard limit); the corpus maximum is 2500 g, which sets the recommended maximum. Below 5 g the corpus never weighs (amounts go into Tl, Prise or Msp.)."
+        "The editor and SmartRecipe allow up to 5000 g (the hard limit); the corpus maximum is 2500 g, which sets the recommended maximum. Below 5 g the corpus never weighs (amounts go into teaspoons, pinches or knife tips)."
       ]
     },
     "roasting": {

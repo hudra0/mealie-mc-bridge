@@ -19,6 +19,7 @@ import { randomBytes } from "node:crypto";
 import formbody from "@fastify/formbody";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { errorMessage, type AppLogger } from "../app-logger.js";
+import { messages, type AdminMessages, type UiLanguage } from "../i18n/index.js";
 import { McSessionError, type McRecipeSink } from "../mc/index.js";
 import { MAX_SCALE } from "../mealie/index.js";
 import type { Converter } from "../pipeline/converter-port.js";
@@ -28,6 +29,7 @@ import {
   planCategories,
   prepareRecipe,
 } from "../pipeline/prepare.js";
+import type { PipelineLocale } from "../pipeline/locale.js";
 import type { MealiePort } from "../pipeline/run-job.js";
 import type { WorkerStatus } from "../pipeline/worker.js";
 import type { DeviceLimits } from "../recipe/limits.js";
@@ -60,6 +62,10 @@ export interface AdminOptions {
   mc: Pick<McRecipeSink, "getCategories">;
   converter: Converter;
   limits: DeviceLimits;
+  // The pack of MC_LOCALE, for the dry run.
+  locale: PipelineLocale;
+  // The language of the pages; English by default.
+  language?: UiLanguage;
   logger: AppLogger;
   recipeStatus: "draft" | "private-publish";
   worker?: { status(): WorkerStatus; nudge?(): void };
@@ -71,13 +77,6 @@ export interface AdminOptions {
 }
 
 const FORM_BODY_LIMIT = 64 * 1024;
-const NOTICES: Readonly<Record<string, string>> = {
-  "session-saved": "Session saved. Jobs that were waiting for it are queued again.",
-  "session-checked": "Session checked.",
-  "job-queued": "Job queued again.",
-  "job-forced": "Job queued again; it will be sent even if the recipe is unchanged.",
-  "job-cancelled": "Job cancelled.",
-};
 
 interface FormBody {
   _csrf?: string;
@@ -92,6 +91,7 @@ export function admin(
 ): void {
   const formToken = options.formToken ?? randomBytes(32).toString("hex");
   const authDisabled = options.auth === null;
+  const t: AdminMessages = messages(options.language ?? "en").admin;
   if (authDisabled) {
     options.logger.warn(
       {},
@@ -119,6 +119,7 @@ export function admin(
       .send(
         page({
           title,
+          labels: t,
           body,
           authDisabled,
           notice: extra.notice ?? null,
@@ -128,7 +129,7 @@ export function admin(
 
   const notice = (request: FastifyRequest): string | null => {
     const key = (request.query as Record<string, unknown>).notice;
-    return typeof key === "string" ? (NOTICES[key] ?? null) : null;
+    return typeof key === "string" ? (t.notices[key] ?? null) : null;
   };
 
   const tokenValid = (value: unknown): boolean =>
@@ -144,7 +145,7 @@ export function admin(
       void reply
         .code(403)
         .header("content-type", "text/plain; charset=utf-8")
-        .send("Unknown host name. Add it to ADMIN_HOSTS or use the IP address.");
+        .send(t.plain.unknownHost);
       return;
     }
     if (
@@ -155,14 +156,14 @@ export function admin(
         .code(401)
         .header("www-authenticate", 'Basic realm="mc-bridge admin", charset="UTF-8"')
         .header("content-type", "text/plain; charset=utf-8")
-        .send("Authentication required");
+        .send(t.plain.authRequired);
       return;
     }
     if (request.method === "POST" && !sameOrigin(request)) {
       void reply
         .code(403)
         .header("content-type", "text/plain; charset=utf-8")
-        .send("Cross-origin request refused");
+        .send(t.plain.crossOrigin);
       return;
     }
     next();
@@ -172,11 +173,12 @@ export function admin(
     if (request.method !== "POST") return next();
     const body = (request.body ?? {}) as FormBody;
     if (!tokenValid(body._csrf)) {
-      void render(reply, "Form expired", html`<p><a href="/admin">Back to the dashboard</a></p>`, {
-        status: 403,
-        error:
-          "The form has expired (the bridge restarted, or the page came from elsewhere). Reload the page and try again.",
-      });
+      void render(
+        reply,
+        t.titles.formExpired,
+        html`<p><a href="/admin">${t.links.backToDashboard}</a></p>`,
+        { status: 403, error: t.errors.formExpired },
+      );
       return;
     }
     next();
@@ -188,15 +190,18 @@ export function admin(
   ) =>
     render(
       reply,
-      "Dashboard",
-      dashboardView({
-        session: options.session.status(),
-        stats: options.store.jobs.stats(),
-        worker: options.worker?.status() ?? null,
-        jobs: options.store.jobs.listRecent({ limit: 20 }),
-        formToken,
-        recipeStatus: options.recipeStatus,
-      }),
+      t.titles.dashboard,
+      dashboardView(
+        {
+          session: options.session.status(),
+          stats: options.store.jobs.stats(),
+          worker: options.worker?.status() ?? null,
+          jobs: options.store.jobs.listRecent({ limit: 20 }),
+          formToken,
+          recipeStatus: options.recipeStatus,
+        },
+        t,
+      ),
       extra,
     );
 
@@ -210,18 +215,18 @@ export function admin(
       return reply.redirect("/admin?notice=session-saved", 303);
     } catch (error) {
       if (error instanceof InvalidCookieError) {
-        return dashboard(reply, { status: 400, error: "The cookie field is empty." });
+        return dashboard(reply, { status: 400, error: t.errors.cookieEmpty });
       }
       if (error instanceof SessionRejectedError) {
         return dashboard(reply, {
           status: 422,
-          error: `${error.message}. The cookie was not stored. Log in again and copy a fresh one.`,
+          error: t.errors.cookieRejected(error.message),
         });
       }
       options.logger.warn({ err: errorMessage(error) }, "could not verify a new session cookie");
       return dashboard(reply, {
         status: 502,
-        error: `The cookie could not be checked, so it was not stored: ${errorMessage(error)}`,
+        error: t.errors.cookieUnchecked(errorMessage(error)),
       });
     }
   });
@@ -247,24 +252,29 @@ export function admin(
       ...(status ? { status } : {}),
       ...(search ? { search } : {}),
     });
-    return render(reply, "Jobs", jobListView({ jobs, status, search, offset, limit }), {
+    return render(reply, t.titles.jobs, jobListView({ jobs, status, search, offset, limit }, t), {
       notice: notice(request),
     });
   });
 
   app.get<{ Params: { id: string } }>("/admin/jobs/:id", (request, reply) => {
     const found = options.store.jobs.getWithEvents(request.params.id);
-    if (!found) return render(reply, "Not found", html`<p>No such job.</p>`, { status: 404 });
+    if (!found) {
+      return render(reply, t.titles.notFound, html`<p>${t.errors.noSuchJob}</p>`, { status: 404 });
+    }
     const slug = found.job.mealieSlug;
     return render(
       reply,
-      found.job.title ?? "Job",
-      jobDetailView({
-        job: found.job,
-        events: found.events,
-        formToken,
-        mealieUrl: slug && options.mealieRecipeUrl ? options.mealieRecipeUrl(slug) : null,
-      }),
+      found.job.title ?? t.titles.job,
+      jobDetailView(
+        {
+          job: found.job,
+          events: found.events,
+          formToken,
+          mealieUrl: slug && options.mealieRecipeUrl ? options.mealieRecipeUrl(slug) : null,
+        },
+        t,
+      ),
       { notice: notice(request) },
     );
   });
@@ -283,8 +293,8 @@ export function admin(
       const missing = options.store.jobs.get(id) === null;
       return render(
         reply,
-        "Not possible",
-        html`<p><a href="/admin/jobs">Back to the jobs</a></p>`,
+        t.titles.notPossible,
+        html`<p><a href="/admin/jobs">${t.links.backToJobs}</a></p>`,
         {
           status: missing ? 404 : 409,
           error: error.message,
@@ -315,38 +325,45 @@ export function admin(
     const scaleRaw = typeof query.scale === "string" ? Number(query.scale) : 1;
     const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 && scaleRaw <= MAX_SCALE ? scaleRaw : 1;
     const data: DryRunData = { recipeParam, scale, formToken };
-    if (!recipeParam) return render(reply, "Dry run", dryRunView(data));
+    if (!recipeParam) return render(reply, t.titles.dryRun, dryRunView(data, t));
 
     let recipe;
     try {
       recipe = await options.mealie.getRecipe(recipeParam);
     } catch (error) {
-      data.loadError = `The recipe could not be loaded: ${errorMessage(error)}`;
-      return render(reply, "Dry run", dryRunView(data), { status: 502 });
+      data.loadError = t.errors.recipeNotLoaded(errorMessage(error));
+      return render(reply, t.titles.dryRun, dryRunView(data, t), { status: 502 });
     }
-    const prepared = prepareRecipe(recipe, scale, options.limits);
+    const prepared = prepareRecipe(recipe, scale, options.limits, options.locale);
     data.title = recipe.name;
     data.prepared = prepared;
     data.sent = options.store.mcRecipes.find(recipe.id, scale, prepared.hash);
 
     if (query.convert === "1") {
       if (!tokenValid(query._csrf)) {
-        data.conversionError =
-          "The conversion link has expired (the bridge restarted, or the link came from elsewhere). Use the button below.";
+        data.conversionError = t.errors.conversionLinkExpired;
       } else {
         try {
-          const plan = await planCategories(recipe, options.mc, options.store.settings, {
-            ...(options.now ? { now: options.now } : {}),
-            isSessionError: (error) => error instanceof McSessionError,
-          });
-          const result = await options.converter.convert(conversionRequest(recipe, prepared, plan));
+          const plan = await planCategories(
+            recipe,
+            options.mc,
+            options.store.settings,
+            options.locale,
+            {
+              ...(options.now ? { now: options.now } : {}),
+              isSessionError: (error) => error instanceof McSessionError,
+            },
+          );
+          const result = await options.converter.convert(
+            conversionRequest(recipe, prepared, plan, options.locale.pack.locale),
+          );
           data.conversion = { plan, result, checked: checkConverted(result, plan, options.limits) };
         } catch (error) {
-          data.conversionError = `The conversion failed: ${errorMessage(error)}`;
+          data.conversionError = t.errors.conversionFailed(errorMessage(error));
         }
       }
     }
-    return render(reply, "Dry run", dryRunView(data));
+    return render(reply, t.titles.dryRun, dryRunView(data, t));
   });
 
   done();

@@ -48,7 +48,13 @@ describe("RecipeInputSchema", () => {
 
   // Each case breaks exactly one limit.
   it.each<[string, (recipe: Json) => void, string, RegExp]>([
-    ["other locale", (r) => (r.locale = "en-US"), "locale", /expected "de-DE"/],
+    ["malformed locale", (r) => (r.locale = "german"), "locale", /must look like de-DE/],
+    [
+      "mapping index below 0",
+      (r) => (r.ingredientMapping = [{ name: "x", inputIndex: -1 }]),
+      "ingredientMapping.0.inputIndex",
+      /must not be negative/,
+    ],
     ["unknown complexity", (r) => (r.complexity = "extreme"), "complexity", /Invalid option/],
     ["duplicate category", (r) => (r.categoryIds = [228, 228]), "categoryIds", /unique/],
     [
@@ -241,6 +247,22 @@ describe("recipeInputJsonSchema", () => {
       ]),
     );
     expect(schema.required).not.toContain("reviewHints");
+    // The converter always asks for the mapping.
+    expect(schema.required).toContain("ingredientMapping");
+    const mapping = schema.properties.ingredientMapping as { items: { required: string[] } };
+    expect(mapping.items.required).toEqual(["name", "inputIndex"]);
+    // An answer whose provider dropped a null index still parses.
+    expect(
+      RecipeInputSchema.shape.ingredientMapping.parse([
+        { name: "Wasser" },
+        { name: "Salz", inputIndex: null },
+      ]),
+    ).toEqual([{ name: "Wasser" }, { name: "Salz", inputIndex: null }]);
+    const located = recipeInputJsonSchema(undefined, { locale: "en-US" }) as {
+      properties: Record<string, Record<string, unknown>>;
+    };
+    expect(located.properties.locale).toMatchObject({ enum: ["en-US"] });
+    expect(located.properties.locale).not.toHaveProperty("pattern");
     expect(schema.properties.title).toEqual({ type: "string" });
     const steps = (
       schema.properties.servingSize as {
@@ -248,6 +270,13 @@ describe("recipeInputJsonSchema", () => {
       }
     ).properties.steps.items;
     expect((steps.oneOf ?? steps.anyOf ?? []).length).toBe(STEP_KINDS.length);
+  });
+
+  it("names no unit or serving words of one language, so every locale can use it", () => {
+    const text = JSON.stringify(recipeInputJsonSchema(undefined, { locale: "en-US" }));
+    for (const word of ["EL", "TL", "Tl", "El", "Prise", "Stück", "Portionen", "Rühraufsatz"]) {
+      expect(text).not.toMatch(new RegExp(String.raw`(?<![\p{L}_])${word}(?![\p{L}_])`, "u"));
+    }
   });
 
   it("writes the recipe limits of the knowledge file into the schema", async () => {

@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NormalizedRecipe, NormalizedStep } from "./types.js";
+import { parseCorpusArgs } from "./locale.js";
 
 // ---------------------------------------------------------------------------
 // Assumed device rules, checked against the corpus. Keep in one place.
@@ -1295,5 +1296,5 @@ function isMain(): boolean {
 }
 
 if (isMain()) {
-  run(process.env.CORPUS_DIR ?? path.join("local", "corpus"));
+  run(parseCorpusArgs(process.argv.slice(2)).corpusDir);
 }

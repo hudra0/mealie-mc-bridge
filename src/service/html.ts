@@ -75,8 +75,16 @@ const STYLE = `
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; } dt { color: var(--muted); }
 `;
 
+export interface PageLabels {
+  htmlLang: string;
+  nav: { dashboard: string; jobs: string; dryRun: string };
+  authBanner: string;
+}
+
 export interface PageOptions {
   title: string;
+  // The texts of the layout in the admin's language (src/i18n).
+  labels: PageLabels;
   body: SafeHtml;
   notice?: string | null;
   error?: string | null;
@@ -85,8 +93,9 @@ export interface PageOptions {
 }
 
 export function page(options: PageOptions): string {
+  const t = options.labels;
   const document = html`<!doctype html>
-    <html lang="en">
+    <html lang="${t.htmlLang}">
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -99,18 +108,12 @@ export function page(options: PageOptions): string {
       <body>
         <header>
           <strong>mc-bridge</strong>
-          <a href="/admin">Dashboard</a>
-          <a href="/admin/jobs">Jobs</a>
-          <a href="/admin/dry-run">Dry run</a>
+          <a href="/admin">${t.nav.dashboard}</a>
+          <a href="/admin/jobs">${t.nav.jobs}</a>
+          <a href="/admin/dry-run">${t.nav.dryRun}</a>
         </header>
         <main>
-          ${
-            options.authDisabled
-              ? html`<p class="banner bad">
-                  The admin pages have no password. Set ADMIN_USER and ADMIN_PASSWORD.
-                </p>`
-              : ""
-          }
+          ${options.authDisabled ? html`<p class="banner bad">${t.authBanner}</p>` : ""}
           ${options.notice ? html`<p class="banner ok">${options.notice}</p>` : ""}
           ${options.error ? html`<p class="banner bad">${options.error}</p>` : ""} ${options.body}
         </main>

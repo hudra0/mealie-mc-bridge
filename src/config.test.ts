@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   MissingApiKeyError,
@@ -25,8 +26,11 @@ const defaults = {
   SESSION_CHECK_MINUTES: 60,
   WORKER_POLL_SECONDS: 2,
   TAG_NAME: "Monsieur Cuisine",
-  TIMELINE_LANGUAGE: "de",
+  MC_LOCALE: "de-DE",
+  UI_LANGUAGE: "de",
 };
+
+const knowledgeDir = fileURLToPath(new URL("../knowledge", import.meta.url));
 
 const settingsKey = Buffer.alloc(32, 7).toString("base64");
 const service = {
@@ -55,7 +59,7 @@ describe("loadConfig", () => {
       ANTHROPIC_API_KEY: "anthropic-test-key",
       ANTHROPIC_MODEL: "claude-sonnet-5-5",
       LLM_MAX_CORRECTIONS: "1",
-      KNOWLEDGE_DIR: "/srv/knowledge",
+      KNOWLEDGE_DIR: knowledgeDir,
       LLM_PRICES_JSON: '{"gpt-5.4": {"input": 2.5, "output": 15}}',
       DATA_DIR: "/data",
       MC_RECIPE_STATUS: "draft",
@@ -77,7 +81,7 @@ describe("loadConfig", () => {
       ANTHROPIC_API_KEY: "anthropic-test-key",
       ANTHROPIC_MODEL: "claude-sonnet-5-5",
       LLM_MAX_CORRECTIONS: 1,
-      KNOWLEDGE_DIR: "/srv/knowledge",
+      KNOWLEDGE_DIR: knowledgeDir,
       LLM_PRICES_JSON: '{"gpt-5.4": {"input": 2.5, "output": 15}}',
       DATA_DIR: "/data",
       MC_RECIPE_STATUS: "draft",
@@ -99,6 +103,20 @@ describe("loadConfig", () => {
         LLM_PRICES_JSON: "",
       }),
     ).toEqual(defaults);
+  });
+
+  it("checks MC_LOCALE against the locale packs and derives UI_LANGUAGE from it", () => {
+    expect(loadConfig({ MC_LOCALE: "en-US" })).toMatchObject({
+      MC_LOCALE: "en-US",
+      UI_LANGUAGE: "en",
+    });
+    expect(loadConfig({ MC_LOCALE: "en-US", UI_LANGUAGE: "de" }).UI_LANGUAGE).toBe("de");
+    expect(() => loadConfig({ MC_LOCALE: "fr-FR" })).toThrow(
+      "MC_LOCALE: there is no locale pack for fr-FR (available: de-DE, en-US)",
+    );
+    expect(() => loadConfig({ MC_LOCALE: "german" })).toThrow("MC_LOCALE: must look like de-DE");
+    expect(() => loadConfig({ UI_LANGUAGE: "fr" })).toThrow(/UI_LANGUAGE/);
+    expect(() => loadConfig({ KNOWLEDGE_DIR: "/nonexistent" })).toThrow("(available: none)");
   });
 
   it("rejects an invalid port", () => {

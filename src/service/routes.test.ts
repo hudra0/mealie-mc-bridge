@@ -250,7 +250,7 @@ describe("end to end with fake clients", () => {
     }
     expect(svc.mc.payloads).toHaveLength(1);
     expect(svc.mealie.patches[0]?.patch.addTags?.[0]?.name).toBe("Monsieur Cuisine");
-    expect(svc.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
+    expect(svc.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: draft created");
     const health = (await svc.app.inject({ method: "GET", url: "/health" })).json<{
       status: string;
     }>();

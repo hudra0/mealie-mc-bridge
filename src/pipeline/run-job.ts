@@ -43,11 +43,12 @@ import type { McRecipeStore } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
 import type { ConversionResult, Converter } from "./converter-port.js";
 import { describeResolution, type IngredientResolverPort } from "./ingredient-resolver.js";
+import type { PipelineLocale } from "./locale.js";
 import {
   timelineTexts,
   type FailureStage,
-  type TimelineLanguage,
   type TimelineTexts,
+  type UiLanguage,
 } from "./messages.js";
 import {
   checkConverted,
@@ -65,7 +66,8 @@ export type MealiePort = Pick<
 export interface PipelineConfig {
   MC_RECIPE_STATUS: "draft" | "private-publish";
   TAG_NAME: string;
-  TIMELINE_LANGUAGE: TimelineLanguage;
+  // The language of the timeline entries.
+  UI_LANGUAGE: UiLanguage;
 }
 
 export interface PipelineStore {
@@ -79,6 +81,8 @@ export interface RunJobDeps {
   mc: McRecipeSink;
   converter: Converter;
   limits: DeviceLimits;
+  // The pack of MC_LOCALE and the category words of every pack.
+  locale: PipelineLocale;
   config: PipelineConfig;
   logger: AppLogger;
   notifier: Notifier;
@@ -167,7 +171,7 @@ class JobRun {
     this.#job = job;
     this.#deps = deps;
     this.#options = options;
-    this.#texts = timelineTexts(deps.config.TIMELINE_LANGUAGE);
+    this.#texts = timelineTexts(deps.config.UI_LANGUAGE);
   }
 
   get #jobs(): JobStore {
@@ -188,7 +192,7 @@ class JobRun {
     const image = await this.#loadImage(recipe);
 
     const prepared = await this.#stage("prepare", () =>
-      prepareRecipe(recipe, job.scale, deps.limits),
+      prepareRecipe(recipe, job.scale, deps.limits, deps.locale),
     );
     this.#jobs.update(job.id, { servings: prepared.servings });
     const unparsed = prepared.normalized.filter((item) => item.source === "unparsed").length;
@@ -215,7 +219,7 @@ class JobRun {
 
     this.#checkAbort();
     const plan = await this.#stage("categories", () =>
-      planCategories(recipe, deps.mc, deps.store.settings, {
+      planCategories(recipe, deps.mc, deps.store.settings, deps.locale, {
         ...(deps.now ? { now: deps.now } : {}),
         isSessionError: (error) => error instanceof McSessionError,
       }),
@@ -227,7 +231,7 @@ class JobRun {
     );
 
     this.#checkAbort();
-    const stored = storedConversion(job, prepared.hash);
+    const stored = storedConversion(job, prepared.hash, deps.locale.pack.locale);
     let result: ConversionResult;
     if (stored) {
       result = stored;
@@ -241,7 +245,7 @@ class JobRun {
         "convert",
         () =>
           deps.converter.convert(
-            conversionRequest(recipe, prepared, plan),
+            conversionRequest(recipe, prepared, plan, deps.locale.pack.locale),
             signal ? { signal } : {},
           ),
         false,
@@ -293,6 +297,7 @@ class JobRun {
 
     this.#checkAbort();
     const payload = buildMcPayload(checked.recipe, deps.limits, {
+      locale: deps.locale.pack.mc,
       status: "draft",
       categoryIds: checked.categories.ids,
       detailsMediaId: media?.detailsMediaId ?? null,
@@ -560,9 +565,9 @@ function isRefusal(error: unknown): boolean {
 }
 
 // The validated conversion from an earlier attempt of this job, when the recipe has not
-// changed since. The stored value was written by this code; the checks only guard against
-// a hand-edited or truncated row.
-function storedConversion(job: Job, hash: string): ConversionResult | null {
+// changed since and it is written in the current locale. The stored value was written by
+// this code; the checks only guard against a hand-edited or truncated row.
+function storedConversion(job: Job, hash: string, locale: string): ConversionResult | null {
   const stored = job.conversion;
   if (!stored || stored.sourceHash !== hash) return null;
   const result = stored.result as Partial<ConversionResult> | null;
@@ -575,7 +580,8 @@ function storedConversion(job: Job, hash: string): ConversionResult | null {
     typeof result.model !== "string" ||
     !result.usage ||
     !Array.isArray(result.warnings) ||
-    !Array.isArray(result.reviewHints)
+    !Array.isArray(result.reviewHints) ||
+    result.recipe.locale !== locale
   ) {
     return null;
   }

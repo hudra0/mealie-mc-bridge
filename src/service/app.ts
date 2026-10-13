@@ -8,6 +8,7 @@ import type { McRecipeSink } from "../mc/index.js";
 import type { Notifier } from "../notify/email.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
+import type { PipelineLocale } from "../pipeline/locale.js";
 import { runJob, type MealiePort, type PipelineConfig } from "../pipeline/run-job.js";
 import { Worker } from "../pipeline/worker.js";
 import type { DeviceLimits } from "../recipe/limits.js";
@@ -37,6 +38,8 @@ export interface ServiceParts {
   mc: McRecipeSink;
   converter: Converter;
   limits: DeviceLimits;
+  // The locale pack of MC_LOCALE and the category words of every pack.
+  locale: PipelineLocale;
   notifier: Notifier;
   // Resolves the systemIngredientId of each ingredient; without it, none is set.
   ingredients?: IngredientResolverPort;
@@ -97,6 +100,7 @@ export function buildService(parts: ServiceParts): Service {
           mc: parts.mc,
           converter: parts.converter,
           limits: parts.limits,
+          locale: parts.locale,
           config,
           logger,
           notifier: parts.notifier,
@@ -127,6 +131,8 @@ export function buildService(parts: ServiceParts): Service {
     mc: parts.mc,
     converter: parts.converter,
     limits: parts.limits,
+    locale: parts.locale,
+    language: config.UI_LANGUAGE,
     logger,
     recipeStatus: config.MC_RECIPE_STATUS,
     worker: activeWorker,

@@ -1,0 +1,16 @@
+{
+  "locale": "en-US",
+  "language": "English",
+  "proxyLang": "en-US",
+  "acceptLanguage": "en-US",
+  "editorPath": "/en/create-recipe?devices=mc-smart",
+  "complexityIds": { "easy": 22, "medium": 16, "hard": 20 },
+  "defaultGroupName": "General ingredients",
+  "verifiedOnDevice": false,
+  "notes": [
+    "Generated as a template: not verified on a device or against the English web editor.",
+    "The public recipe API answers Accept-Language en-US (1015 MC Smart recipes on 2026-10-13); en-GB is refused.",
+    "Complexity ids and the editor path come from SmartRecipe (src/catalogs/catalogs.ts, src/mc/urls.ts) and are unverified; only the de-DE path was checked. The default group name is a translation of the German editor's name.",
+    "Ingredient catalog, piece weights and the corpus tables are generated from the en-US corpus; vocabulary, phrases, technique wording and prompt rules are written by hand from its most frequent spellings and text steps."
+  ]
+}

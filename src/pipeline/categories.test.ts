@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { McSessionError, type McCategory } from "../mc/index.js";
+import { deLocale } from "../testing/locale.js";
 import { tempStore, type TempStore } from "../testing/temp.js";
 import {
   CATEGORY_CACHE_KEY,
@@ -8,6 +9,7 @@ import {
   loadCategories,
   matchCategories,
   mergeCategoryIds,
+  categoryCacheKey,
   namesMatch,
 } from "./categories.js";
 
@@ -17,6 +19,9 @@ const catalog = (
     readFileSync(new URL("../../test/fixtures/mc/categories.json", import.meta.url), "utf8"),
   ) as { data: { categories: McCategory[] } }
 ).data.categories;
+
+// The category words of every pack, as the pipeline uses them.
+const words = deLocale.categoryWords;
 
 let store: TempStore;
 afterEach(() => store?.dispose());
@@ -37,8 +42,11 @@ describe("namesMatch", () => {
     ["Getränk", "Getränke"],
     ["Marmelade", "Marmelade & Gelee"],
     ["Beilage", "Beilagen"],
+    ["Soup", "Soups and stews"],
+    ["Side dish", "Side dishes"],
+    ["Italian cuisine", "Cuisine Italian"],
   ])("matches %s with %s", (mealie, category) => {
-    expect(namesMatch(mealie, category)).toBe(true);
+    expect(namesMatch(mealie, category, words)).toBe(true);
   });
 
   it.each([
@@ -48,14 +56,15 @@ describe("namesMatch", () => {
     ["Essen", "Abendessen"],
     ["", "Desserts"],
     ["!!!", "Desserts"],
+    ["Cuisine", "Cuisine Italian"],
   ])("does not match %s with %s", (mealie, category) => {
-    expect(namesMatch(mealie, category)).toBe(false);
+    expect(namesMatch(mealie, category, words)).toBe(false);
   });
 });
 
 describe("matchCategories and hints", () => {
   it("finds the categories named by Mealie categories and tags, in catalog order", () => {
-    const matches = matchCategories(["Suppe", "Vegetarisch", "Herbst", "suppe "], catalog);
+    const matches = matchCategories(["Suppe", "Vegetarisch", "Herbst", "suppe "], catalog, words);
     expect(matches.map((match) => [match.category.id, match.matchedBy])).toEqual([
       [588, ["Vegetarisch"]],
       [228, ["Suppe", "suppe"]],
@@ -63,11 +72,18 @@ describe("matchCategories and hints", () => {
   });
 
   it("lists the matched categories first, then the rest of the catalog", () => {
-    const matches = matchCategories(["Desserts"], catalog);
+    const matches = matchCategories(["Desserts"], catalog, words);
     const hints = categoryHints(catalog, matches);
     expect(hints[0]).toBe("308: Desserts");
     expect(hints).toHaveLength(catalog.length);
     expect(new Set(hints).size).toBe(catalog.length);
+  });
+});
+
+describe("categoryCacheKey", () => {
+  it("keeps the old key for de-DE and adds the locale for the others", () => {
+    expect(categoryCacheKey("de-DE")).toBe("mc.categories");
+    expect(categoryCacheKey("en-US")).toBe("mc.categories.en-US");
   });
 });
 

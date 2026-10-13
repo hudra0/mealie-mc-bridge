@@ -25,6 +25,7 @@ import {
   type MergedCategories,
 } from "./categories.js";
 import type { ConversionRequest, ConversionResult } from "./converter-port.js";
+import type { PipelineLocale } from "./locale.js";
 import { sourceHash } from "./source-hash.js";
 
 export interface PreparedRecipe {
@@ -39,12 +40,19 @@ export function prepareRecipe(
   recipe: MealieRecipe,
   scale: number,
   limits: DeviceLimits,
+  locale: Pick<PipelineLocale, "labels" | "pack">,
 ): PreparedRecipe {
   const normalized = normalizeIngredients(recipe);
   const scaled = scaleIngredients(normalized, scale);
   const servings = servingsFor(recipe, scale, limits.recipe.servings);
-  const rendered = renderRecipeForLlm(recipe, { scale, servings, ingredients: scaled });
-  return { normalized, scaled, servings, rendered, hash: sourceHash(recipe, normalized, scale) };
+  const rendered = renderRecipeForLlm(recipe, {
+    scale,
+    servings,
+    ingredients: scaled,
+    labels: locale.labels,
+  });
+  const hash = sourceHash(recipe, normalized, scale, locale.pack.locale);
+  return { normalized, scaled, servings, rendered, hash };
 }
 
 export interface CategoryPlan {
@@ -57,11 +65,12 @@ export async function planCategories(
   recipe: MealieRecipe,
   mc: Pick<McRecipeSink, "getCategories">,
   settings: SettingsStore,
+  locale: Pick<PipelineLocale, "pack" | "categoryWords">,
   options: { now?: () => Date; isSessionError?: (error: unknown) => boolean } = {},
 ): Promise<CategoryPlan> {
-  const catalog = await loadCategories(mc, settings, options);
+  const catalog = await loadCategories(mc, settings, { ...options, locale: locale.pack.locale });
   const names = [...recipe.recipeCategory, ...recipe.tags].map((item) => item.name);
-  const matches = matchCategories(names, catalog.categories);
+  const matches = matchCategories(names, catalog.categories, locale.categoryWords);
   return { catalog, matches, hints: categoryHints(catalog.categories, matches) };
 }
 
@@ -69,12 +78,13 @@ export function conversionRequest(
   recipe: MealieRecipe,
   prepared: PreparedRecipe,
   plan: CategoryPlan,
+  locale: string,
 ): ConversionRequest {
   return {
     title: recipe.name,
     rendered: prepared.rendered,
     servings: prepared.servings,
-    locale: "de-DE",
+    locale,
     ingredients: prepared.scaled,
     categoryHints: plan.hints,
   };

@@ -1,7 +1,7 @@
 // The ingredient catalog: ingredient names as published Monsieur Cuisine recipes spell them,
 // each with the systemIngredientId the app uses for its shopping list and ingredient
-// filters. Built by scripts/corpus/build-ingredient-catalog.ts into
-// knowledge/ingredient-catalog.json.
+// filters. Built per language by scripts/corpus/build-ingredient-catalog.ts into the locale
+// pack, knowledge/locales/<locale>/ingredient-catalog.json.
 //
 // A name matches only when it is the same after normalization: no fuzzy matching, no
 // stemming, no partial hits. A wrong id is worse than none, because the app would file the
@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import type { Config } from "../config.js";
 import { DEFAULT_KNOWLEDGE_DIR } from "../convert/settings.js";
+import { packDir } from "../locale/pack.js";
 
 export const INGREDIENT_CATALOG_FILE = "ingredient-catalog.json";
 
@@ -102,11 +103,12 @@ export function lookupCatalog(catalog: IngredientCatalog, name: string): number 
   return catalog.byName.get(normalizeIngredientName(name)) ?? null;
 }
 
-// The catalog the service runs with: none when resolution is off, otherwise the file in
-// KNOWLEDGE_DIR, the directory the converter reads its knowledge base from.
+// The catalog the service runs with: none when resolution is off, otherwise the file in the
+// locale pack of MC_LOCALE under KNOWLEDGE_DIR, the directory the converter reads its
+// knowledge base from.
 export async function loadConfiguredCatalog(
-  config: Pick<Config, "MC_RESOLVE_INGREDIENTS" | "KNOWLEDGE_DIR">,
+  config: Pick<Config, "MC_RESOLVE_INGREDIENTS" | "KNOWLEDGE_DIR" | "MC_LOCALE">,
 ): Promise<IngredientCatalog | null> {
   if (config.MC_RESOLVE_INGREDIENTS === "off") return null;
-  return loadIngredientCatalog(config.KNOWLEDGE_DIR);
+  return loadIngredientCatalog(packDir(config.KNOWLEDGE_DIR, config.MC_LOCALE));
 }

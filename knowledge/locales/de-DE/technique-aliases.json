@@ -1,0 +1,271 @@
+{
+  "description": "German wording per technique of techniques.json and the words that point to its ingredient classes. The converter picks techniques by these words in the source recipe, whatever its language (the aliases of every pack count), and prints the German aliases as the wording to use. A word matches the start of a word in the recipe, so \"zwiebel\" also finds \"Zwiebeln\".",
+  "locale": "de-DE",
+  "techniques": {
+    "weigh_ingredient": {
+      "aliases": ["abwiegen", "einwiegen", "in den Mixbehälter geben", "zugeben", "dazugeben"]
+    },
+    "chop_onion_garlic": {
+      "aliases": ["hacken", "fein hacken", "würfeln", "klein schneiden", "zerkleinern"]
+    },
+    "chop_vegetables": {
+      "aliases": ["zerkleinern", "grob hacken", "klein schneiden", "würfeln", "raspeln"]
+    },
+    "chop_herbs": {
+      "aliases": ["Kräuter hacken", "fein hacken", "zupfen und hacken"]
+    },
+    "chop_nuts_seeds": {
+      "aliases": ["Nüsse hacken", "grob hacken", "hacken"]
+    },
+    "grate_hard_cheese": {
+      "aliases": ["reiben", "Parmesan reiben", "fein reiben"]
+    },
+    "chop_chocolate": {
+      "aliases": ["Schokolade hacken", "grob hacken", "zerkleinern"]
+    },
+    "chop_fruit": {
+      "aliases": ["Obst zerkleinern", "würfeln", "klein schneiden"]
+    },
+    "chop_meat_fish": {
+      "aliases": ["hacken", "zerkleinern", "fein hacken", "faschieren"]
+    },
+    "make_crumbs": {
+      "aliases": ["Brösel herstellen", "zerbröseln", "fein mahlen"]
+    },
+    "turbo_pulse": {
+      "aliases": ["Turbo", "kurz zerkleinern", "grob hacken"]
+    },
+    "grind_fine": {
+      "aliases": ["mahlen", "fein mahlen", "pulverisieren", "Puderzucker herstellen"]
+    },
+    "crush_ice_frozen": {
+      "aliases": ["Eis crushen", "zerkleinern", "Sorbet mixen"]
+    },
+    "stir_cold": {
+      "aliases": ["verrühren", "vermischen", "vermengen", "unterrühren", "mischen"]
+    },
+    "fold_in_reverse": {
+      "aliases": ["unterheben", "vorsichtig unterrühren", "im Linkslauf rühren"]
+    },
+    "blend_smooth_cold": {
+      "aliases": ["pürieren", "fein pürieren", "mixen", "cremig mixen"]
+    },
+    "puree_hot_soup": {
+      "aliases": ["pürieren", "Suppe pürieren", "fein mixen"]
+    },
+    "blend_drink_smoothie": {
+      "aliases": ["mixen", "aufmixen", "Smoothie mixen"]
+    },
+    "whip": {
+      "aliases": [
+        "steif schlagen",
+        "aufschlagen",
+        "schaumig schlagen",
+        "Sahne schlagen",
+        "Eischnee"
+      ]
+    },
+    "emulsify": {
+      "aliases": ["emulgieren", "Mayonnaise herstellen", "Öl einlaufen lassen", "aufschlagen"]
+    },
+    "batter_sponge": {
+      "aliases": ["Teig rühren", "Rührteig", "verrühren", "glatt rühren"]
+    },
+    "activate_yeast": {
+      "aliases": ["Hefe auflösen", "Hefe anrühren", "lauwarm erwärmen"]
+    },
+    "knead_yeast_dough": {
+      "aliases": ["kneten", "Hefeteig kneten", "zu einem Teig verkneten"]
+    },
+    "knead_short_dough": {
+      "aliases": ["Mürbteig kneten", "verkneten", "zu einem Teig verarbeiten"]
+    },
+    "melt": {
+      "aliases": ["schmelzen", "zerlassen", "Schokolade schmelzen", "Butter zerlassen"]
+    },
+    "warm_heat": {
+      "aliases": ["erwärmen", "erhitzen", "warm machen", "temperieren"]
+    },
+    "saute_onions": {
+      "aliases": ["anschwitzen", "andünsten", "dünsten", "glasig dünsten"]
+    },
+    "sear_roast": {
+      "aliases": ["anbraten", "braten", "scharf anbraten", "anrösten"]
+    },
+    "toast_dry": {
+      "aliases": ["rösten", "anrösten", "ohne Fett rösten"]
+    },
+    "bring_to_boil": {
+      "aliases": ["aufkochen", "zum Kochen bringen", "aufwallen lassen"]
+    },
+    "simmer_cook": {
+      "aliases": ["köcheln", "kochen", "garen", "weich kochen", "köcheln lassen"]
+    },
+    "reduce_open": {
+      "aliases": ["einkochen", "reduzieren", "sämig einkochen", "offen köcheln"]
+    },
+    "thicken_bind": {
+      "aliases": ["binden", "andicken", "eindicken", "Mehlschwitze", "Béchamel kochen"]
+    },
+    "cook_risotto": {
+      "aliases": ["Risotto kochen", "Reis garen", "Reis köcheln"]
+    },
+    "cook_pasta": {
+      "aliases": ["Nudeln kochen", "Pasta garen", "Nudeln garen"]
+    },
+    "cook_milk_rice_pudding": {
+      "aliases": ["Milchreis kochen", "Pudding kochen", "Brei kochen", "Grießbrei"]
+    },
+    "cook_jam": {
+      "aliases": ["Marmelade kochen", "einkochen", "Gelee kochen", "Kompott kochen"]
+    },
+    "cook_in_basket": {
+      "aliases": ["im Kocheinsatz garen", "Kartoffeln garen", "Reis im Garkorb kochen"]
+    },
+    "steam_in_steamer": {
+      "aliases": [
+        "dämpfen",
+        "dampfgaren",
+        "im Dampfgaraufsatz garen",
+        "Dampfgaraufsatz",
+        "Dampfgareinsatz"
+      ]
+    },
+    "sous_vide": {
+      "aliases": ["sous-vide garen", "vakuumgaren"]
+    },
+    "slow_cook": {
+      "aliases": ["schmoren", "langsam garen", "Slow Cook"]
+    },
+    "ferment": {
+      "aliases": ["fermentieren", "gehen lassen", "Joghurt herstellen"]
+    },
+    "cook_eggs": {
+      "aliases": ["Eier kochen"]
+    },
+    "food_processor_slice": {
+      "aliases": ["hobeln", "in Scheiben schneiden", "raspeln"]
+    },
+    "preclean": {
+      "aliases": ["vorreinigen", "Mixbehälter reinigen"]
+    }
+  },
+  "ingredientClassWords": {
+    "onion_garlic": [
+      "zwiebel",
+      "schalotte",
+      "knoblauch",
+      "ingwer",
+      "frühlingszwiebel",
+      "lauchzwiebel"
+    ],
+    "vegetables": [
+      "möhre",
+      "karotte",
+      "paprika",
+      "zucchini",
+      "tomate",
+      "sellerie",
+      "lauch",
+      "porree",
+      "brokkoli",
+      "blumenkohl",
+      "kohl",
+      "aubergine",
+      "gurke",
+      "kürbis",
+      "spinat",
+      "erbse",
+      "bohne",
+      "champignon",
+      "pilz",
+      "fenchel",
+      "spargel",
+      "gemüse",
+      "linse",
+      "kichererbse"
+    ],
+    "herbs": [
+      "petersilie",
+      "basilikum",
+      "schnittlauch",
+      "dill",
+      "koriander",
+      "minze",
+      "thymian",
+      "rosmarin",
+      "oregano",
+      "salbei",
+      "kräuter"
+    ],
+    "nuts_seeds": [
+      "nuss",
+      "nüsse",
+      "mandel",
+      "haselnuss",
+      "walnuss",
+      "cashew",
+      "pinienkern",
+      "sesam",
+      "kürbiskern",
+      "sonnenblumenkern",
+      "leinsamen",
+      "pistazie"
+    ],
+    "hard_cheese": ["parmesan", "pecorino", "grana", "bergkäse", "hartkäse"],
+    "chocolate": ["schokolade", "kuvertüre", "kakao"],
+    "fruit": [
+      "apfel",
+      "äpfel",
+      "birne",
+      "banane",
+      "beere",
+      "erdbeere",
+      "himbeere",
+      "kirsche",
+      "mango",
+      "orange",
+      "zitrone",
+      "pfirsich",
+      "aprikose",
+      "pflaume",
+      "ananas",
+      "obst"
+    ],
+    "meat": [
+      "fleisch",
+      "hähnchen",
+      "huhn",
+      "rind",
+      "schwein",
+      "hackfleisch",
+      "gehacktes",
+      "speck",
+      "schinken",
+      "wurst",
+      "pute",
+      "lamm"
+    ],
+    "fish": ["fisch", "lachs", "thunfisch", "kabeljau", "garnele", "shrimp", "forelle"],
+    "dairy": [
+      "milch",
+      "sahne",
+      "butter",
+      "joghurt",
+      "quark",
+      "schmand",
+      "frischkäse",
+      "mascarpone",
+      "crème"
+    ],
+    "egg": ["eier", "eigelb", "eiweiß", "eiklar"],
+    "flour_dough": ["mehl", "hefe", "teig", "backpulver", "stärke"],
+    "sugar_spices": ["zucker", "zimt", "pfeffer", "kümmel", "gewürz", "vanille", "muskat"],
+    "bread_biscuits": ["brot", "brötchen", "semmel", "zwieback", "keks", "biskuit"],
+    "rice_grain": ["reis", "risotto", "hafer", "grieß", "quinoa", "couscous", "bulgur", "hirse"],
+    "pasta": ["nudel", "pasta", "spaghetti", "penne", "makkaroni", "tagliatelle", "lasagne"],
+    "potatoes": ["kartoffel"],
+    "liquid": ["wasser", "brühe", "fond", "wein", "saft"],
+    "ice": ["eiswürfel", "crushed ice", "tiefgekühlt", "gefroren"]
+  }
+}

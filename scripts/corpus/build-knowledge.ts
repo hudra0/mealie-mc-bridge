@@ -1,18 +1,31 @@
 // Rebuilds the knowledge base in knowledge/ from the corpus analysis.
 //
+// --locale de-DE (the default) works on the reference corpus in local/corpus and writes the
+// language-neutral files and the de-DE pack; any other locale works on local/corpus/<locale>
+// and writes only the corpus-derived files of its own pack, never the neutral files.
+//
 // Input:  $CORPUS_DIR/derived/steps.jsonl, technique-steps.jsonl, timing.json and
-//         ingredients.json, written by `npm run corpus:analyze` (default CORPUS_DIR:
-//         local/corpus); for the ingredient catalog derived/recipes.jsonl, or the raw
-//         details/ when the normalizer has not run (categories always come from details/).
-// Output: knowledge/device-programs.json  hard device limits per program (hand-curated data
+//         ingredients.json, written by `npm run corpus:analyze -- --locale <locale>`; for the
+//         ingredient catalog derived/recipes.jsonl, or the raw details/ when the normalizer
+//         has not run (categories always come from details/). A locale other than de-DE
+//         needs steps.jsonl and ingredients.json only.
+// Output (de-DE only):
+//         knowledge/device-programs.json  hard device limits per program (hand-curated data
 //                                          in build-device-programs.ts, no corpus input)
 //         knowledge/device-limits.json    corpus, SmartRecipe and editor layers plus the
 //                                          recommended range per mode
 //         knowledge/timing-model.json     time formulas, heat-up rules and mass limits
-//         knowledge/units.json            unit vocabulary, rounding grid and piece weights
+//         knowledge/units.json            densities and mass totals
 //         knowledge/techniques.json       cooking techniques with device settings
-//         knowledge/ingredient-catalog.json  ingredient names with their systemIngredientId
-// knowledge/prompt-rules.md and knowledge/step-patterns.md are written by hand.
+// Output (every locale), knowledge/locales/<locale>/:
+//         ingredient-catalog.json         ingredient names with their systemIngredientId
+//         units.json                      piece weights and the corpus unit tables; the
+//                                          hand-written fields stay as they are
+//         phrases.json                    the corpus phrase table; the hand-written fields
+//                                          stay as they are
+// knowledge/prompt-rules.md, knowledge/step-patterns.md, knowledge/converter-rules.json and
+// the hand-written pack files (mc.json, technique-aliases.json, prompt-rules.md) are written
+// by hand.
 //
 // device-programs.json holds values transcribed from a logged-in capture of the recipe editor
 // and from server probes with a member account. Its generator reads no files, so the build
@@ -25,8 +38,10 @@
 // committed files byte for byte.
 //
 // Run:   npm run corpus:build-knowledge
+//        npm run corpus:build-knowledge -- --locale en-US
 //        npm run corpus:build-knowledge -- --check   compare only, exit 1 when a file differs
-// Flags: --corpus-dir <dir>  (default $CORPUS_DIR or local/corpus)
+// Flags: --locale <locale>   (default de-DE)
+//        --corpus-dir <dir>  (default $CORPUS_DIR, else local/corpus or local/corpus/<locale>)
 //        --out <dir>         (default knowledge)
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -36,6 +51,7 @@ import * as prettier from "prettier";
 import { buildDeviceLimits } from "./build-device-limits.js";
 import { buildDevicePrograms, formatDevicePrograms } from "./build-device-programs.js";
 import { buildIngredientCatalog, readCatalogSource } from "./build-ingredient-catalog.js";
+import { buildPackPhrases, buildPackUnits } from "./build-locale-pack.js";
 import { buildTechniques, type TechniqueStepRow } from "./build-techniques.js";
 import {
   buildTimingModel,
@@ -43,30 +59,35 @@ import {
   type IngredientsAnalysis,
   type TimingAnalysis,
 } from "./build-timing-units.js";
+import { REFERENCE_LOCALE, corpusDirFor } from "./locale.js";
 import type { NormalizedStep } from "./types.js";
 
 export interface Options {
+  locale: string;
   corpusDir: string;
   outDir: string;
   check: boolean;
 }
 
+// The inputs of the reference build; another locale needs only the pack inputs.
 export const requiredInputs = [
   "steps.jsonl",
   "technique-steps.jsonl",
   "timing.json",
   "ingredients.json",
 ] as const;
+export const packInputs = ["steps.jsonl", "ingredients.json"] as const;
+
+const LOCALE = /^[a-z]{2,3}-[A-Z]{2}$/;
 
 export function parseArgs(
   argv: readonly string[],
   env: Record<string, string | undefined> = process.env,
 ): Options {
-  const options: Options = {
-    corpusDir: env.CORPUS_DIR ?? path.join("local", "corpus"),
-    outDir: "knowledge",
-    check: false,
-  };
+  let locale = REFERENCE_LOCALE;
+  let corpusDir: string | undefined;
+  let outDir = "knowledge";
+  let check = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const value = () => {
@@ -74,17 +95,25 @@ export function parseArgs(
       if (v === undefined || v.startsWith("--")) throw new Error(`${arg} needs a value`);
       return v;
     };
-    if (arg === "--check") options.check = true;
-    else if (arg === "--corpus-dir") options.corpusDir = value();
-    else if (arg === "--out") options.outDir = value();
+    if (arg === "--check") check = true;
+    else if (arg === "--corpus-dir") corpusDir = value();
+    else if (arg === "--out") outDir = value();
+    else if (arg === "--locale") locale = value();
     else throw new Error(`unknown argument: ${arg}`);
   }
-  return options;
+  if (!LOCALE.test(locale)) throw new Error(`--locale must look like de-DE, not ${locale}`);
+  return {
+    locale,
+    corpusDir: corpusDir ?? (env.CORPUS_DIR || corpusDirFor(locale)),
+    outDir,
+    check,
+  };
 }
 
 /** Paths of the required inputs that do not exist. */
-export function missingInputs(corpusDir: string): string[] {
-  const missing = requiredInputs
+export function missingInputs(corpusDir: string, locale: string = REFERENCE_LOCALE): string[] {
+  const inputs = locale === REFERENCE_LOCALE ? requiredInputs : packInputs;
+  const missing = inputs
     .map((f) => path.join(corpusDir, "derived", f))
     .filter((f) => !existsSync(f));
   const recipes = path.join(corpusDir, "derived", "recipes.jsonl");
@@ -104,32 +133,64 @@ function readJson<T>(file: string): T {
   return JSON.parse(readFileSync(file, "utf8")) as T;
 }
 
+function readExisting(file: string): Record<string, unknown> | null {
+  return existsSync(file) ? readJson<Record<string, unknown>>(file) : null;
+}
+
 async function format(text: string, outDir: string, name: string): Promise<string> {
   const target = path.resolve(outDir, name);
   const config = await prettier.resolveConfig(target);
   return prettier.format(text, { ...config, filepath: target });
 }
 
-/** Builds every generated knowledge file in memory: file name to formatted content. */
-export async function buildAll(corpusDir: string, outDir: string): Promise<Map<string, string>> {
+/**
+ * Builds every generated knowledge file of a locale in memory: path relative to the output
+ * directory to formatted content.
+ */
+export async function buildAll(
+  corpusDir: string,
+  outDir: string,
+  locale: string = REFERENCE_LOCALE,
+): Promise<Map<string, string>> {
   const derived = path.join(corpusDir, "derived");
   const steps = readJsonl<NormalizedStep>(path.join(derived, "steps.jsonl"));
-  const techniqueSteps = readJsonl<TechniqueStepRow>(path.join(derived, "technique-steps.jsonl"));
-  const timing = readJson<TimingAnalysis>(path.join(derived, "timing.json"));
   const ingredients = readJson<IngredientsAnalysis>(path.join(derived, "ingredients.json"));
   const catalogSource = readCatalogSource(corpusDir);
   if (!catalogSource) throw new Error(`no ingredient source in ${corpusDir}`);
-  const catalog = buildIngredientCatalog(catalogSource.recipes, catalogSource.categories);
+  const catalog = buildIngredientCatalog(catalogSource.recipes, catalogSource.categories, locale);
 
-  const programs = buildDevicePrograms();
-  const docs: [string, string][] = [
-    ["device-programs.json", formatDevicePrograms(programs)],
-    ["device-limits.json", JSON.stringify(buildDeviceLimits({ steps, programs })) + "\n"],
-    ["timing-model.json", JSON.stringify(buildTimingModel({ steps, timing, ingredients })) + "\n"],
-    ["units.json", JSON.stringify(buildUnits({ steps, timing, ingredients })) + "\n"],
-    ["techniques.json", JSON.stringify(buildTechniques({ steps, techniqueSteps, timing })) + "\n"],
-    ["ingredient-catalog.json", JSON.stringify(catalog) + "\n"],
-  ];
+  const docs: [string, string][] = [];
+  if (locale === REFERENCE_LOCALE) {
+    const techniqueSteps = readJsonl<TechniqueStepRow>(path.join(derived, "technique-steps.jsonl"));
+    const timing = readJson<TimingAnalysis>(path.join(derived, "timing.json"));
+    const programs = buildDevicePrograms();
+    docs.push(
+      ["device-programs.json", formatDevicePrograms(programs)],
+      ["device-limits.json", JSON.stringify(buildDeviceLimits({ steps, programs })) + "\n"],
+      [
+        "timing-model.json",
+        JSON.stringify(buildTimingModel({ steps, timing, ingredients })) + "\n",
+      ],
+      ["units.json", JSON.stringify(buildUnits()) + "\n"],
+      [
+        "techniques.json",
+        JSON.stringify(buildTechniques({ steps, techniqueSteps, timing })) + "\n",
+      ],
+    );
+  }
+  const pack = path.join("locales", locale);
+  const existing = (file: string) => readExisting(path.join(outDir, pack, file));
+  docs.push(
+    [path.join(pack, "ingredient-catalog.json"), JSON.stringify(catalog) + "\n"],
+    [
+      path.join(pack, "units.json"),
+      JSON.stringify(buildPackUnits(locale, ingredients, existing("units.json"))) + "\n",
+    ],
+    [
+      path.join(pack, "phrases.json"),
+      JSON.stringify(buildPackPhrases(locale, steps, existing("phrases.json"))) + "\n",
+    ],
+  );
   const out = new Map<string, string>();
   for (const [name, text] of docs) out.set(name, await format(text, outDir, name));
   return out;
@@ -149,26 +210,30 @@ export async function main(argv: readonly string[], log: Log = console): Promise
     log.error(`corpus:build-knowledge: ${(e as Error).message}`);
     return 2;
   }
-  const missing = missingInputs(options.corpusDir);
+  const missing = missingInputs(options.corpusDir, options.locale);
   if (missing.length) {
     for (const f of missing) log.error(`corpus:build-knowledge: missing input ${f}`);
-    log.error("Run npm run corpus:analyze first. Nothing was written.");
+    log.error(
+      `Run npm run corpus:analyze -- --locale ${options.locale} first. Nothing was written.`,
+    );
     return 1;
   }
 
   const started = Date.now();
-  const files = await buildAll(options.corpusDir, options.outDir);
+  const files = await buildAll(options.corpusDir, options.outDir, options.locale);
   let differing = 0;
-  if (!options.check) mkdirSync(options.outDir, { recursive: true });
   for (const [name, text] of files) {
     const target = path.join(options.outDir, name);
     const current = existsSync(target) ? readFileSync(target, "utf8") : null;
     const state = current === text ? "unchanged" : current === null ? "new" : "changed";
     if (state !== "unchanged") differing++;
-    if (!options.check && state !== "unchanged") writeFileSync(target, text);
+    if (!options.check && state !== "unchanged") {
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, text);
+    }
     log.log(`${target}: ${state}`);
   }
-  const catalog = files.get("ingredient-catalog.json");
+  const catalog = files.get(path.join("locales", options.locale, "ingredient-catalog.json"));
   if (catalog !== undefined) {
     const entries = (JSON.parse(catalog) as { entries: unknown[] }).entries.length;
     log.log(`ingredient catalog: ${entries} entries`);

@@ -8,6 +8,13 @@ import {
   PriceTableError,
   parsePriceOverrides,
 } from "./convert/settings.js";
+import { UI_LANGUAGES, defaultUiLanguage } from "./i18n/index.js";
+import {
+  DEFAULT_LOCALE,
+  LOCALE_PATTERN,
+  availableLocales,
+  unknownLocaleMessage,
+} from "./locale/pack.js";
 import { DEFAULT_DEVICE_PROGRAMS_PATH } from "./recipe/limits.js";
 
 export const LLM_PROVIDERS = ["openai", "anthropic"] as const;
@@ -19,7 +26,7 @@ const httpUrl = z.url({ protocol: /^https?$/, error: "must be an http or https U
 // Every setting the bridge reads. Settings the service cannot run without are optional
 // here, so tools that need only a few of them (scripts/mc-smoke.ts) can share the schema;
 // loadServiceConfig enforces them for the service.
-export const envSchema = z.object({
+const settingsSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   HOST: z.string().min(1).default("0.0.0.0"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
@@ -51,6 +58,13 @@ export const envSchema = z.object({
   // Monsieur Cuisine search, exact name matches only. off: every ingredient goes out
   // without an id.
   MC_RESOLVE_INGREDIENTS: z.enum(["exact", "off"]).default("exact"),
+  // The language of the recipes the bridge writes, and everything Monsieur Cuisine needs per
+  // language (complexity ids, editor path, proxy language). A locale pack for it must exist
+  // under KNOWLEDGE_DIR/locales.
+  MC_LOCALE: z.string().regex(LOCALE_PATTERN, "must look like de-DE").default(DEFAULT_LOCALE),
+  // The language of Mealie timeline entries, mails and the admin pages. Defaults to the
+  // language of MC_LOCALE when there is a catalog for it, else English.
+  UI_LANGUAGE: z.enum(UI_LANGUAGES).optional(),
   // Cookie header of a logged-in monsieur-cuisine.com session. A secret. The service stores
   // it on first start and whenever the value changes; the admin page can replace it.
   MC_COOKIE: z.string().min(1).optional(),
@@ -109,10 +123,27 @@ export const envSchema = z.object({
   SESSION_CHECK_MINUTES: z.coerce.number().int().min(1).max(1440).default(60),
   WORKER_POLL_SECONDS: z.coerce.number().positive().max(60).default(2),
   TAG_NAME: z.string().trim().min(1).max(60).default("Monsieur Cuisine"),
-  TIMELINE_LANGUAGE: z.enum(["de"]).default("de"),
 });
 
-export type Config = z.infer<typeof envSchema>;
+// The settings with the cross-checks: MC_LOCALE needs a locale pack, and UI_LANGUAGE gets
+// its default from MC_LOCALE.
+export const envSchema = settingsSchema
+  .superRefine((env, ctx) => {
+    const available = availableLocales(env.KNOWLEDGE_DIR);
+    if (!available.includes(env.MC_LOCALE)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["MC_LOCALE"],
+        message: unknownLocaleMessage(env.MC_LOCALE, available),
+      });
+    }
+  })
+  .transform((env) => ({
+    ...env,
+    UI_LANGUAGE: env.UI_LANGUAGE ?? defaultUiLanguage(env.MC_LOCALE),
+  }));
+
+export type Config = z.output<typeof envSchema>;
 
 // The settings the service needs on top of the shared ones.
 export const SERVICE_REQUIRED = [

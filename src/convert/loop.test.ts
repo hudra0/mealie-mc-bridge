@@ -7,6 +7,7 @@ import { mealieRecipeSchema, renderRecipeForLlm } from "../mealie/index.js";
 import { loggerOptions } from "../logger.js";
 import { loadDeviceLimits } from "../recipe/limits.js";
 import { ConversionFailedError, LlmRefusalError } from "./errors.js";
+import { deLabels } from "../testing/locale.js";
 import { loadKnowledge } from "./knowledge.js";
 import { createConverter, type ConverterLogger } from "./loop.js";
 import type {
@@ -34,7 +35,7 @@ const mealie = mealieRecipeSchema.parse(
 const ingredients = scaleIngredients(normalizeIngredients(mealie), 1);
 const request: ConversionRequest = {
   title: mealie.name,
-  rendered: renderRecipeForLlm(mealie, { scale: 1, servings: 4, ingredients }),
+  rendered: renderRecipeForLlm(mealie, { scale: 1, servings: 4, ingredients, labels: deLabels }),
   servings: 4,
   locale: "de-DE",
   ingredients,
@@ -191,7 +192,7 @@ describe("createConverter", () => {
       defaultCategoryIds: [228],
     }).convert(request);
     expect(result.attempts).toBe(2);
-    expect(calls[0]?.user).toContain("- 228: Standardkategorie");
+    expect(calls[0]?.user).toContain("- 228: Default category");
     expect(calls[1]?.feedback?.errors[0]?.path).toBe("categoryIds[0]");
     expect(result.warnings[0]).toContain("No category list was available");
   });

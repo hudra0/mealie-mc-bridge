@@ -1,0 +1,351 @@
+{
+  "description": "English (en-US) unit vocabulary, free-text unit mapping, rounding grid, piece weights and name conventions for Monsieur Cuisine ingredient lists, in the official style of the en-US corpus. Hand-written from the corpus tables below; not verified on a device.",
+  "locale": "en-US",
+  "version": 1,
+  "source": "corpus 2026-10 (en-US)",
+  "vocabulary": [
+    { "concept": "gram", "code": "g", "singular": "g", "plural": "g", "aliases": [] },
+    { "concept": "kilogram", "code": "kg", "singular": "kg", "plural": "kg", "aliases": [] },
+    { "concept": "millilitre", "code": "ml", "singular": "ml", "plural": "ml", "aliases": [] },
+    { "concept": "litre", "code": "l", "singular": "l", "plural": "l", "aliases": [] },
+    {
+      "concept": "teaspoon",
+      "code": "tsp",
+      "singular": "tsp",
+      "plural": "tsp",
+      "aliases": ["teaspoon", "teaspoons"]
+    },
+    {
+      "concept": "tablespoon",
+      "code": "tbsp",
+      "singular": "tbsp",
+      "plural": "tbsp",
+      "aliases": ["tablespoon", "tablespoons"]
+    },
+    {
+      "concept": "pinch",
+      "code": "pinch",
+      "singular": "pinch",
+      "plural": "pinches",
+      "aliases": []
+    },
+    {
+      "concept": "knifeTip",
+      "code": "Msp",
+      "singular": "big pinch",
+      "plural": "big pinches",
+      "aliases": []
+    },
+    { "concept": "piece", "code": "Stueck", "singular": "piece", "plural": "pieces", "aliases": [] }
+  ],
+  "decimalSeparator": ".",
+  "allowedUnits": [
+    {
+      "unit": "g",
+      "officialRows": 6719,
+      "use": "Everything that can be weighed, liquids included (water, milk, stock, cream, oil). 61.2 % of official rows."
+    },
+    {
+      "unit": "",
+      "officialRows": 2296,
+      "use": "Counted items (eggs, garlic cloves, herb sprigs, bay leaves, whole lemons) with the count in the amount field, and to-taste items with an empty amount and the purpose in the name."
+    },
+    { "unit": "tsp", "officialRows": 1258, "use": "Spices, salt, baking powder, small amounts." },
+    { "unit": "pinch", "officialRows": 223, "use": "Amount 1 (or a fraction)." },
+    { "unit": "pinches", "officialRows": 232, "use": "Amounts above 1." },
+    {
+      "unit": "big pinch",
+      "officialRows": 101,
+      "use": "A knife tip; big pinches above 1 (40 rows)."
+    },
+    {
+      "unit": "tbsp",
+      "officialRows": 98,
+      "use": "Rare in official recipes; tablespoon amounts are usually converted to g."
+    }
+  ],
+  "notAllowed": [
+    "ml and l: weigh liquids in g.",
+    "cups, ounces and pounds in the unit field: convert them to g as in freeTextMapping.",
+    "Household units in the unit field (can, jar, packet, bunch, clove, slice, handful): map them as in freeTextMapping.",
+    "piece or pieces in the unit field: official recipes leave the unit empty for counted items."
+  ],
+  "amountFormat": {
+    "rules": [
+      "A bare number as a string: an integer, a unicode fraction or empty.",
+      "No decimals for spoon amounts, no ranges, no units inside the amount field.",
+      "Fractions as unicode: ½, ¼, ¾, ⅛, 1 ½.",
+      "In step text official recipes put a space between number and unit: 500 g."
+    ]
+  },
+  "roundingGrid": {
+    "grams": [
+      {
+        "band": [0, 10],
+        "step": 5,
+        "note": "Official amounts below 10 g are 5 g in 99.5 % of en-US rows; smaller amounts move to tsp, pinch or big pinch."
+      },
+      { "band": [10, 50], "step": 5, "preferredStep": 10, "onPreferred": 0.851 },
+      { "band": [50, 100], "step": 10, "onStep": 0.916 },
+      {
+        "band": [100, 250],
+        "step": 10,
+        "onStep": 0.936,
+        "preferredStep": 25,
+        "onPreferred": 0.803
+      },
+      { "band": [250, 500], "step": 50, "onStep": 0.924 },
+      { "band": [500, 1000], "step": 50, "onStep": 0.971, "preferredStep": 100 },
+      { "band": [1000, null], "step": 100, "onStep": 1 }
+    ],
+    "note": "Bands are [from, to) in grams, the same grid as the de-DE reference corpus; the en-US rows follow it (10-49 g: 85 % on 10 g). Snap converted amounts to the grid; keep the user's amount when it is already on a coarser grid.",
+    "spoons": "tsp and tbsp in whole, half or quarter units; pinch and big pinch in whole units."
+  },
+  "freeTextMapping": [
+    { "input": ["g", "gramm", "gr", "grams"], "target": "g", "gramsPerUnit": 1 },
+    { "input": ["kg", "kilogramm", "kilogram"], "target": "g", "gramsPerUnit": 1000 },
+    {
+      "input": ["ml", "milliliter", "millilitre"],
+      "target": "g",
+      "gramsPerUnit": "density",
+      "note": "use densities; water-like liquids 1 g/ml"
+    },
+    { "input": ["l", "liter", "litre"], "target": "g", "gramsPerUnit": "1000 * density" },
+    { "input": ["cl"], "target": "g", "gramsPerUnit": "10 * density" },
+    { "input": ["dl"], "target": "g", "gramsPerUnit": "100 * density" },
+    {
+      "input": ["EL", "El", "Esslöffel", "tbsp", "tablespoon"],
+      "target": "g",
+      "fallback": "tbsp",
+      "gramsPerUnit": 15,
+      "note": "15 g is the default; weigh by food where it differs: seeds, poppy seeds, flour and starch about 10 g, ground nuts about 8 g, oil about 12 g, sugar and salt about 15 g, honey and syrup about 20 g"
+    },
+    {
+      "input": ["TL", "Tl", "Teelöffel", "tsp", "teaspoon"],
+      "target": "tsp",
+      "alternative": "g for amounts of 5 g or more of sugar, butter or oil",
+      "gramsPerUnit": 5
+    },
+    {
+      "input": ["Prise", "Prisen", "pinch"],
+      "target": "pinch / pinches",
+      "alternative": "tsp for salt in savory dishes",
+      "gramsPerUnit": null
+    },
+    {
+      "input": ["Msp", "Msp.", "Messerspitze"],
+      "target": "big pinch",
+      "alternative": "tsp or pinches",
+      "gramsPerUnit": null
+    },
+    {
+      "input": ["Stück", "Stk", "St.", "piece", "pc", ""],
+      "target": "an empty unit with the count when the item is not weighed by a scale step, otherwise g",
+      "gramsPerUnit": "pieceWeights"
+    },
+    {
+      "input": ["Zehe", "Zehen", "clove"],
+      "target": "an empty unit",
+      "nameRule": "write the clove into the name: garlic cloves (plural even for 1)"
+    },
+    {
+      "input": ["Dose", "Dosen", "can", "tin"],
+      "target": "g",
+      "gramsPerUnit": 400,
+      "nameRule": "name ends in 'from a tin/jar'"
+    },
+    {
+      "input": ["Glas", "Gläser", "jar"],
+      "target": "g",
+      "gramsPerUnit": null,
+      "nameRule": "name ends in 'from a tin/jar'; take the drained or net weight from the source"
+    },
+    {
+      "input": ["Päckchen", "Pkg", "Pck.", "P.", "packet", "sachet"],
+      "target": "g",
+      "gramsPerUnit": {
+        "vanilla sugar": 8,
+        "baking powder": 16,
+        "dried yeast": 7,
+        "vanilla pudding powder": 37
+      }
+    },
+    { "input": ["Würfel", "cube"], "target": "g", "gramsPerUnit": { "yeast, fresh": 40 } },
+    { "input": ["Bund", "bunch"], "target": "g or a count of sprigs", "gramsPerUnit": 125 },
+    {
+      "input": ["Stiel", "Stiele", "Zweig", "Zweige", "sprig"],
+      "target": "an empty unit",
+      "nameRule": "write the stem into the name: parsley sprigs, thyme sprigs"
+    },
+    { "input": ["Scheibe", "Scheiben", "slice"], "target": "an empty unit", "gramsPerUnit": 30 },
+    { "input": ["Blatt", "Blätter", "leaf"], "target": "an empty unit" },
+    {
+      "input": ["Becher", "tub"],
+      "target": "g",
+      "gramsPerUnit": 200,
+      "note": "use the package size from the source"
+    },
+    {
+      "input": ["Handvoll", "handful"],
+      "target": "g",
+      "gramsPerUnit": null,
+      "note": "no stated weight in the corpus; estimate and add a review hint"
+    },
+    {
+      "input": ["Spritzer", "Tropfen", "dash", "drop"],
+      "target": "g or an empty amount",
+      "gramsPerUnit": null
+    },
+    {
+      "input": ["Tasse", "cup"],
+      "target": "g",
+      "gramsPerUnit": "240 ml * density",
+      "note": "US cup. 240 ml × density holds for liquids only; for solids use: flour about 125 g, sugar about 200 g, rice about 185 g, grated hard cheese about 90 g, whole cherry tomatoes about 150 g per cup."
+    },
+    { "input": ["oz", "ounce"], "target": "g", "gramsPerUnit": 28.35 },
+    { "input": ["lb", "pound"], "target": "g", "gramsPerUnit": 453.6 },
+    { "input": ["fl oz"], "target": "g", "gramsPerUnit": "29.57 * density" }
+  ],
+  "pieceWeights": {
+    "note": "Grams per piece or package from weights stated in the en-US corpus (scale steps, weights in names). Entries with at least 4 observations.",
+    "items": [
+      { "name": "onions", "unit": "piece", "grams": 70, "range": [50, 80], "n": 78 },
+      { "name": "carrots", "unit": "piece", "grams": 75, "range": [57, 100], "n": 58 },
+      { "name": "shallots", "unit": "piece", "grams": 30, "range": [20, 40], "n": 48 },
+      { "name": "yeast, fresh", "unit": "piece", "grams": 40, "range": [40, 42], "n": 34 },
+      { "name": "tomatoes", "unit": "piece", "grams": 100, "range": [75, 119], "n": 25 },
+      { "name": "vanilla sugar", "unit": "piece", "grams": 8, "range": [8, 8], "n": 21 },
+      { "name": "leek", "unit": "piece", "grams": 155, "range": [100, 310], "n": 20 },
+      { "name": "spring onions", "unit": "piece", "grams": 27, "range": [20, 42], "n": 19 },
+      { "name": "potatoes, waxy", "unit": "piece", "grams": 100, "range": [75, 133], "n": 17 },
+      { "name": "celeriac", "unit": "piece", "grams": 200, "range": [74, 600], "n": 15 },
+      { "name": "celery sticks", "unit": "piece", "grams": 50, "range": [31, 98], "n": 12 },
+      { "name": "peppers, red", "unit": "piece", "grams": 153, "range": [150, 175], "n": 11 },
+      { "name": "broccoli", "unit": "piece", "grams": 500, "range": [390, 510], "n": 10 },
+      { "name": "lemons, untreated", "unit": "piece", "grams": 100, "range": [68, 163], "n": 9 },
+      { "name": "cauliflower", "unit": "piece", "grams": 750, "range": [351, 1260], "n": 8 },
+      { "name": "apples, sweet", "unit": "piece", "grams": 200, "range": [138, 207], "n": 7 },
+      { "name": "baking powder", "unit": "piece", "grams": 16, "range": [15, 16], "n": 7 },
+      { "name": "bananas", "unit": "piece", "grams": 123, "range": [105, 150], "n": 6 },
+      { "name": "parsley root", "unit": "piece", "grams": 100, "range": [90, 133], "n": 6 },
+      {
+        "name": "tomatoes, chopped, from a tin/jar",
+        "unit": "piece",
+        "grams": 400,
+        "range": [400, 450],
+        "n": 6
+      },
+      { "name": "avocados", "unit": "piece", "grams": 180, "range": [150, 230], "n": 5 },
+      { "name": "courgettes", "unit": "piece", "grams": 200, "range": [170, 250], "n": 5 },
+      { "name": "oranges, untreated", "unit": "piece", "grams": 180, "range": [116, 230], "n": 5 },
+      { "name": "aubergines", "unit": "piece", "grams": 300, "range": [230, 330], "n": 5 },
+      { "name": "potatoes, floury", "unit": "piece", "grams": 100, "range": [70, 100], "n": 5 },
+      { "name": "pointed cabbage", "unit": "piece", "grams": 800, "range": [660, 920], "n": 5 },
+      { "name": "onions, red", "unit": "piece", "grams": 71, "range": [55, 79], "n": 4 },
+      { "name": "cherry tomatoes", "unit": "piece", "grams": 12, "range": [10, 17], "n": 4 },
+      { "name": "apples, tart", "unit": "piece", "grams": 160, "range": [150, 191], "n": 4 },
+      { "name": "bread rolls, day-old", "unit": "piece", "grams": 58, "range": [43, 67], "n": 4 },
+      { "name": "pears", "unit": "piece", "grams": 200, "range": [165, 200], "n": 4 },
+      { "name": "kohlrabi", "unit": "piece", "grams": 250, "range": [165, 370], "n": 4 }
+    ]
+  },
+  "nameConventions": [
+    "Use the catalog spelling: ids and names map one to one.",
+    "Names start in lower case unless they begin with a proper noun (93 % of official names): onions, Parmesan in one piece (32% fat).",
+    "Counted items use the plural catalog name even for 1: garlic cloves, eggs (medium).",
+    "Qualifiers go in parentheses (fat content, egg size, flour type: 18 % of official names) or after a comma (black, ground, dried, untreated: 27 %).",
+    "To-taste items: purpose suffix in the name and an empty amount, for example 'salt to taste', 'pepper to taste' or 'butter for the tin'.",
+    "Equipment listed as an ingredient (tins, baking paper, kitchen string) goes into an EQUIPMENT group and never counts toward the bowl mass."
+  ],
+  "groups": {
+    "style": "Upper case: FOR THE <component> (FOR THE FILLING, FOR THE DOUGH, FOR THE SAUCE), a yield header such as MAKES 1 LOAF, PLUS for extras, EQUIPMENT for tools."
+  },
+  "perPortionMedians": {
+    "note": "Median amount per portion over recipes counted in portions; a sanity check for scaled amounts.",
+    "items": {
+      "salt": "¼ tsp",
+      "pepper, black, ground": "¼ tsp",
+      "sugar": "5 g",
+      "butter": "10 g",
+      "olive oil": "7.5 g",
+      "onions": "22 g",
+      "eggs (medium)": "0.5",
+      "garlic cloves": "0.25",
+      "plain flour (type 405)": "12.5 g",
+      "cream (30% fat)": "37.5 g",
+      "vegetable stock, ready-made": "150 g",
+      "carrots": "40 g",
+      "potatoes, waxy": "150 g"
+    }
+  },
+  "servings": {
+    "default": "4 portions (332 of 1015 recipes)",
+    "units": ["portions", "portion", "pieces", "piece", "servings", "slices", "jars", "bottles"]
+  },
+  "densityWords": {
+    "water": ["water"],
+    "milk": ["milk"],
+    "stock": ["stock", "broth"],
+    "cream": ["cream"],
+    "wine": ["wine"],
+    "oil": ["oil"],
+    "honey": ["honey"],
+    "syrup": ["syrup"]
+  },
+  "liquidWords": [
+    "water",
+    "broth",
+    "stock",
+    "milk",
+    "cream",
+    "wine",
+    "juice",
+    "oil",
+    "vinegar",
+    "syrup",
+    "honey"
+  ],
+  "corpus": {
+    "note": "Generated by npm run corpus:build-knowledge from the corpus of this locale: unit spellings, group names and serving units of official recipes, with counts. Evidence for the hand-written vocabulary, not read by the converter.",
+    "recipes": 1015,
+    "officialRecipes": 995,
+    "officialIngredientRows": 10977,
+    "unitSpellings": {
+      "g": 6719,
+      "": 2296,
+      "tsp": 1258,
+      "pinches": 232,
+      "pinch": 223,
+      "big pinch": 101,
+      "tbsp": 98,
+      "big pinches": 40,
+      "punnet": 4,
+      "sachet": 3,
+      "drops": 1,
+      "stalks": 1,
+      "stems": 1
+    },
+    "groupNames": {
+      "PLUS": 447,
+      "FOR THE FILLING": 299,
+      "FOR THE DOUGH": 240,
+      "EQUIPMENT": 210,
+      "FOR THE SAUCE": 157,
+      "FOR THE TOPPING": 108,
+      "FOR THE SALAD": 105,
+      "MAKES 12 SLICES (SPRINGFORM TIN 26 CM Ø)": 77,
+      "FOR THE PASTRY": 71,
+      "FOR THE DRESSING": 61,
+      "MAKES 1 LOAF": 54,
+      "FOR THE MEATBALLS": 45
+    },
+    "servingUnits": {
+      "portions": 426,
+      "pieces": 126,
+      "Portions": 101,
+      "servings": 50,
+      "Pieces": 45,
+      "slices": 40
+    }
+  }
+}

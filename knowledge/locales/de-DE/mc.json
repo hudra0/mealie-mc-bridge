@@ -1,0 +1,14 @@
+{
+  "locale": "de-DE",
+  "language": "German",
+  "proxyLang": "de-DE",
+  "acceptLanguage": "de-DE",
+  "editorPath": "/de/create-recipe?devices=mc-smart",
+  "complexityIds": { "easy": 142, "medium": 99, "hard": 104 },
+  "defaultGroupName": "Allgemeine Zutaten",
+  "verifiedOnDevice": true,
+  "notes": [
+    "Complexity ids, editor path, proxy language and the default group name were checked against the web editor and the live API on 2026-10-13; recipes created with them show up on a Monsieur Cuisine Smart.",
+    "Built from the de-DE corpus of 2221 MC Smart recipes, the reference corpus for the language-neutral knowledge files."
+  ]
+}

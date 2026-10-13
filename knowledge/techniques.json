@@ -1,6 +1,6 @@
 {
-  "description": "Cooking techniques for the converter, derived from the de-DE MC Smart corpus. Numbers and generic phrases only, in our own words; no recipe text.",
-  "version": 1,
+  "description": "Cooking techniques for the converter, derived from the de-DE MC Smart corpus: ids, English labels, device numbers and structure notes, in our own words; no recipe text. The wording per language is in knowledge/locales/<locale>/technique-aliases.json; {{phrase:...}} and {{unit:...}} placeholders in the notes are filled from the locale pack of the output language.",
+  "version": 2,
   "source": "corpus 2026-10",
   "corpus": {
     "recipes": 2221,
@@ -18,7 +18,7 @@
     "device.speed": "typical = median, max = p90 of the basis group, capped by the rules in device-limits.json (3 when heated or in reverse, 4 with the whisk). null for program modes, which store no speed.",
     "device.reverse": "true, false, or a condition the converter decides per recipe.",
     "device.accessory.measuringCup": "in, out, either (the recipe decides) or n/a.",
-    "device.accessory.attachment": "null, whisk (Rühraufsatz), cooking_basket (Kocheinsatz in the bowl), cooking_basket_on_lid (Kocheinsatz as splash guard), steamer (Dampfgaraufsatz), food_processor.",
+    "device.accessory.attachment": "null, whisk (butterfly whisk), cooking_basket (cooking basket in the bowl), cooking_basket_on_lid (cooking basket on the lid as splash guard), steamer (steamer attachment), food_processor.",
     "alternatives": "Other modes the corpus uses for the same technique, with their own quantiles; included when they cover at least 10 % of the technique's steps or carry a note.",
     "evidence.statsMode": "Mode whose steps supplied the device numbers. It differs from device.mode when official recipes use a mode that the member editor does not offer (kneading); recommendedModeObserved then shows the numbers of the recommended mode.",
     "evidence.basis": "official when the recommended mode has at least 20 official steps for this technique, otherwise all recipes.",
@@ -29,10 +29,6 @@
     {
       "id": "weigh_ingredient",
       "label": "Weigh an ingredient into the bowl with the built-in scale",
-      "aliases": {
-        "de": ["abwiegen", "einwiegen", "in den Mixbehälter geben", "zugeben", "dazugeben"],
-        "en": ["weigh", "add", "put in the bowl"]
-      },
       "ingredientClasses": ["any"],
       "device": {
         "mode": "scale",
@@ -42,10 +38,10 @@
         "accessory": { "measuringCup": "n/a", "attachment": null }
       },
       "structure": [
-        "One scale step per ingredient added by weight; the title starts with amount and name, for example \"200 g Wasser\" (78.7 % of official scale titles start with \"<N> g\").",
+        "One scale step per ingredient added by weight; the title starts with amount and name, for example \"{{phrase:scaleExample}}\" (78.7 % of official scale titles start with \"<N> g\").",
         "74.3 % of scale steps weigh exactly the gram amount of the one ingredient they name; split an ingredient across two scale steps only when it goes in at two points of the recipe.",
         "The text step right before a scale step names the same ingredient in only 3.2 % of cases: it prepares something else (cutting, fitting an accessory).",
-        "Amounts below 5 g never go on the scale; write them in a text step in Tl, Prise or Msp."
+        "Amounts below 5 g never go on the scale; write them in a text step in {{unit:teaspoon}}, {{unit:pinch}} or {{unit:knifeTip}}."
       ],
       "notes": [
         "Scale steps carry text on the device, like turbo steps; all other program steps show only their title."
@@ -67,10 +63,6 @@
     {
       "id": "chop_onion_garlic",
       "label": "Chop onions, shallots, garlic or ginger",
-      "aliases": {
-        "de": ["hacken", "fein hacken", "würfeln", "klein schneiden", "zerkleinern"],
-        "en": ["chop", "dice", "mince", "finely chop"]
-      },
       "ingredientClasses": ["onion_garlic"],
       "device": {
         "mode": "customized",
@@ -90,7 +82,7 @@
       "structure": [
         "Text step before: peel and halve the onions (peeling is named in 35 % of the text before official chopping steps, halving in 20 %); garlic cloves go in whole.",
         "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237).",
-        "Text step after the step: \"mit dem Spatel nach unten schieben\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo).",
+        "Text step after the step: \"{{phrase:pushDown}}\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo).",
         "Usually followed by fat in a scale step and the sauté or roasting step."
       ],
       "evidence": {
@@ -110,10 +102,6 @@
     {
       "id": "chop_vegetables",
       "label": "Chop vegetables coarse or fine",
-      "aliases": {
-        "de": ["zerkleinern", "grob hacken", "klein schneiden", "würfeln", "raspeln"],
-        "en": ["chop", "dice", "cut into small pieces", "shred"]
-      },
       "ingredientClasses": ["vegetables"],
       "device": {
         "mode": "customized",
@@ -128,7 +116,7 @@
         "Text step before: peel and cut into pieces (pieces are named in 18 %, quartering in 14 % of the text before official chopping steps).",
         "Speed 5 chops coarse, 6-8 fine; for a finer result run a second short step instead of a longer one.",
         "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237).",
-        "Text step after the step: \"mit dem Spatel nach unten schieben\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo)."
+        "Text step after the step: \"{{phrase:pushDown}}\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo)."
       ],
       "evidence": {
         "steps": 181,
@@ -147,10 +135,6 @@
     {
       "id": "chop_herbs",
       "label": "Chop fresh herbs",
-      "aliases": {
-        "de": ["Kräuter hacken", "fein hacken", "zupfen und hacken"],
-        "en": ["chop herbs", "mince herbs"]
-      },
       "ingredientClasses": ["herbs"],
       "device": {
         "mode": "customized",
@@ -162,7 +146,7 @@
         "accessory": { "measuringCup": "in", "attachment": null }
       },
       "structure": [
-        "Text step before: pick the leaves from the stems; the ingredient list counts herbs as Stück of stems (Petersilienstiele, Thymianstiele).",
+        "Text step before: pick the leaves from the stems; the ingredient list counts herbs by their stems (\"{{phrase:herbStems}}\").",
         "Chop herbs while the bowl is still dry, then transfer and set them aside when they are used at the end."
       ],
       "evidence": {
@@ -182,10 +166,6 @@
     {
       "id": "chop_nuts_seeds",
       "label": "Chop nuts or seeds",
-      "aliases": {
-        "de": ["Nüsse hacken", "grob hacken", "hacken"],
-        "en": ["chop nuts", "roughly chop"]
-      },
       "ingredientClasses": ["nuts_seeds"],
       "device": {
         "mode": "customized",
@@ -217,10 +197,6 @@
     {
       "id": "grate_hard_cheese",
       "label": "Grate hard cheese",
-      "aliases": {
-        "de": ["reiben", "Parmesan reiben", "fein reiben"],
-        "en": ["grate", "grate cheese"]
-      },
       "ingredientClasses": ["hard_cheese"],
       "device": {
         "mode": "customized",
@@ -252,10 +228,6 @@
     {
       "id": "chop_chocolate",
       "label": "Chop chocolate or couverture",
-      "aliases": {
-        "de": ["Schokolade hacken", "grob hacken", "zerkleinern"],
-        "en": ["chop chocolate"]
-      },
       "ingredientClasses": ["chocolate"],
       "device": {
         "mode": "customized",
@@ -287,10 +259,6 @@
     {
       "id": "chop_fruit",
       "label": "Chop fruit",
-      "aliases": {
-        "de": ["Obst zerkleinern", "würfeln", "klein schneiden"],
-        "en": ["chop fruit", "dice fruit"]
-      },
       "ingredientClasses": ["fruit"],
       "device": {
         "mode": "customized",
@@ -322,10 +290,6 @@
     {
       "id": "chop_meat_fish",
       "label": "Chop or mince meat, ham or fish",
-      "aliases": {
-        "de": ["hacken", "zerkleinern", "fein hacken", "faschieren"],
-        "en": ["chop", "mince", "grind meat"]
-      },
       "ingredientClasses": ["meat", "fish"],
       "device": {
         "mode": "customized",
@@ -356,10 +320,6 @@
     {
       "id": "make_crumbs",
       "label": "Make crumbs from bread, rolls or biscuits",
-      "aliases": {
-        "de": ["Brösel herstellen", "zerbröseln", "fein mahlen"],
-        "en": ["make breadcrumbs", "crush biscuits"]
-      },
       "ingredientClasses": ["bread_biscuits"],
       "device": {
         "mode": "customized",
@@ -388,7 +348,6 @@
     {
       "id": "turbo_pulse",
       "label": "Turbo pulse for coarse chopping",
-      "aliases": { "de": ["Turbo", "kurz zerkleinern", "grob hacken"], "en": ["pulse", "turbo"] },
       "ingredientClasses": ["onion_garlic", "vegetables", "nuts_seeds", "hard_cheese"],
       "device": {
         "mode": "turbo",
@@ -400,10 +359,10 @@
         "accessory": { "measuringCup": "in", "attachment": null }
       },
       "structure": [
-        "Turbo is its own step; its title names the seconds (\"Turbo-Taste für 2 Sekunden\"); the number matches the programmed time in 99.6 % of 262 such titles.",
+        "Turbo is its own step; its title names the seconds (\"{{phrase:turboTitle}}\"); the number matches the programmed time in 99.6 % of 262 such titles.",
         "Turbo steps sit early in the recipe (68 % in the first third) and are often followed by roasting (83 times).",
         "Never with the whisk fitted; never on hot contents (SmartRecipe rule: at most 60 °C) and at most 2500 g in the bowl.",
-        "Text step after the step: \"mit dem Spatel nach unten schieben\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo)."
+        "Text step after the step: \"{{phrase:pushDown}}\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo)."
       ],
       "notes": [
         "Official recipes use 2 s most (125 of 244 steps); all sources together have median 3 s."
@@ -425,10 +384,6 @@
     {
       "id": "grind_fine",
       "label": "Grind fine: sugar to icing sugar, grains, spices, ground nuts",
-      "aliases": {
-        "de": ["mahlen", "fein mahlen", "pulverisieren", "Puderzucker herstellen"],
-        "en": ["grind", "mill", "powder"]
-      },
       "ingredientClasses": ["sugar_spices", "rice_grain", "nuts_seeds"],
       "device": {
         "mode": "customized",
@@ -468,10 +423,6 @@
     {
       "id": "crush_ice_frozen",
       "label": "Crush ice or blend frozen fruit (sorbet, ice cream)",
-      "aliases": {
-        "de": ["Eis crushen", "zerkleinern", "Sorbet mixen"],
-        "en": ["crush ice", "blend frozen fruit"]
-      },
       "ingredientClasses": ["ice", "fruit"],
       "device": {
         "mode": "customized",
@@ -502,10 +453,6 @@
     {
       "id": "stir_cold",
       "label": "Stir or mix cold ingredients",
-      "aliases": {
-        "de": ["verrühren", "vermischen", "vermengen", "unterrühren", "mischen"],
-        "en": ["stir", "mix", "combine"]
-      },
       "ingredientClasses": ["dairy", "vegetables", "flour_dough", "egg"],
       "device": {
         "mode": "customized",
@@ -517,7 +464,7 @@
         "accessory": { "measuringCup": "in", "attachment": null }
       },
       "structure": [
-        "Text step before: name everything that goes in (\"zugeben\", \"in den Mixbehälter geben\").",
+        "Text step before: name everything that goes in (\"{{phrase:add}}\", \"{{phrase:intoBowl}}\").",
         "Speed 4 is the mixing speed (median 30 s at speed 4); speed 2-3 for short stirs."
       ],
       "evidence": {
@@ -543,10 +490,6 @@
     {
       "id": "fold_in_reverse",
       "label": "Fold in or stir gently so pieces stay whole (reverse rotation)",
-      "aliases": {
-        "de": ["unterheben", "vorsichtig unterrühren", "im Linkslauf rühren"],
-        "en": ["fold in", "stir gently"]
-      },
       "ingredientClasses": ["vegetables", "meat", "dairy", "pasta"],
       "device": {
         "mode": "customized",
@@ -578,10 +521,6 @@
     {
       "id": "blend_smooth_cold",
       "label": "Blend smooth (cold purée, pesto, dip, dressing)",
-      "aliases": {
-        "de": ["pürieren", "fein pürieren", "mixen", "cremig mixen"],
-        "en": ["purée", "blend", "blend until smooth"]
-      },
       "ingredientClasses": ["vegetables", "fruit", "nuts_seeds", "liquid"],
       "device": {
         "mode": "customized",
@@ -619,10 +558,6 @@
     {
       "id": "puree_hot_soup",
       "label": "Purée a hot soup or sauce after cooking",
-      "aliases": {
-        "de": ["pürieren", "Suppe pürieren", "fein mixen"],
-        "en": ["purée soup", "blend soup"]
-      },
       "ingredientClasses": ["vegetables", "liquid"],
       "device": {
         "mode": "puree",
@@ -681,7 +616,6 @@
     {
       "id": "blend_drink_smoothie",
       "label": "Blend a drink or smoothie",
-      "aliases": { "de": ["mixen", "aufmixen", "Smoothie mixen"], "en": ["blend", "mix a drink"] },
       "ingredientClasses": ["fruit", "vegetables", "dairy", "liquid"],
       "device": {
         "mode": "customized",
@@ -721,10 +655,6 @@
     {
       "id": "whip",
       "label": "Whip cream, egg whites or eggs with sugar (whisk attachment)",
-      "aliases": {
-        "de": ["steif schlagen", "aufschlagen", "schaumig schlagen", "Sahne schlagen", "Eischnee"],
-        "en": ["whip", "whisk", "beat until stiff"]
-      },
       "ingredientClasses": ["egg", "dairy"],
       "device": {
         "mode": "customized",
@@ -736,7 +666,7 @@
         "accessory": { "measuringCup": "out", "attachment": "whisk" }
       },
       "structure": [
-        "Own text step to fit the whisk attachment (\"Rühraufsatz einsetzen\", 230 text steps) and one to remove it afterwards (125).",
+        "Own text step to fit the whisk attachment (\"{{phrase:whiskIn}}\", 230 text steps) and one to remove it afterwards (125).",
         "With the whisk fitted the speed is at most 4 (official guide; 92 % of steps with the whisk run at speed 4 or lower).",
         "Bowl and whisk must be free of fat for egg whites; cream should be cold.",
         "Whipping time depends on fat content and temperature, so the text step after says to check the stiffness."
@@ -758,10 +688,6 @@
     {
       "id": "emulsify",
       "label": "Emulsify: mayonnaise, aioli, creamy dressings",
-      "aliases": {
-        "de": ["emulgieren", "Mayonnaise herstellen", "Öl einlaufen lassen", "aufschlagen"],
-        "en": ["emulsify", "make mayonnaise", "drizzle in oil"]
-      },
       "ingredientClasses": ["egg", "liquid"],
       "device": {
         "mode": "customized",
@@ -773,7 +699,7 @@
         "accessory": { "measuringCup": "in", "attachment": null }
       },
       "structure": [
-        "The oil is poured slowly onto the lid while the measuring cup stays in, so it runs in along the cup in a thin stream (\"das Öl langsam auf den Deckel gießen, sodass es am Messbecher entlang in den Mixbehälter läuft\"); 16 of 17 official oil emulsions pour the oil onto the lid, none through the lid opening.",
+        "The oil is poured slowly onto the lid while the measuring cup stays in, so it runs in along the cup in a thin stream (\"{{phrase:oilOntoLid}}\"); 16 of 17 official oil emulsions pour the oil onto the lid, none through the lid opening.",
         "Two-step pattern: a short step (about 10 s) mixes the base, then a long step at speed 4 (top setting 240 s, 13 of 17 official oil emulsions) runs while the oil is poured onto the lid."
       ],
       "evidence": {
@@ -793,10 +719,6 @@
     {
       "id": "batter_sponge",
       "label": "Mix a cake batter or sponge mixture",
-      "aliases": {
-        "de": ["Teig rühren", "Rührteig", "verrühren", "glatt rühren"],
-        "en": ["mix batter", "beat batter"]
-      },
       "ingredientClasses": ["flour_dough", "egg", "dairy"],
       "device": {
         "mode": "customized",
@@ -849,10 +771,6 @@
     {
       "id": "activate_yeast",
       "label": "Dissolve yeast in lukewarm liquid",
-      "aliases": {
-        "de": ["Hefe auflösen", "Hefe anrühren", "lauwarm erwärmen"],
-        "en": ["dissolve yeast", "proof yeast", "warm milk"]
-      },
       "ingredientClasses": ["liquid", "dairy", "flour_dough"],
       "device": {
         "mode": "customized",
@@ -885,10 +803,6 @@
     {
       "id": "knead_yeast_dough",
       "label": "Knead a yeast dough",
-      "aliases": {
-        "de": ["kneten", "Hefeteig kneten", "zu einem Teig verkneten"],
-        "en": ["knead", "knead the dough"]
-      },
       "ingredientClasses": ["flour_dough"],
       "device": {
         "mode": "kneading_solid_dough",
@@ -956,10 +870,6 @@
     {
       "id": "knead_short_dough",
       "label": "Mix a short crust or another firm dough without yeast",
-      "aliases": {
-        "de": ["Mürbteig kneten", "verkneten", "zu einem Teig verarbeiten"],
-        "en": ["make shortcrust", "knead briefly"]
-      },
       "ingredientClasses": ["flour_dough", "dairy", "egg"],
       "device": {
         "mode": "kneading_solid_dough",
@@ -1028,10 +938,6 @@
     {
       "id": "melt",
       "label": "Melt chocolate or butter",
-      "aliases": {
-        "de": ["schmelzen", "zerlassen", "Schokolade schmelzen", "Butter zerlassen"],
-        "en": ["melt"]
-      },
       "ingredientClasses": ["chocolate", "dairy"],
       "device": {
         "mode": "customized",
@@ -1063,10 +969,6 @@
     {
       "id": "warm_heat",
       "label": "Warm or heat a liquid or a finished dish",
-      "aliases": {
-        "de": ["erwärmen", "erhitzen", "warm machen", "temperieren"],
-        "en": ["warm", "heat", "reheat"]
-      },
       "ingredientClasses": ["liquid", "dairy", "vegetables"],
       "device": {
         "mode": "customized",
@@ -1099,11 +1001,7 @@
     },
     {
       "id": "saute_onions",
-      "label": "Sauté onions, garlic or vegetables in fat (anschwitzen, andünsten)",
-      "aliases": {
-        "de": ["anschwitzen", "andünsten", "dünsten", "glasig dünsten"],
-        "en": ["sauté", "sweat", "soften"]
-      },
+      "label": "Sauté onions, garlic or vegetables in fat",
       "ingredientClasses": ["onion_garlic", "vegetables"],
       "device": {
         "mode": "roasting",
@@ -1148,11 +1046,7 @@
     },
     {
       "id": "sear_roast",
-      "label": "Sear or brown with the roasting program (anbraten)",
-      "aliases": {
-        "de": ["anbraten", "braten", "scharf anbraten", "anrösten"],
-        "en": ["sear", "brown", "fry"]
-      },
+      "label": "Sear or brown with the roasting program",
       "ingredientClasses": ["vegetables", "meat", "onion_garlic"],
       "device": {
         "mode": "roasting",
@@ -1198,7 +1092,6 @@
     {
       "id": "toast_dry",
       "label": "Toast nuts, seeds, spices or flour without fat",
-      "aliases": { "de": ["rösten", "anrösten", "ohne Fett rösten"], "en": ["toast", "dry-roast"] },
       "ingredientClasses": ["nuts_seeds", "sugar_spices", "flour_dough"],
       "device": {
         "mode": "customized",
@@ -1239,10 +1132,6 @@
     {
       "id": "bring_to_boil",
       "label": "Bring a liquid to the boil",
-      "aliases": {
-        "de": ["aufkochen", "zum Kochen bringen", "aufwallen lassen"],
-        "en": ["bring to the boil", "boil"]
-      },
       "ingredientClasses": ["liquid", "vegetables"],
       "device": {
         "mode": "customized",
@@ -1278,10 +1167,6 @@
     {
       "id": "simmer_cook",
       "label": "Simmer or cook in liquid (soups, stews, sauces, vegetables)",
-      "aliases": {
-        "de": ["köcheln", "kochen", "garen", "weich kochen", "köcheln lassen"],
-        "en": ["simmer", "cook", "boil gently", "stew"]
-      },
       "ingredientClasses": ["vegetables", "liquid", "meat", "dairy"],
       "device": {
         "mode": "customized",
@@ -1320,10 +1205,6 @@
     {
       "id": "reduce_open",
       "label": "Reduce or cook hard with the cooking basket on the lid as splash guard",
-      "aliases": {
-        "de": ["einkochen", "reduzieren", "sämig einkochen", "offen köcheln"],
-        "en": ["reduce", "cook down", "simmer uncovered"]
-      },
       "ingredientClasses": ["liquid", "vegetables", "fruit"],
       "device": {
         "mode": "customized",
@@ -1356,10 +1237,6 @@
     {
       "id": "thicken_bind",
       "label": "Thicken or bind: roux, béchamel, custard, starch-bound sauces",
-      "aliases": {
-        "de": ["binden", "andicken", "eindicken", "Mehlschwitze", "Béchamel kochen"],
-        "en": ["thicken", "bind", "make a roux", "make béchamel"]
-      },
       "ingredientClasses": ["flour_dough", "dairy", "liquid"],
       "device": {
         "mode": "customized",
@@ -1395,10 +1272,6 @@
     {
       "id": "cook_risotto",
       "label": "Cook risotto or another rice dish in the bowl",
-      "aliases": {
-        "de": ["Risotto kochen", "Reis garen", "Reis köcheln"],
-        "en": ["cook risotto", "cook rice in the bowl"]
-      },
       "ingredientClasses": ["rice_grain", "liquid"],
       "device": {
         "mode": "customized",
@@ -1431,10 +1304,6 @@
     {
       "id": "cook_pasta",
       "label": "Cook pasta in the bowl (one-pot)",
-      "aliases": {
-        "de": ["Nudeln kochen", "Pasta garen", "Nudeln garen"],
-        "en": ["cook pasta", "boil noodles"]
-      },
       "ingredientClasses": ["pasta", "liquid"],
       "device": {
         "mode": "customized",
@@ -1466,10 +1335,6 @@
     {
       "id": "cook_milk_rice_pudding",
       "label": "Cook milk rice, pudding or porridge",
-      "aliases": {
-        "de": ["Milchreis kochen", "Pudding kochen", "Brei kochen", "Grießbrei"],
-        "en": ["cook rice pudding", "cook pudding", "cook porridge"]
-      },
       "ingredientClasses": ["dairy", "rice_grain", "egg"],
       "device": {
         "mode": "customized",
@@ -1500,10 +1365,6 @@
     {
       "id": "cook_jam",
       "label": "Cook jam, jelly or compote",
-      "aliases": {
-        "de": ["Marmelade kochen", "einkochen", "Gelee kochen", "Kompott kochen"],
-        "en": ["make jam", "cook jam", "cook compote"]
-      },
       "ingredientClasses": ["fruit"],
       "device": {
         "mode": "customized",
@@ -1536,10 +1397,6 @@
     {
       "id": "cook_in_basket",
       "label": "Cook potatoes, rice or eggs in the cooking basket",
-      "aliases": {
-        "de": ["im Kocheinsatz garen", "Kartoffeln garen", "Reis im Garkorb kochen"],
-        "en": ["cook in the basket", "boil potatoes", "cook rice in the basket"]
-      },
       "ingredientClasses": ["potatoes", "rice_grain", "egg", "vegetables"],
       "device": {
         "mode": "customized",
@@ -1560,7 +1417,7 @@
         }
       ],
       "structure": [
-        "Text step before: insert the cooking basket and fill it (\"Kocheinsatz einsetzen\", named before 90 % of these steps); water or stock goes into the bowl in a scale step.",
+        "Text step before: insert the cooking basket and fill it (\"{{phrase:basketIn}}\", named before 90 % of these steps); water or stock goes into the bowl in a scale step.",
         "The basket holds about 1000-1200 g of food (SmartRecipe rule).",
         "Often combined with the steamer on top: the basket cooks a side while the steamer cooks the main item."
       ],
@@ -1581,16 +1438,6 @@
     {
       "id": "steam_in_steamer",
       "label": "Steam in the steamer attachment (vegetables, fish, meat, dumplings)",
-      "aliases": {
-        "de": [
-          "dämpfen",
-          "dampfgaren",
-          "im Dampfgaraufsatz garen",
-          "Dampfgaraufsatz",
-          "Dampfgareinsatz"
-        ],
-        "en": ["steam"]
-      },
       "ingredientClasses": ["vegetables", "fish", "meat", "potatoes", "flour_dough"],
       "device": {
         "mode": "steaming",
@@ -1627,7 +1474,7 @@
       },
       "structure": [
         "Scale step before: water or stock into the bowl, typically 1000 g, never below 500 g (p10 500 g over 270 steaming steps).",
-        "Text steps before: spread the food in the steamer (\"im Dampfgaraufsatz verteilen\", 376 text steps) and set it on (\"Dampfgaraufsatz aufsetzen\", 342); name the level (deep bowl or flat insert) before 78.3 % of steaming steps.",
+        "Text steps before: spread the food in the steamer (\"{{phrase:steamerSpread}}\", 376 text steps) and set it on (\"{{phrase:steamerOn}}\", 342); name the level (deep bowl or flat insert) before 78.3 % of steaming steps.",
         "Steaming time does not scale with food mass (fit 877 + 0.343 * grams, R² 0.06); pick it by load class (timeByLoadClass).",
         "In 48 % of steaming steps something else cooks in the bowl below; count its mass toward the bowl limit."
       ],
@@ -1652,7 +1499,6 @@
     {
       "id": "sous_vide",
       "label": "Cook sous-vide in the bowl",
-      "aliases": { "de": ["sous-vide garen", "vakuumgaren"], "en": ["sous-vide"] },
       "ingredientClasses": ["meat", "fish", "egg"],
       "device": {
         "mode": "sous_vide",
@@ -1684,10 +1530,6 @@
     {
       "id": "slow_cook",
       "label": "Slow cook a stew or braise",
-      "aliases": {
-        "de": ["schmoren", "langsam garen", "Slow Cook"],
-        "en": ["slow cook", "braise"]
-      },
       "ingredientClasses": ["meat", "vegetables"],
       "device": {
         "mode": "slow_cooking",
@@ -1719,10 +1561,6 @@
     {
       "id": "ferment",
       "label": "Ferment or proof (yogurt, dough rising in the bowl)",
-      "aliases": {
-        "de": ["fermentieren", "gehen lassen", "Joghurt herstellen"],
-        "en": ["ferment", "proof", "make yogurt"]
-      },
       "ingredientClasses": ["dairy", "flour_dough"],
       "device": {
         "mode": "fermentation",
@@ -1754,7 +1592,6 @@
     {
       "id": "cook_eggs",
       "label": "Cook eggs with the egg program",
-      "aliases": { "de": ["Eier kochen"], "en": ["boil eggs"] },
       "ingredientClasses": ["egg"],
       "device": {
         "mode": "cooking_eggs",
@@ -1787,10 +1624,6 @@
     {
       "id": "food_processor_slice",
       "label": "Slice or grate with the food processor attachment",
-      "aliases": {
-        "de": ["hobeln", "in Scheiben schneiden", "raspeln"],
-        "en": ["slice", "grate", "shred"]
-      },
       "ingredientClasses": ["vegetables", "potatoes"],
       "device": {
         "mode": "food_processor",
@@ -1821,10 +1654,6 @@
     {
       "id": "preclean",
       "label": "Pre-clean the bowl between stages",
-      "aliases": {
-        "de": ["vorreinigen", "Mixbehälter reinigen"],
-        "en": ["pre-clean", "rinse the bowl"]
-      },
       "ingredientClasses": [],
       "device": {
         "mode": "precleaning",
@@ -1836,7 +1665,7 @@
         "accessory": { "measuringCup": "n/a", "attachment": null }
       },
       "structure": [
-        "Official recipes write a text step instead (\"Mixbehälter ausspülen\", 731 text steps); prefer the text step."
+        "Official recipes write a text step instead (\"{{phrase:rinseBowl}}\", 731 text steps); prefer the text step."
       ],
       "evidence": {
         "steps": 17,

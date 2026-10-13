@@ -1,0 +1,267 @@
+{
+  "description": "English wording per technique of techniques.json and the words that point to its ingredient classes. The converter picks techniques by these words in the source recipe, whatever its language (the aliases of every pack count), and prints the English aliases as the wording to use. A word matches the start of a word in the recipe, so \"onion\" also finds \"onions\". Hand-written from the action words and ingredient names of the en-US corpus; not verified on a device.",
+  "locale": "en-US",
+  "techniques": {
+    "weigh_ingredient": {
+      "aliases": ["weigh", "add", "put in the bowl"]
+    },
+    "chop_onion_garlic": {
+      "aliases": ["chop", "dice", "mince", "finely chop"]
+    },
+    "chop_vegetables": {
+      "aliases": ["chop", "dice", "cut into small pieces", "shred"]
+    },
+    "chop_herbs": {
+      "aliases": ["chop herbs", "mince herbs"]
+    },
+    "chop_nuts_seeds": {
+      "aliases": ["chop nuts", "roughly chop"]
+    },
+    "grate_hard_cheese": {
+      "aliases": ["grate", "grate cheese", "grated"]
+    },
+    "chop_chocolate": {
+      "aliases": ["chop chocolate"]
+    },
+    "chop_fruit": {
+      "aliases": ["chop fruit", "dice fruit"]
+    },
+    "chop_meat_fish": {
+      "aliases": ["chop", "mince", "grind meat"]
+    },
+    "make_crumbs": {
+      "aliases": ["make breadcrumbs", "crush biscuits", "crumbs"]
+    },
+    "turbo_pulse": {
+      "aliases": ["pulse", "turbo"]
+    },
+    "grind_fine": {
+      "aliases": ["grind", "mill", "powder"]
+    },
+    "crush_ice_frozen": {
+      "aliases": ["crush ice", "blend frozen fruit"]
+    },
+    "stir_cold": {
+      "aliases": ["stir", "mix", "combine", "fold"]
+    },
+    "fold_in_reverse": {
+      "aliases": ["fold in", "stir gently"]
+    },
+    "blend_smooth_cold": {
+      "aliases": ["purée", "blend", "blend until smooth"]
+    },
+    "puree_hot_soup": {
+      "aliases": ["purée soup", "blend soup"]
+    },
+    "blend_drink_smoothie": {
+      "aliases": ["blend", "mix a drink"]
+    },
+    "whip": {
+      "aliases": ["whip", "whisk", "beat until stiff", "beat"]
+    },
+    "emulsify": {
+      "aliases": ["emulsify", "make mayonnaise", "drizzle in oil"]
+    },
+    "batter_sponge": {
+      "aliases": ["mix batter", "beat batter"]
+    },
+    "activate_yeast": {
+      "aliases": ["dissolve yeast", "proof yeast", "warm milk"]
+    },
+    "knead_yeast_dough": {
+      "aliases": ["knead", "knead the dough", "prove"]
+    },
+    "knead_short_dough": {
+      "aliases": ["make shortcrust", "knead briefly"]
+    },
+    "melt": {
+      "aliases": ["melt"]
+    },
+    "warm_heat": {
+      "aliases": ["warm", "heat", "reheat", "heat up"]
+    },
+    "saute_onions": {
+      "aliases": ["sauté", "sweat", "soften", "saute", "fry gently"]
+    },
+    "sear_roast": {
+      "aliases": ["sear", "brown", "fry", "roast"]
+    },
+    "toast_dry": {
+      "aliases": ["toast", "dry-roast", "dry-fry"]
+    },
+    "bring_to_boil": {
+      "aliases": ["bring to the boil", "boil"]
+    },
+    "simmer_cook": {
+      "aliases": ["simmer", "cook", "boil gently", "stew", "boil"]
+    },
+    "reduce_open": {
+      "aliases": ["reduce", "cook down", "simmer uncovered"]
+    },
+    "thicken_bind": {
+      "aliases": ["thicken", "bind", "make a roux", "make béchamel"]
+    },
+    "cook_risotto": {
+      "aliases": ["cook risotto", "cook rice in the bowl"]
+    },
+    "cook_pasta": {
+      "aliases": ["cook pasta", "boil noodles"]
+    },
+    "cook_milk_rice_pudding": {
+      "aliases": ["cook rice pudding", "cook pudding", "cook porridge"]
+    },
+    "cook_jam": {
+      "aliases": ["make jam", "cook jam", "cook compote", "preserve"]
+    },
+    "cook_in_basket": {
+      "aliases": ["cook in the basket", "boil potatoes", "cook rice in the basket"]
+    },
+    "steam_in_steamer": {
+      "aliases": ["steam", "steamer basket", "steaming"]
+    },
+    "sous_vide": {
+      "aliases": ["sous-vide"]
+    },
+    "slow_cook": {
+      "aliases": ["slow cook", "braise"]
+    },
+    "ferment": {
+      "aliases": ["ferment", "proof", "make yogurt", "prove", "rise"]
+    },
+    "cook_eggs": {
+      "aliases": ["boil eggs"]
+    },
+    "food_processor_slice": {
+      "aliases": ["slice", "grate", "shred"]
+    },
+    "preclean": {
+      "aliases": ["pre-clean", "rinse the bowl"]
+    }
+  },
+  "ingredientClassWords": {
+    "onion_garlic": ["onion", "shallot", "garlic", "ginger", "spring onion", "scallion"],
+    "vegetables": [
+      "carrot",
+      "pepper",
+      "courgette",
+      "zucchini",
+      "tomato",
+      "celery",
+      "celeriac",
+      "leek",
+      "broccoli",
+      "cauliflower",
+      "cabbage",
+      "aubergine",
+      "eggplant",
+      "cucumber",
+      "pumpkin",
+      "squash",
+      "spinach",
+      "pea",
+      "bean",
+      "mushroom",
+      "fennel",
+      "asparagus",
+      "vegetable",
+      "lentil",
+      "chickpea",
+      "kohlrabi"
+    ],
+    "herbs": [
+      "parsley",
+      "basil",
+      "chive",
+      "dill",
+      "coriander",
+      "cilantro",
+      "mint",
+      "thyme",
+      "rosemary",
+      "oregano",
+      "sage",
+      "herb"
+    ],
+    "nuts_seeds": [
+      "nut",
+      "almond",
+      "hazelnut",
+      "walnut",
+      "cashew",
+      "pine nut",
+      "sesame",
+      "pumpkin seed",
+      "sunflower seed",
+      "linseed",
+      "pistachio",
+      "peanut"
+    ],
+    "hard_cheese": ["parmesan", "pecorino", "grana", "hard cheese", "gruyère", "cheddar"],
+    "chocolate": ["chocolate", "couverture", "cocoa"],
+    "fruit": [
+      "apple",
+      "pear",
+      "banana",
+      "berry",
+      "berries",
+      "strawberr",
+      "raspberr",
+      "cherr",
+      "mango",
+      "orange",
+      "lemon",
+      "lime",
+      "peach",
+      "apricot",
+      "plum",
+      "pineapple",
+      "fruit"
+    ],
+    "meat": [
+      "meat",
+      "chicken",
+      "beef",
+      "pork",
+      "mince",
+      "bacon",
+      "ham",
+      "sausage",
+      "turkey",
+      "lamb",
+      "veal"
+    ],
+    "fish": ["fish", "salmon", "tuna", "cod", "prawn", "shrimp", "trout"],
+    "dairy": [
+      "milk",
+      "cream",
+      "butter",
+      "yoghurt",
+      "yogurt",
+      "quark",
+      "soured cream",
+      "sour cream",
+      "cream cheese",
+      "mascarpone",
+      "crème fraîche"
+    ],
+    "egg": ["egg", "yolk", "egg white"],
+    "flour_dough": ["flour", "yeast", "dough", "baking powder", "starch", "cornflour"],
+    "sugar_spices": [
+      "sugar",
+      "cinnamon",
+      "pepper",
+      "caraway",
+      "spice",
+      "vanilla",
+      "nutmeg",
+      "paprika",
+      "cumin"
+    ],
+    "bread_biscuits": ["bread", "roll", "rusk", "biscuit", "sponge"],
+    "rice_grain": ["rice", "risotto", "oat", "semolina", "quinoa", "couscous", "bulgur", "millet"],
+    "pasta": ["noodle", "pasta", "spaghetti", "penne", "macaroni", "tagliatelle", "lasagne"],
+    "potatoes": ["potato"],
+    "liquid": ["water", "stock", "broth", "wine", "juice"],
+    "ice": ["ice cube", "crushed ice", "frozen"]
+  }
+}

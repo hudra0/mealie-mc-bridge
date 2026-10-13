@@ -34,6 +34,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 # Device limits the recipe validator reads at runtime (DEVICE_PROGRAMS_PATH).
 COPY knowledge/device-programs.json ./knowledge/device-programs.json
+# Ingredient names and ids for the systemIngredientId of each ingredient (MC_RESOLVE_INGREDIENTS).
+COPY knowledge/ingredient-catalog.json ./knowledge/ingredient-catalog.json
 # The base image ships uid/gid 1000 as "node"; rename it instead of adding a second user.
 RUN groupmod --new-name bridge node \
   && usermod --login bridge --home /home/bridge --move-home node \

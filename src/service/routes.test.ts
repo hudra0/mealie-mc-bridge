@@ -256,4 +256,28 @@ describe("end to end with fake clients", () => {
     }>();
     expect(health.status).toBe("ok");
   });
+
+  it("hands the ingredient resolver to the worker", async () => {
+    const resolveAll = vi.fn(() =>
+      Promise.resolve({
+        ids: new Map<string, number | null>([["kürbis", 9001]]),
+        stats: { catalog: 1, cache: 0, search: 0, unresolved: 1 },
+        unresolvedNames: ["Rote Linsen"],
+        enabled: true,
+      }),
+    );
+    svc = testService({ seedCookie: "a=1", ingredients: { resolveAll } });
+    svc.start();
+    const response = await svc.app.inject({ method: "POST", url: hook(), payload: actionBody });
+    const { jobId } = response.json<{ jobId: string }>();
+    const started = Date.now();
+    while (svc.store.jobs.get(jobId)?.status !== "done") {
+      if (Date.now() - started > 3000)
+        throw new Error(`job stuck: ${JSON.stringify(svc.store.jobs.events(jobId))}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(resolveAll).toHaveBeenCalledWith(["Kürbis", "Rote Linsen"], expect.anything());
+    const ingredients = svc.mc.payloads[0]?.servingSizes[0]?.ingredientGroups[0]?.ingredients;
+    expect(ingredients?.map((item) => item.systemIngredientId)).toEqual([9001, null]);
+  });
 });

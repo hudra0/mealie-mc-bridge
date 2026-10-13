@@ -31,8 +31,11 @@ import {
 } from "../testing/fakes.js";
 import { steppingClock, tempStore, type TempStore } from "../testing/temp.js";
 import type { Job } from "../store/jobs.js";
+import { createIngredientCatalog } from "../ingredients/catalog.js";
+import type { McIngredientSuggestion } from "../mc/index.js";
 import { CATEGORY_CACHE_KEY } from "./categories.js";
 import { ConverterNotConfiguredError, type Converter } from "./converter-port.js";
+import { IngredientResolver, type ResolveMode } from "./ingredient-resolver.js";
 import { isTransient, runJob, type PipelineConfig, type RunJobDeps } from "./run-job.js";
 
 const sessionExpired = () =>
@@ -72,6 +75,7 @@ function setup(
     converter?: Converter;
     config?: Partial<PipelineConfig>;
     prepareImage?: RunJobDeps["prepareImage"];
+    ingredients?: RunJobDeps["ingredients"];
   } = {},
 ): Setup {
   const clock = steppingClock();
@@ -98,6 +102,7 @@ function setup(
     store,
     session,
     prepareImage: options.prepareImage ?? fakePrepareImage,
+    ...(options.ingredients ? { ingredients: options.ingredients } : {}),
     now: clock.now,
   };
   const claim = (claimOptions: { force?: boolean; scale?: number } = {}) => {
@@ -709,6 +714,131 @@ describe("runJob and shutdown", () => {
     const outcome = await runJob(job, s.deps, { signal: controller.signal });
     expect(outcome.status).toBe("done");
     expect(s.store.jobs.get(job.id)?.mcRecipeId).toBe(4242);
+  });
+});
+
+describe("runJob ingredient ids", () => {
+  const catalog = createIngredientCatalog({
+    generatedFrom: "test",
+    entries: [
+      {
+        name: "Kürbis",
+        systemIngredientId: 9001,
+        officialRecipes: 1,
+        memberRecipes: 0,
+        category: null,
+        alternatives: [],
+      },
+    ],
+  });
+
+  // A resolver on the job's store, with a search that logs into the job's call log.
+  function withResolver(
+    answer: McIngredientSuggestion[] | Error,
+    mode: ResolveMode = "exact",
+  ): Setup {
+    let resolver: IngredientResolver | null = null;
+    const s = setup({
+      ingredients: { resolveAll: (names, options) => resolver!.resolveAll(names, options) },
+    });
+    resolver = new IngredientResolver({
+      mode,
+      catalog: mode === "exact" ? catalog : null,
+      cache: s.store.ingredientCache,
+      search: {
+        searchIngredients: vi.fn(() => {
+          s.calls.push("mc.searchIngredients");
+          return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer);
+        }),
+      },
+      logger: silentLogger(),
+      limiter: { take: () => Promise.resolve() },
+    });
+    return s;
+  }
+
+  it("resolves the ids before the image upload and sends them with the draft", async () => {
+    const s = withResolver([
+      { name: "Rote Linsen, getrocknet", systemIngredientId: 1 },
+      { name: "rote linsen", systemIngredientId: 9002 },
+    ]);
+    const job = s.claim();
+    const outcome = await runJob(job, s.deps);
+
+    expect(outcome.status).toBe("done");
+    expect(s.calls.indexOf("mc.searchIngredients")).toBeLessThan(s.calls.indexOf("mc.uploadImage"));
+    const ingredients = s.mc.payloads[0]?.servingSizes[0]?.ingredientGroups[0]?.ingredients;
+    expect(ingredients?.map((item) => [item.name, item.systemIngredientId])).toEqual([
+      ["Kürbis", 9001],
+      ["Rote Linsen", 9002],
+    ]);
+    expect(messages(s, job)).toContain(
+      "Ingredients resolved: 1 catalog, 0 cache, 1 search, 0 without id",
+    );
+    expect(s.store.jobs.get(job.id)?.ingredients).toEqual({
+      catalog: 1,
+      cache: 0,
+      search: 1,
+      unresolved: 0,
+      unresolvedNames: [],
+      enabled: true,
+    });
+    expect(s.store.ingredientCache.get("rote linsen")?.systemIngredientId).toBe(9002);
+  });
+
+  it("sends unknown names without an id and keeps them out of the timeline", async () => {
+    const s = withResolver([{ name: "Rote Linsen erhitzen", systemIngredientId: 1 }]);
+    const job = s.claim();
+    await runJob(job, s.deps);
+
+    const ingredients = s.mc.payloads[0]?.servingSizes[0]?.ingredientGroups[0]?.ingredients;
+    expect(ingredients?.map((item) => item.systemIngredientId)).toEqual([9001, null]);
+    expect(s.store.jobs.get(job.id)?.ingredients).toMatchObject({
+      unresolved: 1,
+      unresolvedNames: ["Rote Linsen"],
+    });
+    expect(messages(s, job)).toContain(
+      "Ingredients resolved: 1 catalog, 0 cache, 0 search, 1 without id",
+    );
+    expect(JSON.stringify(s.mealie.timeline)).not.toContain("Rote Linsen");
+  });
+
+  it("finishes without the id when the search fails for another reason", async () => {
+    const s = withResolver(networkError());
+    const job = s.claim();
+    expect((await runJob(job, s.deps)).status).toBe("done");
+    expect(s.store.jobs.get(job.id)?.ingredients?.unresolvedNames).toEqual(["Rote Linsen"]);
+  });
+
+  it("waits for a session when the search reports the session gone", async () => {
+    const s = withResolver(sessionExpired());
+    const job = s.claim();
+    const outcome = await runJob(job, s.deps);
+    expect(outcome.status).toBe("session_expired");
+    expect(s.calls).not.toContain("mc.uploadImage");
+    expect(s.calls).not.toContain("mc.createRecipe");
+  });
+
+  it("sends no ids and says so when resolution is off", async () => {
+    const s = withResolver([], "off");
+    const job = s.claim();
+    await runJob(job, s.deps);
+    expect(s.calls).not.toContain("mc.searchIngredients");
+    const ingredients = s.mc.payloads[0]?.servingSizes[0]?.ingredientGroups[0]?.ingredients;
+    expect(ingredients?.map((item) => item.systemIngredientId)).toEqual([null, null]);
+    expect(messages(s, job)).toContain(
+      "Ingredient ids not resolved (MC_RESOLVE_INGREDIENTS=off): 2 without id",
+    );
+    expect(s.store.jobs.get(job.id)?.ingredients?.enabled).toBe(false);
+  });
+
+  it("sends no ids and records nothing without a resolver", async () => {
+    const s = setup();
+    const job = s.claim();
+    await runJob(job, s.deps);
+    const ingredients = s.mc.payloads[0]?.servingSizes[0]?.ingredientGroups[0]?.ingredients;
+    expect(ingredients?.map((item) => item.systemIngredientId)).toEqual([null, null]);
+    expect(s.store.jobs.get(job.id)?.ingredients).toBeNull();
   });
 });
 

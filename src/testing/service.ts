@@ -3,6 +3,7 @@
 import { vi } from "vitest";
 import type { McUser } from "../mc/index.js";
 import type { Converter } from "../pipeline/converter-port.js";
+import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
 import { buildService, type Service, type ServiceConfig } from "../service/app.js";
 import { SessionManager } from "../session/manager.js";
 import {
@@ -41,6 +42,7 @@ export interface TestServiceOptions {
   mealie?: FakeMealieOptions;
   mc?: FakeMcOptions;
   converter?: Converter;
+  ingredients?: IngredientResolverPort;
   config?: Partial<ServiceConfig>;
   seedCookie?: string;
   logger?: Parameters<typeof buildService>[0]["server"];
@@ -87,6 +89,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     logger: silentLogger(),
     formToken: FORM_TOKEN,
     workerBackoffMs: () => 1,
+    ...(options.ingredients ? { ingredients: options.ingredients } : {}),
     ...(options.logger ? { server: options.logger } : {}),
   });
   return {

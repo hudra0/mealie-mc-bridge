@@ -5,7 +5,14 @@
 export type TimelineLanguage = "de";
 
 export type FailureStage =
-  "load" | "prepare" | "categories" | "convert" | "validate" | "upload" | "unexpected";
+  | "load"
+  | "prepare"
+  | "categories"
+  | "convert"
+  | "validate"
+  | "ingredients"
+  | "upload"
+  | "unexpected";
 
 export interface CreatedText {
   url: string;
@@ -88,6 +95,7 @@ const FAILURE_REASONS_DE: Readonly<Record<FailureStage, string>> = {
   categories: "Kategorien nicht verfügbar",
   convert: "Umwandlung fehlgeschlagen",
   validate: "Prüfung nicht bestanden",
+  ingredients: "Zutaten-Zuordnung fehlgeschlagen",
   upload: "Hochladen fehlgeschlagen",
   unexpected: "Unerwarteter Fehler",
 };

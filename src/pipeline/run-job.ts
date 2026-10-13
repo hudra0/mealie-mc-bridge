@@ -1,9 +1,9 @@
 // One run of a job, from the Mealie recipe to the draft and the report back into Mealie.
 //
 // Stages: load the recipe and its image, fingerprint it and skip unchanged recipes,
-// normalize, scale and render, pick categories, convert, validate, prepare and upload the
-// image, create the draft, set its status, write back to Mealie. Every stage appends a job
-// event.
+// normalize, scale and render, pick categories, convert, validate, resolve the ingredient
+// ids, prepare and upload the image, create the draft, set its status, write back to
+// Mealie. Every stage appends a job event.
 //
 // A conversion that passed validation is stored on the job, so a retry after a later
 // temporary failure (an image upload, say) reuses it instead of paying for it again.
@@ -37,10 +37,12 @@ import {
 import type { Notifier } from "../notify/email.js";
 import { buildMcPayload } from "../recipe/payload.js";
 import type { DeviceLimits } from "../recipe/limits.js";
+import type { RecipeInput } from "../recipe/schema.js";
 import { INTERRUPTED_CREATE, type Job, type JobStore, type EventLevel } from "../store/jobs.js";
 import type { McRecipeStore } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
 import type { ConversionResult, Converter } from "./converter-port.js";
+import { describeResolution, type IngredientResolverPort } from "./ingredient-resolver.js";
 import {
   timelineTexts,
   type FailureStage,
@@ -86,6 +88,9 @@ export interface RunJobDeps {
   // report without the cookie could mark a freshly replaced cookie as dead.
   session?: Pick<SessionProvider, "onSessionError">;
   prepareImage?: (bytes: Uint8Array, aspect: ImageAspect) => Promise<PreparedRecipeImage>;
+  // Finds the systemIngredientId per ingredient. Without it, every ingredient goes out
+  // without an id.
+  ingredients?: IngredientResolverPort;
   now?: () => Date;
 }
 
@@ -281,6 +286,9 @@ class JobRun {
     if (!stored) this.#jobs.update(job.id, { conversion: { sourceHash: prepared.hash, result } });
 
     this.#checkAbort();
+    const ingredientIds = await this.#resolveIngredients(checked.recipe);
+
+    this.#checkAbort();
     const { media, imageSkipped } = await this.#uploadImage(image);
 
     this.#checkAbort();
@@ -289,6 +297,7 @@ class JobRun {
       categoryIds: checked.categories.ids,
       detailsMediaId: media?.detailsMediaId ?? null,
       thumbnailMediaId: media?.thumbnailMediaId ?? null,
+      ...(ingredientIds ? { ingredientIds } : {}),
     });
     // The point of no return. Not retried: after a timeout the server may have created the
     // draft anyway. The signal is not passed on, so a shutdown waits for the answer.
@@ -384,6 +393,29 @@ class JobRun {
       deps.logger.warn({ err: errorMessage(notifyError) }, "failure notification failed");
     }
     return { status: "failed", job: failed, error: message, stage };
+  }
+
+  // Looks up the systemIngredientId of every ingredient name and records the counts on the
+  // job. A session error from the search fails the stage, so the job waits for a session.
+  async #resolveIngredients(recipe: RecipeInput): Promise<Map<string, number | null> | null> {
+    const resolver = this.#deps.ingredients;
+    if (!resolver) return null;
+    const names = recipe.servingSize.ingredientGroups.flatMap((group) =>
+      group.ingredients.map((ingredient) => ingredient.name),
+    );
+    const signal = this.#options.signal;
+    const resolution = await this.#stage("ingredients", () =>
+      resolver.resolveAll(names, signal ? { signal } : {}),
+    );
+    this.#jobs.update(this.#job.id, {
+      ingredients: {
+        ...resolution.stats,
+        unresolvedNames: resolution.unresolvedNames,
+        enabled: resolution.enabled,
+      },
+    });
+    this.#event("info", describeResolution(resolution));
+    return resolution.ids;
   }
 
   async #loadImage(recipe: MealieRecipe): Promise<Buffer | null> {

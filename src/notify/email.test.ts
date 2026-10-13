@@ -43,6 +43,7 @@ const job = (overrides: Partial<Job> = {}): Job => ({
   force: false,
   conversion: null,
   createStartedAt: null,
+  ingredients: null,
   ...overrides,
 });
 

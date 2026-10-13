@@ -6,3 +6,4 @@
 !tsconfig.build.json
 !src
 !knowledge/device-programs.json
+!knowledge/ingredient-catalog.json

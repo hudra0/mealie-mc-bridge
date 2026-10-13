@@ -1,9 +1,11 @@
 import { databasePath, openDatabase, type Db } from "./db.js";
+import { IngredientCacheStore } from "./ingredient-cache.js";
 import { JobStore } from "./jobs.js";
 import { McRecipeStore } from "./mc-recipes.js";
 import { SettingsStore } from "./settings.js";
 
 export * from "./db.js";
+export * from "./ingredient-cache.js";
 export * from "./jobs.js";
 export * from "./mc-recipes.js";
 export * from "./migrations.js";
@@ -14,6 +16,7 @@ export interface Store {
   jobs: JobStore;
   mcRecipes: McRecipeStore;
   settings: SettingsStore;
+  ingredientCache: IngredientCacheStore;
   close(): void;
 }
 
@@ -35,6 +38,7 @@ export function openStore(options: OpenStoreOptions): Store {
     jobs: new JobStore(db, clock),
     mcRecipes: new McRecipeStore(db, clock),
     settings: new SettingsStore(db, { ...clock, key: options.key ?? null }),
+    ingredientCache: new IngredientCacheStore(db, clock),
     close: () => db.close(),
   };
 }

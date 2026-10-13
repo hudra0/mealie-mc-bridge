@@ -33,6 +33,11 @@ export const envSchema = z.object({
   // device only, which is the only way it shows up on the machine. A draft is visible in the
   // web editor but not on the device, so "draft" is for debugging.
   MC_RECIPE_STATUS: z.enum(["draft", "private-publish"]).default("private-publish"),
+  // How ingredients get their systemIngredientId, which the app uses for its shopping list
+  // and ingredient filters. exact: from the bundled catalog, then a cache, then the
+  // Monsieur Cuisine search, exact name matches only. off: every ingredient goes out
+  // without an id.
+  MC_RESOLVE_INGREDIENTS: z.enum(["exact", "off"]).default("exact"),
   // Cookie header of a logged-in monsieur-cuisine.com session. A secret. The service stores
   // it on first start and whenever the value changes; the admin page can replace it.
   MC_COOKIE: z.string().min(1).optional(),

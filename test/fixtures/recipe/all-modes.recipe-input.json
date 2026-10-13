@@ -1,0 +1,105 @@
+{
+  "title": "Bridge Test Alle Modi",
+  "description": "Testrezept der mealie-mc-bridge mit je einem Schritt pro Geräteprogramm. Nicht kochen.",
+  "locale": "de-DE",
+  "complexity": "easy",
+  "categoryIds": [228],
+  "nutrients": [
+    { "name": "calories", "amount": 300 },
+    { "name": "carbohydrate", "amount": 60.4 },
+    { "name": "fat", "amount": 1 },
+    { "name": "protein", "amount": 8.6 }
+  ],
+  "servingSize": {
+    "amount": 4,
+    "unit": "Portionen",
+    "instruction": "Testrezept mit je einem Schritt pro Geräteprogramm. Nicht kochen.",
+    "preparationTime": 5,
+    "readyInTime": 130,
+    "ingredientGroups": [
+      {
+        "name": "Zutaten",
+        "ingredients": [
+          { "name": "Wasser", "amount": 500, "unit": "g", "isOptional": false },
+          { "name": "Zwiebel", "amount": 1, "unit": "Stück", "isOptional": false },
+          { "name": "Salz", "amount": "1/2", "unit": "TL", "isOptional": true },
+          { "name": "Mehl", "amount": 300, "unit": "g", "isOptional": false }
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "kind": "text",
+        "title": "Wasser einfüllen",
+        "description": "500 g Wasser in den Mixbehälter geben."
+      },
+      {
+        "kind": "scale",
+        "title": "Waage",
+        "description": "500 g Wasser abwiegen.",
+        "grams": 500
+      },
+      {
+        "kind": "customized",
+        "title": "Manuell 100 °C Linkslauf",
+        "temperature": 100,
+        "minutes": 5,
+        "seconds": 0,
+        "speed": 1,
+        "rotation": "left"
+      },
+      { "kind": "text", "title": "Zwiebel", "description": "Zwiebel zugeben." },
+      { "kind": "roasting", "title": "Anbraten", "temperature": 120, "minutes": 3, "seconds": 0 },
+      { "kind": "kneading_solid_dough", "title": "Kneten fester Teig", "minutes": 1, "seconds": 0 },
+      { "kind": "kneading_soft_dough", "title": "Kneten weicher Teig", "minutes": 1, "seconds": 0 },
+      {
+        "kind": "kneading_liquid_dough",
+        "title": "Kneten flüssiger Teig",
+        "minutes": 1,
+        "seconds": 0
+      },
+      { "kind": "steaming", "title": "Dampfgaren", "minutes": 10, "seconds": 0 },
+      { "kind": "puree", "title": "Pürieren", "minutes": 1, "seconds": 0 },
+      { "kind": "smoothie", "title": "Smoothie", "minutes": 1, "seconds": 0 },
+      {
+        "kind": "turbo",
+        "title": "Turbo",
+        "description": "Zwiebel 5 Sekunden zerkleinern.",
+        "seconds": 5
+      },
+      {
+        "kind": "customized",
+        "title": "Manuell ohne Hitze Stufe 5",
+        "temperature": 0,
+        "minutes": 0,
+        "seconds": 20,
+        "speed": 5,
+        "rotation": "right"
+      },
+      {
+        "kind": "slow_cooking",
+        "title": "Slow Cooking",
+        "temperature": 80,
+        "minutes": 15,
+        "seconds": 0
+      },
+      { "kind": "sous_vide", "title": "Sous-vide", "temperature": 60, "minutes": 15, "seconds": 0 },
+      {
+        "kind": "fermentation",
+        "title": "Fermentieren",
+        "temperature": 40,
+        "minutes": 30,
+        "seconds": 0
+      },
+      { "kind": "rice_cooking", "title": "Reis kochen", "minutes": 20, "seconds": 0 },
+      { "kind": "cooking_eggs", "title": "Eier kochen", "size": "medium", "texture": "hard" },
+      { "kind": "precleaning", "title": "Vorreinigung", "duration": "short" },
+      {
+        "kind": "text",
+        "title": "Fertig",
+        "description": "Fertig. Testrezept der Bridge, bitte löschen."
+      }
+    ]
+  },
+  "reviewHints": ["Testrezept: nicht kochen, nach der Prüfung löschen."]
+}

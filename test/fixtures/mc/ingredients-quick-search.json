@@ -1,0 +1,89 @@
+{
+  "code": 0,
+  "message": "20 ingredients are returned",
+  "data": {
+    "total": 20,
+    "ingredients": [
+      {
+        "name": "Mehl",
+        "systemIngredientId": 242292
+      },
+      {
+        "name": "Mehl für die Arbeitsfläche",
+        "systemIngredientId": 46835
+      },
+      {
+        "name": "Mehl zum Ausformen",
+        "systemIngredientId": 46933
+      },
+      {
+        "name": "Mehl zum Bearbeiten",
+        "systemIngredientId": 52368
+      },
+      {
+        "name": "Mehl zum Verarbeiten",
+        "systemIngredientId": 31190
+      },
+      {
+        "name": "Mehl, glutenfrei",
+        "systemIngredientId": 1645189
+      },
+      {
+        "name": "Butter und Mehl für die Backform",
+        "systemIngredientId": 54733
+      },
+      {
+        "name": "Butter und Mehl für die Form",
+        "systemIngredientId": 46392
+      },
+      {
+        "name": "Fett und Mehl für die Form",
+        "systemIngredientId": 55639
+      },
+      {
+        "name": "Mehl (Typ 405)",
+        "systemIngredientId": 46388
+      },
+      {
+        "name": "Mehl (Type 00)",
+        "systemIngredientId": 241465
+      },
+      {
+        "name": "Mehl (Type 1050)",
+        "systemIngredientId": 6649484
+      },
+      {
+        "name": "Mehl (Type 405)",
+        "systemIngredientId": 1683663
+      },
+      {
+        "name": "Mehl (Type 450)",
+        "systemIngredientId": 48228
+      },
+      {
+        "name": "Mehl (Type 550)",
+        "systemIngredientId": 21449
+      },
+      {
+        "name": "Butter und Mehl für die Arbeitsfläche und die Form",
+        "systemIngredientId": 50813
+      },
+      {
+        "name": "Mehl (Type 405 oder 550)",
+        "systemIngredientId": 56596
+      },
+      {
+        "name": "Mehl (Type 405) (gestrichen)",
+        "systemIngredientId": 287447
+      },
+      {
+        "name": "Mehl (Type 405) für die Arbeitsfläche",
+        "systemIngredientId": 21619
+      },
+      {
+        "name": "Mehl (Type 405) für die Form",
+        "systemIngredientId": 240745
+      }
+    ]
+  }
+}

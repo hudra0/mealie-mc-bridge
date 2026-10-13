@@ -1,0 +1,196 @@
+{
+  "code": 0,
+  "message": "Recipes are successfully returned",
+  "data": {
+    "currentPage": 1,
+    "language": "de-DE",
+    "total": 3,
+    "totalPage": 1,
+    "pageSize": 20,
+    "resultNo": 3,
+    "recipes": [
+      {
+        "languageLocale": "de-DE",
+        "author": {
+          "id": 1000001,
+          "name": "test-user",
+          "avatar": "https://cdn.example.com/avatars/default.png",
+          "tagId": "TEST01"
+        },
+        "status": "draft",
+        "title": "Bridge Test Alle Modi",
+        "source": "member",
+        "deviceTypes": [
+          {
+            "id": 13,
+            "name": "Monsieur Cuisine smart",
+            "code": "MC3.0",
+            "order": 4
+          }
+        ],
+        "complexity": {
+          "id": 142,
+          "name": "Einfach",
+          "level": 1,
+          "order": 1
+        },
+        "categories": [
+          {
+            "id": 228,
+            "name": "Suppen &amp; Eintöpfe",
+            "order": 6
+          }
+        ],
+        "sharingUrl": null,
+        "translationId": 800001,
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "createdAt": "2026-10-13 07:33:33",
+        "updatedAt": "2026-10-13 07:33:34",
+        "preparationTime": 5,
+        "readyInTime": 130,
+        "rating": 0,
+        "totalRating": 0,
+        "popularity": 0.25,
+        "media": null,
+        "parentId": null,
+        "copyrightWatermark": null,
+        "id": 900001,
+        "slug": null,
+        "thumbnail": null,
+        "detailsImage": null,
+        "allowSocialSharing": false,
+        "isResubmit": false,
+        "recipeMetas": [],
+        "translationStatus": "empty"
+      },
+      {
+        "languageLocale": "de-DE",
+        "author": {
+          "id": 1000001,
+          "name": "test-user",
+          "avatar": "https://cdn.example.com/avatars/default.png",
+          "tagId": "TEST01"
+        },
+        "status": "draft",
+        "title": "Bridge Test Editor",
+        "source": "member",
+        "deviceTypes": [
+          {
+            "id": 13,
+            "name": "Monsieur Cuisine smart",
+            "code": "MC3.0",
+            "order": 4
+          }
+        ],
+        "complexity": {
+          "id": 99,
+          "name": "Mittel",
+          "level": 2,
+          "order": 2
+        },
+        "categories": [
+          {
+            "id": 260,
+            "name": "Hauptgerichte",
+            "order": 10
+          },
+          {
+            "id": 471,
+            "name": "Küche Deutsch",
+            "order": 20
+          },
+          {
+            "id": 588,
+            "name": "Vegetarisch",
+            "order": 4
+          }
+        ],
+        "sharingUrl": null,
+        "translationId": 800002,
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "createdAt": "2026-10-13 07:46:30",
+        "updatedAt": "2026-10-13 07:47:36",
+        "preparationTime": 15,
+        "readyInTime": 30,
+        "rating": 0,
+        "totalRating": 0,
+        "popularity": 0.25,
+        "media": null,
+        "parentId": null,
+        "copyrightWatermark": null,
+        "id": 900002,
+        "slug": null,
+        "thumbnail": {
+          "landscapeMedia": {
+            "id": 700001,
+            "url": "https://cdn.example.com/media/sample-thumbnail.jpg",
+            "isAiGenerated": false
+          },
+          "portraitMedia": null
+        },
+        "detailsImage": null,
+        "allowSocialSharing": false,
+        "isResubmit": false,
+        "recipeMetas": [],
+        "translationStatus": "empty"
+      },
+      {
+        "languageLocale": "de-DE",
+        "author": {
+          "id": 1000001,
+          "name": "test-user",
+          "avatar": "https://cdn.example.com/avatars/default.png",
+          "tagId": "TEST01"
+        },
+        "status": "draft",
+        "title": "MC-Bridge Test (private-publish) 13.10. 09:33",
+        "source": "member",
+        "deviceTypes": [
+          {
+            "id": 13,
+            "name": "Monsieur Cuisine smart",
+            "code": "MC3.0",
+            "order": 4
+          }
+        ],
+        "complexity": {
+          "id": 142,
+          "name": "Einfach",
+          "level": 1,
+          "order": 1
+        },
+        "categories": [
+          {
+            "id": 228,
+            "name": "Suppen &amp; Eintöpfe",
+            "order": 6
+          }
+        ],
+        "sharingUrl": null,
+        "translationId": 800003,
+        "firstPublishedAt": null,
+        "lastPublishedAt": null,
+        "createdAt": "2026-10-13 07:33:34",
+        "updatedAt": "2026-10-13 07:33:35",
+        "preparationTime": 2,
+        "readyInTime": 12,
+        "rating": 0,
+        "totalRating": 0,
+        "popularity": 0.25,
+        "media": null,
+        "parentId": null,
+        "copyrightWatermark": null,
+        "id": 900003,
+        "slug": null,
+        "thumbnail": null,
+        "detailsImage": null,
+        "allowSocialSharing": false,
+        "isResubmit": false,
+        "recipeMetas": [],
+        "translationStatus": "empty"
+      }
+    ]
+  }
+}

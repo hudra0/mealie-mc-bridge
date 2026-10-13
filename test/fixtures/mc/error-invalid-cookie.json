@@ -1,0 +1,5 @@
+{
+  "code": 110001,
+  "message": "InvalidAuthCookieException",
+  "data": "Invalid auth cookie."
+}

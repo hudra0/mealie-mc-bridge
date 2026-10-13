@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
@@ -29,6 +30,7 @@
     "corpus:analyze-structure": "tsx scripts/corpus/analyze-structure.ts",
     "corpus:analyze-timing": "tsx scripts/corpus/analyze-timing.ts",
     "corpus:build-knowledge": "tsx scripts/corpus/build-knowledge.ts",
+    "mc:smoke": "tsx --env-file-if-exists=.env scripts/mc-smoke.ts",
     "format:check": "tsx scripts/format.ts --check",
     "format": "tsx scripts/format.ts --write",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
@@ -37,11 +39,13 @@
   "dependencies": {
     "fastify": "^5.12.5",
     "pino": "^10.4.0",
+    "sharp": "^0.35.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^9.39.5",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",

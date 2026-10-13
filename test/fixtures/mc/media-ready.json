@@ -1,0 +1,26 @@
+{
+  "code": 0,
+  "message": "Success",
+  "data": {
+    "media": [
+      {
+        "video": null,
+        "id": 700002,
+        "uploadStatus": "3",
+        "url": "https://cdn.example.com/media/sample-details.jpg",
+        "mediaType": "image",
+        "createdAt": "2026-10-13T07:46:28.436Z",
+        "updatedAt": "2026-10-13T07:46:29.000Z"
+      },
+      {
+        "video": null,
+        "id": 700001,
+        "uploadStatus": "3",
+        "url": "https://cdn.example.com/media/sample-thumbnail.jpg",
+        "mediaType": "image",
+        "createdAt": "2026-10-13T07:46:28.967Z",
+        "updatedAt": "2026-10-13T07:46:29.000Z"
+      }
+    ]
+  }
+}

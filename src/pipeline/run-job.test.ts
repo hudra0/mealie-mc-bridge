@@ -832,6 +832,31 @@ describe("runJob ingredient ids", () => {
     expect(s.store.jobs.get(job.id)?.ingredients?.enabled).toBe(false);
   });
 
+  it("requeues without recording counts when a shutdown interrupts resolution", async () => {
+    const controller = new AbortController();
+    const s = setup({
+      ingredients: {
+        resolveAll: (names) => {
+          controller.abort();
+          return Promise.resolve({
+            ids: new Map(names.map((name) => [name.toLowerCase(), null])),
+            stats: { catalog: 0, cache: 0, search: 0, unresolved: names.length },
+            unresolvedNames: [...names],
+            enabled: true,
+          });
+        },
+      },
+    });
+    const job = s.claim();
+    const outcome = await runJob(job, s.deps, { signal: controller.signal });
+    expect(outcome.status).toBe("interrupted");
+    expect(s.store.jobs.get(job.id)).toMatchObject({ status: "queued", ingredients: null });
+    expect(messages(s, job).some((message) => message.startsWith("Ingredients resolved"))).toBe(
+      false,
+    );
+    expect(s.calls).not.toContain("mc.createRecipe");
+  });
+
   it("sends no ids and records nothing without a resolver", async () => {
     const s = setup();
     const job = s.claim();

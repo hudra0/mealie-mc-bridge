@@ -10652,14 +10652,6 @@
       "alternatives": []
     },
     {
-      "name": "+ 2 Msp. Pfeffer",
-      "systemIngredientId": 52523,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "+ 2 Prisen Salz",
       "systemIngredientId": 289547,
       "officialRecipes": 0,
@@ -10684,26 +10676,10 @@
       "alternatives": []
     },
     {
-      "name": "1 rote Paprikaschot",
-      "systemIngredientId": 185585,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "1 rote Paprikaschote",
       "systemIngredientId": 174659,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "1 unbehandelte Zitrone (80 g)",
-      "systemIngredientId": 200000,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -10732,26 +10708,10 @@
       "alternatives": []
     },
     {
-      "name": "Agar-Agar",
-      "systemIngredientId": 1683473,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Agavendicksaft oder Honig",
       "systemIngredientId": 58537,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Anissamen",
-      "systemIngredientId": 287602,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -10772,38 +10732,6 @@
       "alternatives": []
     },
     {
-      "name": "Apfelessig oder Zitronensaft",
-      "systemIngredientId": 285915,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Apfelsaft",
-      "systemIngredientId": 51395,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ausstecher nach Wahl",
-      "systemIngredientId": 2697187,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Austernsauce",
-      "systemIngredientId": 290553,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Backform (22 x 35 cm)",
       "systemIngredientId": 1720877,
       "officialRecipes": 0,
@@ -10816,22 +10744,6 @@
       "systemIngredientId": 59446,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Backoblaten, rund",
-      "systemIngredientId": 1724055,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Backoblaten, rund (4 cm Ø)",
-      "systemIngredientId": 1724043,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -10876,43 +10788,11 @@
       "alternatives": []
     },
     {
-      "name": "Baconwürfel",
-      "systemIngredientId": 4575605,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Schwein",
-      "alternatives": []
-    },
-    {
       "name": "Balsamico Essig",
       "systemIngredientId": 53724,
       "officialRecipes": 0,
       "memberRecipes": 5,
       "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Bambussprossen",
-      "systemIngredientId": 1683487,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "Bambussprossen aus der Dose/Glas",
-      "systemIngredientId": 1683488,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "Bananen (250 g)",
-      "systemIngredientId": 21474,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Obst",
       "alternatives": []
     },
     {
@@ -10924,74 +10804,10 @@
       "alternatives": []
     },
     {
-      "name": "Bauchspeck in Scheiben, durchwachsen",
-      "systemIngredientId": 1719787,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Schwein",
-      "alternatives": []
-    },
-    {
       "name": "Beeren nach Wahl ( Himbeeren, Brombeeren, Blaubeeren, Erdbeeren)",
       "systemIngredientId": 54114,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Beeren nach Wahl (TK)",
-      "systemIngredientId": 1683496,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Obst",
-      "alternatives": []
-    },
-    {
-      "name": "Bienenhonig",
-      "systemIngredientId": 291923,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Bittermandelaroma (2 ml)",
-      "systemIngredientId": 287699,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Blattgelatine",
-      "systemIngredientId": 1646005,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Blattspinat (TK, aufgetaut)",
-      "systemIngredientId": 55387,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Blumenkohl, in Röschen",
-      "systemIngredientId": 242260,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Blätterteig (aus dem Kühlregal; 25 x 38 cm)",
-      "systemIngredientId": 59667,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11020,14 +10836,6 @@
       "alternatives": []
     },
     {
-      "name": "Brokkoli (300 g)",
-      "systemIngredientId": 52295,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Brot",
       "systemIngredientId": 289098,
       "officialRecipes": 0,
@@ -11036,26 +10844,10 @@
       "alternatives": []
     },
     {
-      "name": "Brot in Scheiben",
-      "systemIngredientId": 1719221,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Brotgewürz, gemahlen",
       "systemIngredientId": 4538523,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Butter für das Blech",
-      "systemIngredientId": 52322,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11076,50 +10868,10 @@
       "alternatives": []
     },
     {
-      "name": "Butter für die Pfanne",
-      "systemIngredientId": 45145,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
       "name": "Butter in Stücken",
       "systemIngredientId": 54572,
       "officialRecipes": 0,
       "memberRecipes": 11,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Butter und Mehl (Type 405) für die Form",
-      "systemIngredientId": 59174,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Butter und Mehl für die Backform",
-      "systemIngredientId": 54733,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Butter und Paniermehl für die Form",
-      "systemIngredientId": 55479,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Butter zum Braten",
-      "systemIngredientId": 52527,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11140,43 +10892,11 @@
       "alternatives": []
     },
     {
-      "name": "Cashewkerne (geröstet und gesalzen)",
-      "systemIngredientId": 58010,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Cayennepfeffer, gemahlen zum Abschmecken",
-      "systemIngredientId": 1715769,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Champignons",
       "systemIngredientId": 45262,
       "officialRecipes": 0,
       "memberRecipes": 5,
       "category": "Pilze",
-      "alternatives": []
-    },
-    {
-      "name": "Champignons, in Scheiben",
-      "systemIngredientId": 242211,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Chia-Samen",
-      "systemIngredientId": 51521,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -11196,50 +10916,10 @@
       "alternatives": []
     },
     {
-      "name": "Chilisauce (Sriracha, optional ½ Tl Chilipulver)",
-      "systemIngredientId": 47012,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Chilischote",
       "systemIngredientId": 52343,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Chilischoten",
-      "systemIngredientId": 48067,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Chorizo",
-      "systemIngredientId": 49865,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Cranberries, getrocknete",
-      "systemIngredientId": 1723393,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Croûtons",
-      "systemIngredientId": 2678686,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11268,14 +10948,6 @@
       "alternatives": []
     },
     {
-      "name": "Curry",
-      "systemIngredientId": 21097,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Currypulver",
       "systemIngredientId": 48440,
       "officialRecipes": 0,
@@ -11284,58 +10956,10 @@
       "alternatives": []
     },
     {
-      "name": "Dinkelvollkornmehl (Type 1050)",
-      "systemIngredientId": 1110643,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Ei",
       "systemIngredientId": 242162,
       "officialRecipes": 0,
       "memberRecipes": 17,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ei (Größe M oder L)",
-      "systemIngredientId": 56594,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ei (Größe M) zum Bestreichen",
-      "systemIngredientId": 287041,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ei (M oder L)",
-      "systemIngredientId": 56967,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ei zum Bestreichen (Größe M)",
-      "systemIngredientId": 50966,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Eie (Größe M)",
-      "systemIngredientId": 1722573,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11356,22 +10980,6 @@
       "alternatives": []
     },
     {
-      "name": "Eigelb (Größe M) und 2 El Milch (Frischmilch, 3,5 % Fett) zum Bestreichen",
-      "systemIngredientId": 287061,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Eigelb (Größe M) zum Bestreichen",
-      "systemIngredientId": 287701,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Eigelb und 2 El Milch zum Bestreichen",
       "systemIngredientId": 57934,
       "officialRecipes": 0,
@@ -11380,26 +10988,10 @@
       "alternatives": []
     },
     {
-      "name": "Einmachgläser mit Gummiring und Klammern",
-      "systemIngredientId": 287080,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Eiweiß",
       "systemIngredientId": 55557,
       "officialRecipes": 0,
       "memberRecipes": 6,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Eiweiß (Größe L)",
-      "systemIngredientId": 287128,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11428,34 +11020,10 @@
       "alternatives": []
     },
     {
-      "name": "Erbsen aus der Dose",
-      "systemIngredientId": 285762,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Erdbeeren (frisch oder TK)",
-      "systemIngredientId": 46906,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Erdbeersirup",
       "systemIngredientId": 4538921,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Erdnussbutter",
-      "systemIngredientId": 46604,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11484,22 +11052,6 @@
       "alternatives": []
     },
     {
-      "name": "Essiggurken aus der Dose/Glas",
-      "systemIngredientId": 1683544,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "Fenchelsamen",
-      "systemIngredientId": 49168,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Feta",
       "systemIngredientId": 56293,
       "officialRecipes": 0,
@@ -11524,14 +11076,6 @@
       "alternatives": []
     },
     {
-      "name": "Fett und Paniermehl für die Form",
-      "systemIngredientId": 45306,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Fett zum Braten",
       "systemIngredientId": 58818,
       "officialRecipes": 0,
@@ -11540,90 +11084,10 @@
       "alternatives": []
     },
     {
-      "name": "Flasche (à 350 ml)",
-      "systemIngredientId": 1719547,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Fleisch-, Gemüse- oder Hühnerbrühe zum Garen",
-      "systemIngredientId": 1646326,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Fleischwurst in Scheiben",
-      "systemIngredientId": 4539026,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Schwein",
-      "alternatives": []
-    },
-    {
       "name": "Food Processor",
       "systemIngredientId": 4539053,
       "officialRecipes": 0,
       "memberRecipes": 6,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Frischkäse (25 % Fett)",
-      "systemIngredientId": 48619,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Frischkäse (3 % Fett)",
-      "systemIngredientId": 47643,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
-      "name": "Frischkäse (34 % Fett)",
-      "systemIngredientId": 46369,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
-      "name": "Frühlingszwiebel (30 g)",
-      "systemIngredientId": 286244,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Frühlingszwiebeln, in Ringen",
-      "systemIngredientId": 242183,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Garnelen (TK)",
-      "systemIngredientId": 4539137,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Meeresfrüchte",
-      "alternatives": []
-    },
-    {
-      "name": "Gelatine",
-      "systemIngredientId": 51167,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11660,22 +11124,6 @@
       "alternatives": []
     },
     {
-      "name": "Gemüsezwiebel (130 g)",
-      "systemIngredientId": 787652,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Gemüsezwiebel (50 g)",
-      "systemIngredientId": 290901,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Geriebener Mozzarella (45 % Fett)",
       "systemIngredientId": 21660,
       "officialRecipes": 0,
@@ -11689,70 +11137,6 @@
       "officialRecipes": 0,
       "memberRecipes": 3,
       "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "Gewürznelken",
-      "systemIngredientId": 50358,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Gnocchi (vorgegart, aus dem Kühlregal, Kochzeit 2-3 Minuten)",
-      "systemIngredientId": 47770,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Gorgonzola",
-      "systemIngredientId": 290353,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Gouda, gerieben",
-      "systemIngredientId": 242357,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Grenadinesirup",
-      "systemIngredientId": 52976,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Gulasch, gemischt",
-      "systemIngredientId": 1683574,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Rind",
-      "alternatives": []
-    },
-    {
-      "name": "Gurke (200 g)",
-      "systemIngredientId": 48232,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Gurkensud der Gewürzgurken",
-      "systemIngredientId": 58787,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -11772,14 +11156,6 @@
       "alternatives": []
     },
     {
-      "name": "Hafermilch, ungesüßt",
-      "systemIngredientId": 6005040,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Hagelzucker",
       "systemIngredientId": 1683576,
       "officialRecipes": 0,
@@ -11788,26 +11164,10 @@
       "alternatives": []
     },
     {
-      "name": "Hanfsamen",
-      "systemIngredientId": 1683577,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Harissa (Chilipaste)",
       "systemIngredientId": 45643,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Harissapaste",
-      "systemIngredientId": 1633268,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11836,38 +11196,6 @@
       "alternatives": []
     },
     {
-      "name": "Himbeermarmelade",
-      "systemIngredientId": 2669430,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Hirtenkäse (45 % Fett i. Tr.)",
-      "systemIngredientId": 53257,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Hokkaidokürbis, in ca. 1 cm großen Würfeln",
-      "systemIngredientId": 242355,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Honig zum Beträufeln",
-      "systemIngredientId": 779257,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Hähnchenbrust",
       "systemIngredientId": 55827,
       "officialRecipes": 0,
@@ -11880,22 +11208,6 @@
       "systemIngredientId": 21902,
       "officialRecipes": 0,
       "memberRecipes": 8,
-      "category": "Geflügel",
-      "alternatives": []
-    },
-    {
-      "name": "Hähnchenfleisch",
-      "systemIngredientId": 3158,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Geflügel",
-      "alternatives": []
-    },
-    {
-      "name": "Hähncheninnenfilets oder Hähnchenbrust",
-      "systemIngredientId": 59642,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": "Geflügel",
       "alternatives": []
     },
@@ -11916,50 +11228,10 @@
       "alternatives": []
     },
     {
-      "name": "Ingwer (2 cm)",
-      "systemIngredientId": 21894,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "Ingwer (4 cm)",
-      "systemIngredientId": 787587,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ingwer (5 cm)",
-      "systemIngredientId": 241293,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Ingwer (walnussgroß)",
       "systemIngredientId": 288017,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ingwer, kandiert",
-      "systemIngredientId": 4539482,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Ingwerpulver",
-      "systemIngredientId": 242571,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -11980,14 +11252,6 @@
       "alternatives": []
     },
     {
-      "name": "Joghurt (1,5 % Fett)",
-      "systemIngredientId": 47403,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Joghurt (3,5 % Fett)",
       "systemIngredientId": 46134,
       "officialRecipes": 0,
@@ -12004,42 +11268,10 @@
       "alternatives": []
     },
     {
-      "name": "Kakao zum Bestreuen",
-      "systemIngredientId": 50920,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Kakaopulver (für Trinkschokolade, kein Backkakao)",
       "systemIngredientId": 47791,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kapern in Essiglake",
-      "systemIngredientId": 54229,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kardamom",
-      "systemIngredientId": 55165,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kardamonsamen",
-      "systemIngredientId": 49121,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12084,58 +11316,10 @@
       "alternatives": []
     },
     {
-      "name": "Kartoffeln, in Würfeln",
-      "systemIngredientId": 242387,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Kastenform (25 x11 cm)",
       "systemIngredientId": 1718743,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kastenform (30 cm)",
-      "systemIngredientId": 1723677,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kastenform (30 x 11 cm)",
-      "systemIngredientId": 1717377,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kefir (1,5 % Fett)",
-      "systemIngredientId": 1683611,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
-      "name": "Ketchup nach Belieben",
-      "systemIngredientId": 4584803,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kichererbsen (à 265 g)",
-      "systemIngredientId": 57432,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12148,34 +11332,10 @@
       "alternatives": []
     },
     {
-      "name": "Kidneybohnen (255 g)",
-      "systemIngredientId": 239531,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kidneybohnen aus der Dose",
-      "systemIngredientId": 45191,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Kirschen aus dem Glas",
       "systemIngredientId": 54752,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kirschen, entkernt",
-      "systemIngredientId": 2671650,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12204,14 +11364,6 @@
       "alternatives": []
     },
     {
-      "name": "Kiwis, gold",
-      "systemIngredientId": 4539745,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Obst",
-      "alternatives": []
-    },
-    {
       "name": "Knoblauchknolle",
       "systemIngredientId": 288314,
       "officialRecipes": 0,
@@ -12236,26 +11388,10 @@
       "alternatives": []
     },
     {
-      "name": "Knollensellerie (100 g)",
-      "systemIngredientId": 289694,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Knollensellerie, in Stücken",
       "systemIngredientId": 242120,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kochsahne (22 % Fett)",
-      "systemIngredientId": 50761,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12284,26 +11420,10 @@
       "alternatives": []
     },
     {
-      "name": "Kokosraspel zum Bestreuen",
-      "systemIngredientId": 54597,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Kokosöl oder neutrales Speiseöl",
       "systemIngredientId": 290461,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kondensmilch (7,5 % Fett)",
-      "systemIngredientId": 287078,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12316,27 +11436,11 @@
       "alternatives": []
     },
     {
-      "name": "Koriander, gehackt",
-      "systemIngredientId": 1683621,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Korianderkörner",
       "systemIngredientId": 240794,
       "officialRecipes": 0,
       "memberRecipes": 2,
       "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Krabben",
-      "systemIngredientId": 288480,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Meeresfrüchte",
       "alternatives": []
     },
     {
@@ -12353,14 +11457,6 @@
       "officialRecipes": 0,
       "memberRecipes": 4,
       "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kräuterfrischkäse (Doppelrahmstufe)",
-      "systemIngredientId": 21567,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
       "alternatives": []
     },
     {
@@ -12396,22 +11492,6 @@
       "alternatives": []
     },
     {
-      "name": "Kümmel nach Belieben",
-      "systemIngredientId": 46244,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Kürbis",
-      "systemIngredientId": 56419,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Kürbis (Hokkaido)",
       "systemIngredientId": 59258,
       "officialRecipes": 0,
@@ -12428,42 +11508,10 @@
       "alternatives": []
     },
     {
-      "name": "Lachsfilet (frisch oder TK)",
-      "systemIngredientId": 286534,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Lauch, in Stücken",
-      "systemIngredientId": 242431,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Lebkuchengew√ºrz",
       "systemIngredientId": 1683638,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Limette (Saft)",
-      "systemIngredientId": 47060,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Limetten (Saft)",
-      "systemIngredientId": 52016,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12508,22 +11556,6 @@
       "alternatives": []
     },
     {
-      "name": "Majoran, gehackt",
-      "systemIngredientId": 1633450,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Mandarinen aus der Dose",
-      "systemIngredientId": 53278,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Mandelblättchen",
       "systemIngredientId": 21797,
       "officialRecipes": 0,
@@ -12544,22 +11576,6 @@
       "systemIngredientId": 242336,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Mandelstifte",
-      "systemIngredientId": 52060,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Mangos",
-      "systemIngredientId": 1132258,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12596,14 +11612,6 @@
       "alternatives": []
     },
     {
-      "name": "Mehl (Type 405) für die Arbeitsfläche und zum Bestäuben",
-      "systemIngredientId": 240282,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Milch (3,5 % Fett)",
       "systemIngredientId": 55052,
       "officialRecipes": 0,
@@ -12616,14 +11624,6 @@
       "systemIngredientId": 1644209,
       "officialRecipes": 0,
       "memberRecipes": 11,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Milch (Frischmilch, 3,5%)",
-      "systemIngredientId": 1719981,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12644,43 +11644,11 @@
       "alternatives": []
     },
     {
-      "name": "Minzblätter",
-      "systemIngredientId": 291713,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Minze, gehackt",
-      "systemIngredientId": 1683669,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Mohn",
       "systemIngredientId": 49274,
       "officialRecipes": 0,
       "memberRecipes": 2,
       "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Mohn, Sesam, Sonnenblumenkerne zum Bestreuen",
-      "systemIngredientId": 289536,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Mungbohnensprossen",
-      "systemIngredientId": 2672528,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
       "alternatives": []
     },
     {
@@ -12692,51 +11660,11 @@
       "alternatives": []
     },
     {
-      "name": "Muskat, Pfeffer und Salz zum Abschmecken",
-      "systemIngredientId": 44907,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Naturjoghurt (0,1 % Fett)",
-      "systemIngredientId": 287566,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Naturjoghurt (1,8 % Fett)",
-      "systemIngredientId": 240922,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Naturjoghurt (10 % Fett)",
-      "systemIngredientId": 51219,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Naturjoghurt (3,5 % Fett)",
       "systemIngredientId": 46296,
       "officialRecipes": 0,
       "memberRecipes": 9,
       "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
-      "name": "Naturjoghurt (3,8 % Fett)",
-      "systemIngredientId": 241348,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -12772,34 +11700,10 @@
       "alternatives": []
     },
     {
-      "name": "Olivenöl zum Beträufeln",
-      "systemIngredientId": 57598,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Orangeat",
       "systemIngredientId": 240510,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Orangenblütenwasser",
-      "systemIngredientId": 254163,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Pandanblätter",
-      "systemIngredientId": 5667657,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12824,22 +11728,6 @@
       "systemIngredientId": 1719861,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Paprikaschoten. grün",
-      "systemIngredientId": 1645088,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Pardina Linsen",
-      "systemIngredientId": 45798,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -12876,35 +11764,11 @@
       "alternatives": []
     },
     {
-      "name": "Pecorino, gerieben (48 % Fett)",
-      "systemIngredientId": 2671521,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
       "name": "Penne Rigate",
       "systemIngredientId": 1683693,
       "officialRecipes": 0,
       "memberRecipes": 2,
       "category": "Nudeln",
-      "alternatives": []
-    },
-    {
-      "name": "Petersilie (Blättchen)",
-      "systemIngredientId": 242258,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Petersilienstiele, glatt",
-      "systemIngredientId": 1724727,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -12924,74 +11788,10 @@
       "alternatives": []
     },
     {
-      "name": "Pfeffer, weiß",
-      "systemIngredientId": 1716517,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Pfefferkörner",
-      "systemIngredientId": 50360,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Pflanzenmilch (Hafermilch, Mandelmilch oder Reismilch)",
-      "systemIngredientId": 58535,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Pflanzenöl zum Einfetten",
       "systemIngredientId": 55498,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Pflaumen, entsteint, getrocknet",
-      "systemIngredientId": 1683697,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Obst",
-      "alternatives": []
-    },
-    {
-      "name": "Pilze nach Wahl",
-      "systemIngredientId": 1683699,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Pilze",
-      "alternatives": []
-    },
-    {
-      "name": "Piment",
-      "systemIngredientId": 49023,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Pistazien",
-      "systemIngredientId": 241041,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Pistazienkerne",
-      "systemIngredientId": 46006,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13008,38 +11808,6 @@
       "systemIngredientId": 242300,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Preiselbeeren aus dem Glas",
-      "systemIngredientId": 50045,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Obst",
-      "alternatives": []
-    },
-    {
-      "name": "Puderzucker nach Belieben",
-      "systemIngredientId": 240887,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Puderzucker oder Schokoladenglasur nach Belieben",
-      "systemIngredientId": 288576,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Puderzucker oder Zucker zum Bestäuben",
-      "systemIngredientId": 779255,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13092,35 +11860,11 @@
       "alternatives": []
     },
     {
-      "name": "Rinderfilets (à 150 g)",
-      "systemIngredientId": 2672029,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Rind",
-      "alternatives": []
-    },
-    {
-      "name": "Rinderhack",
-      "systemIngredientId": 242088,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Risottoreis (Arborio)",
       "systemIngredientId": 55926,
       "officialRecipes": 0,
       "memberRecipes": 3,
       "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Risottoreis (Kochzeit 18-20 Minuten)",
-      "systemIngredientId": 1683728,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Reis & Getreide",
       "alternatives": []
     },
     {
@@ -13148,42 +11892,10 @@
       "alternatives": []
     },
     {
-      "name": "Rohschinkenwürfel",
-      "systemIngredientId": 240573,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Rosenwasser",
       "systemIngredientId": 1683734,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Rosmarin, gemahlen",
-      "systemIngredientId": 4540774,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Rote Bete aus dem Glas",
-      "systemIngredientId": 58789,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "Rotkohl, in Stücken",
-      "systemIngredientId": 242490,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13204,22 +11916,6 @@
       "alternatives": []
     },
     {
-      "name": "Räucherlachs in Scheiben",
-      "systemIngredientId": 48536,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Saft und Abrieb einer unbehandelten Zitronen",
-      "systemIngredientId": 242313,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Saft von ½ Zitrone",
       "systemIngredientId": 54279,
       "officialRecipes": 0,
@@ -13236,43 +11932,11 @@
       "alternatives": []
     },
     {
-      "name": "Sahne (30 % Fettgehalt)",
-      "systemIngredientId": 52848,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Sahne (mind. 30 % Fettgehalt)",
-      "systemIngredientId": 52427,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Sahne-Schmelzkäse (50 % Fett)",
       "systemIngredientId": 55968,
       "officialRecipes": 0,
       "memberRecipes": 2,
       "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Sahnesteif (8 g)",
-      "systemIngredientId": 59411,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Salami in Scheiben",
-      "systemIngredientId": 4540799,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Schwein",
       "alternatives": []
     },
     {
@@ -13308,26 +11972,10 @@
       "alternatives": []
     },
     {
-      "name": "Salz nach Belieben",
-      "systemIngredientId": 287833,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Salz und Pfeffer zum Abschmecken nach Belieben",
       "systemIngredientId": 288004,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Salz, Pfeffer und Paprikapulver zum Abschmecken",
-      "systemIngredientId": 289887,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13364,35 +12012,11 @@
       "alternatives": []
     },
     {
-      "name": "Sauerkraut (abgetropft)",
-      "systemIngredientId": 59546,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Sauerteig (FP)",
       "systemIngredientId": 287228,
       "officialRecipes": 0,
       "memberRecipes": 3,
       "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Schafskäse (in Salzlake, abgetropft, 45 % Fett)",
-      "systemIngredientId": 47247,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Schafskäse in Salzlake, gewürfelt (45 % Fett)",
-      "systemIngredientId": 4540874,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
       "alternatives": []
     },
     {
@@ -13428,42 +12052,10 @@
       "alternatives": []
     },
     {
-      "name": "Schmand oder Crème fraîche (je 20 % Fett)",
-      "systemIngredientId": 241648,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Schmelzkäse",
-      "systemIngredientId": 242145,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Schokoladen-Tropfen",
-      "systemIngredientId": 59469,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Schokoladenglasur nach Wahl",
       "systemIngredientId": 1683764,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Schokotropfen (Zartbitter oder Vollmilch)",
-      "systemIngredientId": 241166,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13476,50 +12068,10 @@
       "alternatives": []
     },
     {
-      "name": "Schweine- oder Putengeschnetzeltes",
-      "systemIngredientId": 242207,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Schweinefilet (600 g)",
-      "systemIngredientId": 47906,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Seelachsfilets (TK)",
-      "systemIngredientId": 4546512,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Fisch",
-      "alternatives": []
-    },
-    {
       "name": "Sesam",
       "systemIngredientId": 21952,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Sesam, geröstet",
-      "systemIngredientId": 1683775,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Sesamkörner",
-      "systemIngredientId": 54273,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13540,14 +12092,6 @@
       "alternatives": []
     },
     {
-      "name": "Sodawasser",
-      "systemIngredientId": 286564,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Soft-Datteln, entsteint",
       "systemIngredientId": 242226,
       "officialRecipes": 0,
@@ -13564,28 +12108,12 @@
       "alternatives": []
     },
     {
-      "name": "Sojasauce, hell",
-      "systemIngredientId": 1683779,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Sonnenblumenöl",
       "systemIngredientId": 20574,
       "officialRecipes": 0,
       "memberRecipes": 13,
       "category": null,
       "alternatives": [{ "systemIngredientId": 21934, "officialRecipes": 0, "memberRecipes": 1 }]
-    },
-    {
-      "name": "Sonnenblumenöl zum Braten",
-      "systemIngredientId": 58432,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
     },
     {
       "name": "Spaghetti (Kochzeit 10 Minuten)",
@@ -13596,27 +12124,11 @@
       "alternatives": []
     },
     {
-      "name": "Speck",
-      "systemIngredientId": 50632,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Speckwürfel",
       "systemIngredientId": 21659,
       "officialRecipes": 0,
       "memberRecipes": 5,
       "category": "Schwein",
-      "alternatives": []
-    },
-    {
-      "name": "Speisestärke (gehäuft)",
-      "systemIngredientId": 287779,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -13632,54 +12144,6 @@
       "systemIngredientId": 1717573,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Stangen Staudensellerie (150 g)",
-      "systemIngredientId": 51918,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Stangensellerie",
-      "systemIngredientId": 1722339,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Suppenfleisch",
-      "systemIngredientId": 46267,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Suppengemüse (Möhren, Knollensellerie, Lauch)",
-      "systemIngredientId": 46027,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Suppengrün (Knollensellerie, Möhren, Lauch; 400 g geputzt gewogen)",
-      "systemIngredientId": 45459,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Suppennudeln",
-      "systemIngredientId": 52039,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13716,58 +12180,10 @@
       "alternatives": []
     },
     {
-      "name": "Tellerlinsen, getrocknet",
-      "systemIngredientId": 4541275,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Thai-Basilikum",
-      "systemIngredientId": 18978,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Thai-Currypaste, grün",
-      "systemIngredientId": 4541284,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Thunfisch im eigenen Saft aus der Dose",
-      "systemIngredientId": 58094,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Tl Vanilleextrakt",
-      "systemIngredientId": 49951,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Tomate",
       "systemIngredientId": 1718757,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Tomaten, geviertelt",
-      "systemIngredientId": 242433,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13828,14 +12244,6 @@
       "alternatives": []
     },
     {
-      "name": "Vanillepuddingpulver (zum Kochen, 37 g)",
-      "systemIngredientId": 46856,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Vanillepuddingpulver (à 37 g)",
       "systemIngredientId": 240743,
       "officialRecipes": 0,
@@ -13844,26 +12252,10 @@
       "alternatives": []
     },
     {
-      "name": "Vanillepuddingpulver zum Kochen",
-      "systemIngredientId": 1717509,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Vanilleschote (Mark, alternativ 1 Tl Vanillezucker)",
       "systemIngredientId": 58636,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Vanilleschoten (ausgekratztes Mark)",
-      "systemIngredientId": 58558,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13892,50 +12284,10 @@
       "alternatives": []
     },
     {
-      "name": "Vanillezucker (à 8 g)",
-      "systemIngredientId": 48665,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Vollmilchkuvertüre",
-      "systemIngredientId": 50897,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Vollmilchschokolade, in Stücken",
-      "systemIngredientId": 242071,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Wacholderbeeren, getrocknet",
-      "systemIngredientId": 1634688,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Walnüsse",
       "systemIngredientId": 240813,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Weichweizengries",
-      "systemIngredientId": 58816,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -13988,34 +12340,10 @@
       "alternatives": []
     },
     {
-      "name": "Weizenmehl Type 550",
-      "systemIngredientId": 241120,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Weißbrot",
-      "systemIngredientId": 53810,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Weißwein",
       "systemIngredientId": 46697,
       "officialRecipes": 0,
       "memberRecipes": 10,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Wirsing, geputzt gewogen",
-      "systemIngredientId": 58075,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14044,42 +12372,10 @@
       "alternatives": []
     },
     {
-      "name": "Zartbitterkuvertüre, in Stücken",
-      "systemIngredientId": 242607,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Zartbitterschokolade",
       "systemIngredientId": 45350,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zartbitterschokolade (70 % Kakao)",
-      "systemIngredientId": 21759,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zartbitterschokolade (72 %)",
-      "systemIngredientId": 59168,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zartbitterschokolade, in Stücken",
-      "systemIngredientId": 242575,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14092,26 +12388,10 @@
       "alternatives": []
     },
     {
-      "name": "Zimt-Zucker zum Bestreuen",
-      "systemIngredientId": 225636,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Zimtstange",
       "systemIngredientId": 48307,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zitronat",
-      "systemIngredientId": 240512,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14132,34 +12412,10 @@
       "alternatives": []
     },
     {
-      "name": "Zitrone, unbehandelt",
-      "systemIngredientId": 1718851,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Zitronenabrieb",
       "systemIngredientId": 58682,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zitronenthymian",
-      "systemIngredientId": 4541587,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zucchini, in Würfeln",
-      "systemIngredientId": 242092,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14172,34 +12428,10 @@
       "alternatives": []
     },
     {
-      "name": "Zucker zum Wälzen",
-      "systemIngredientId": 287104,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zuckerdekor nach Wahl",
-      "systemIngredientId": 2675490,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Zuckerrübensirup",
       "systemIngredientId": 47595,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Zuckerstreusel nach Belieben",
-      "systemIngredientId": 21496,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14220,26 +12452,10 @@
       "alternatives": []
     },
     {
-      "name": "Zwiebel (60 g)",
-      "systemIngredientId": 44985,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "Zwiebel (70 g)",
       "systemIngredientId": 45185,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "Zwiebel (80 g)",
-      "systemIngredientId": 21592,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": "Gemüse",
       "alternatives": []
     },
@@ -14276,14 +12492,6 @@
       "alternatives": []
     },
     {
-      "name": "aromatische Fleischtomaten",
-      "systemIngredientId": 57531,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "blanchierte Mandeln",
       "systemIngredientId": 48736,
       "officialRecipes": 0,
@@ -14297,14 +12505,6 @@
       "officialRecipes": 0,
       "memberRecipes": 2,
       "category": "Pilze",
-      "alternatives": []
-    },
-    {
-      "name": "brauner Kandiszucker",
-      "systemIngredientId": 55219,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -14348,14 +12548,6 @@
       "alternatives": []
     },
     {
-      "name": "dunkler Balsamico-Essig",
-      "systemIngredientId": 51391,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "dunkles Roggenmehl (Type 1150)",
       "systemIngredientId": 48023,
       "officialRecipes": 0,
@@ -14364,42 +12556,10 @@
       "alternatives": []
     },
     {
-      "name": "durchwachsene Speckwürfel",
-      "systemIngredientId": 57592,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "edelsüßes Paprikapulver",
       "systemIngredientId": 21825,
       "officialRecipes": 0,
       "memberRecipes": 17,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "eingelegte Jalapeños nach Belieben",
-      "systemIngredientId": 56249,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "einige Blättchen Petersilie zum Garnieren",
-      "systemIngredientId": 242393,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "einige Blättchen frisches Basilikum",
-      "systemIngredientId": 242149,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14484,14 +12644,6 @@
       "alternatives": []
     },
     {
-      "name": "festkochende , möglichst neue Kartoffeln",
-      "systemIngredientId": 290688,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "festkochende Kartoffeln",
       "systemIngredientId": 22006,
       "officialRecipes": 0,
@@ -14548,14 +12700,6 @@
       "alternatives": []
     },
     {
-      "name": "frische Blaubeeren",
-      "systemIngredientId": 286853,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "frische Eier (Größe M)",
       "systemIngredientId": 52058,
       "officialRecipes": 0,
@@ -14588,58 +12732,10 @@
       "alternatives": []
     },
     {
-      "name": "frische Hefe (21 g)",
-      "systemIngredientId": 206029,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "frische Hefe (40 g) oder 2 P. Trockenhefe (14 g)",
-      "systemIngredientId": 56592,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "frische Hefe (42 g)",
       "systemIngredientId": 47245,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "frische Himbeeren",
-      "systemIngredientId": 58655,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "frische Kräuter",
-      "systemIngredientId": 227638,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "frische oder gefrorene Himbeeren (TK-Beeren angetaut)",
-      "systemIngredientId": 54112,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "frische, gemischte Beeren nach Belieben",
-      "systemIngredientId": 58598,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14664,14 +12760,6 @@
       "systemIngredientId": 50985,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "frischer Schnittlauch",
-      "systemIngredientId": 291662,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14708,50 +12796,10 @@
       "alternatives": []
     },
     {
-      "name": "fruchtig-bitterer Aperitif-Likör (z. B. Aperol)",
-      "systemIngredientId": 47195,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "ganze Haselnüsse",
-      "systemIngredientId": 48910,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "ganze Mandeln",
       "systemIngredientId": 45325,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "ganze geschälte Mandeln",
-      "systemIngredientId": 46600,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gehackte Haselnusskerne",
-      "systemIngredientId": 59874,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gehackte Kräuter (TK)",
-      "systemIngredientId": 287678,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14772,22 +12820,6 @@
       "alternatives": []
     },
     {
-      "name": "gehackte Petersilie (TK)",
-      "systemIngredientId": 46319,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gehackte gemischte Kräuter (TK)",
-      "systemIngredientId": 50118,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "gehackte, gemischte Kräuter (z. B. 8-Kräuter-Mischung; TK)",
       "systemIngredientId": 240003,
       "officialRecipes": 0,
@@ -14804,34 +12836,10 @@
       "alternatives": []
     },
     {
-      "name": "gehäufter Tl Backpulver",
-      "systemIngredientId": 46743,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gekochte Kartoffeln",
-      "systemIngredientId": 52190,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "gekochter Schinken",
       "systemIngredientId": 50734,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gekörnte Brühe",
-      "systemIngredientId": 59552,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14844,26 +12852,10 @@
       "alternatives": []
     },
     {
-      "name": "gelbe Senfkörner",
-      "systemIngredientId": 47518,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "gemahlene Haselnüsse",
       "systemIngredientId": 54206,
       "officialRecipes": 0,
       "memberRecipes": 9,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gemahlene Koriandersamen",
-      "systemIngredientId": 58959,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14884,22 +12876,6 @@
       "alternatives": []
     },
     {
-      "name": "gemahlene Vanille",
-      "systemIngredientId": 45331,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gemahlene, blanchierte Mandeln",
-      "systemIngredientId": 240668,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "gemahlenen Zimt",
       "systemIngredientId": 51215,
       "officialRecipes": 0,
@@ -14912,14 +12888,6 @@
       "systemIngredientId": 54831,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gemahlener Koriander",
-      "systemIngredientId": 50356,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14956,34 +12924,10 @@
       "alternatives": []
     },
     {
-      "name": "gemischte Beeren (TK)",
-      "systemIngredientId": 54459,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gemischte Kräuter (z. B. Petersilie, Kerbel, Schnittlauch, Basilikum)",
-      "systemIngredientId": 290255,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "gemischte Nüsse (z. B. Haselnüsse, Mandeln, Walnüsse, Pecannüsse)",
       "systemIngredientId": 55142,
       "officialRecipes": 0,
       "memberRecipes": 3,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gemischte getrocknete Kräuter nach Belieben (z. B. Thymian, Oregano, Bohnenkraut, Rosmarin, Majoran)",
-      "systemIngredientId": 288495,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -14996,42 +12940,10 @@
       "alternatives": []
     },
     {
-      "name": "gerebelter Majoran",
-      "systemIngredientId": 59554,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gerebelter Oregano",
-      "systemIngredientId": 47274,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gerebelter Thymian",
-      "systemIngredientId": 50354,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "geriebene Muskatnuss",
       "systemIngredientId": 291612,
       "officialRecipes": 0,
       "memberRecipes": 10,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "geriebener Käse (z.B. Parmesan, 32 % Fett i.Tr.)",
-      "systemIngredientId": 52209,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15068,14 +12980,6 @@
       "alternatives": []
     },
     {
-      "name": "geröstete Mandeln",
-      "systemIngredientId": 287846,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "geröstete und gesalzene Erdnüsse",
       "systemIngredientId": 47971,
       "officialRecipes": 0,
@@ -15092,82 +12996,10 @@
       "alternatives": []
     },
     {
-      "name": "geschrotete Leinsamen",
-      "systemIngredientId": 47305,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "geschälte Mandeln",
-      "systemIngredientId": 241043,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "geschälte Tomaten aus der Dose",
-      "systemIngredientId": 289096,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "gesiebtes Mehl (Type 405)",
-      "systemIngredientId": 285339,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "gestrichener Tl Salz",
       "systemIngredientId": 287404,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "getrocknete Aprikosen",
-      "systemIngredientId": 52345,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "getrocknete Chilischoten",
-      "systemIngredientId": 58151,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "getrocknete Datteln ohne Stein",
-      "systemIngredientId": 46883,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "getrocknete Fenchelsamen",
-      "systemIngredientId": 241659,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "getrocknete Kichererbsen",
-      "systemIngredientId": 56268,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15180,26 +13012,10 @@
       "alternatives": []
     },
     {
-      "name": "getrocknete Tomaten in Öl",
-      "systemIngredientId": 47902,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "getrocknete italienische Kräuter",
       "systemIngredientId": 48715,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "getrocknete. italienische Kräuter",
-      "systemIngredientId": 225389,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15252,14 +13068,6 @@
       "alternatives": []
     },
     {
-      "name": "griechische Reisnudeln (Kritharaki)",
-      "systemIngredientId": 45946,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "griechischer Joghurt",
       "systemIngredientId": 56270,
       "officialRecipes": 0,
@@ -15276,26 +13084,10 @@
       "alternatives": []
     },
     {
-      "name": "grobkörniger Senf",
-      "systemIngredientId": 50786,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "große Knoblauchzehe",
       "systemIngredientId": 45016,
       "officialRecipes": 0,
       "memberRecipes": 17,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "große Möhre (100 g)",
-      "systemIngredientId": 45975,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15305,22 +13097,6 @@
       "officialRecipes": 0,
       "memberRecipes": 2,
       "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "große Schalotte (40 g)",
-      "systemIngredientId": 57728,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "große Tomate (150 g)",
-      "systemIngredientId": 46031,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -15340,22 +13116,6 @@
       "alternatives": []
     },
     {
-      "name": "große Zwiebel (80 g)",
-      "systemIngredientId": 56396,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "große rote Paprikaschote",
-      "systemIngredientId": 21901,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "große unbehandelte Zitrone",
       "systemIngredientId": 192459,
       "officialRecipes": 0,
@@ -15364,42 +13124,10 @@
       "alternatives": []
     },
     {
-      "name": "grüner Spargel",
-      "systemIngredientId": 50283,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "halbe Pfirsiche aus der Dose",
-      "systemIngredientId": 58986,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "heiße Fleisch- oder Gemüsebrühe",
-      "systemIngredientId": 289814,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "heiße Gemüsebrühe",
       "systemIngredientId": 21158,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "heiße Rinderbrühe",
-      "systemIngredientId": 50078,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15420,14 +13148,6 @@
       "alternatives": []
     },
     {
-      "name": "kalte Marzipan-Rohmasse",
-      "systemIngredientId": 48759,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "kalte Milch (Frischmilch, 1,5 % Fett)",
       "systemIngredientId": 59019,
       "officialRecipes": 0,
@@ -15444,42 +13164,10 @@
       "alternatives": []
     },
     {
-      "name": "kalte Sahne (mind. 30 % Fett)",
-      "systemIngredientId": 51073,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "kaltes Mineralwasser",
       "systemIngredientId": 286194,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kaltes Wasser oder Milch nach Wahl",
-      "systemIngredientId": 58510,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kaltes, stilles Mineralwasser oder abgekochtes kaltes Leitungswasser",
-      "systemIngredientId": 57290,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kandierte Orangenschale (Orangeat)",
-      "systemIngredientId": 240821,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15500,30 +13188,6 @@
       "alternatives": []
     },
     {
-      "name": "kleine Orange (80 g)",
-      "systemIngredientId": 286536,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleine Schalotte (20 g)",
-      "systemIngredientId": 45118,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleine Zwiebel (20 g)",
-      "systemIngredientId": 45616,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "kleine Zwiebel (30 g)",
       "systemIngredientId": 45014,
       "officialRecipes": 0,
@@ -15540,58 +13204,10 @@
       "alternatives": []
     },
     {
-      "name": "kleine Zwiebel (60 g)",
-      "systemIngredientId": 50878,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
       "name": "kleine Zwiebeln",
       "systemIngredientId": 55597,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleine Zwiebeln (100 g)",
-      "systemIngredientId": 58932,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "kleine Zwiebeln (40 g)",
-      "systemIngredientId": 45794,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleine festkochende Kartoffeln",
-      "systemIngredientId": 50362,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleine mehligkochende Kartoffeln",
-      "systemIngredientId": 779358,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleine rote Chilischote",
-      "systemIngredientId": 52571,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15604,50 +13220,10 @@
       "alternatives": []
     },
     {
-      "name": "kleine rote Zwiebel (20 g)",
-      "systemIngredientId": 53280,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleine rote Zwiebel (60 g)",
-      "systemIngredientId": 49158,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "kleines Lorbeerblatt",
-      "systemIngredientId": 45844,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "kochendes Wasser",
       "systemIngredientId": 242385,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "körniger Senf",
-      "systemIngredientId": 51479,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "lauwarme Milch (Frischmilch, 3,5 % Fett)",
-      "systemIngredientId": 57164,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15676,66 +13252,10 @@
       "alternatives": []
     },
     {
-      "name": "mehlig kochende Kartoffeln",
-      "systemIngredientId": 52228,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "mehligkochende Kartoffeln",
-      "systemIngredientId": 45235,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "mehligkochende Kartoffeln, geschält und in Stücken",
-      "systemIngredientId": 242484,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "milder Senf",
-      "systemIngredientId": 46294,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "mildes Olivenöl",
       "systemIngredientId": 53376,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "mildes Paprikapulver",
-      "systemIngredientId": 45948,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "mildes Pflanzenöl",
-      "systemIngredientId": 56573,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "mit weißer Creme gefüllte Schokokekse (z. B. Oreo)",
-      "systemIngredientId": 240928,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15745,22 +13265,6 @@
       "officialRecipes": 0,
       "memberRecipes": 2,
       "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "mittelgroße Kartoffel (120 g)",
-      "systemIngredientId": 59753,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Gemüse",
-      "alternatives": []
-    },
-    {
-      "name": "mittelgroße Zucchini (250 g)",
-      "systemIngredientId": 51351,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
       "alternatives": []
     },
     {
@@ -15776,14 +13280,6 @@
       "systemIngredientId": 241084,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "mittelgroße Zwiebeln (150 g)",
-      "systemIngredientId": 51240,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15836,30 +13332,6 @@
       "alternatives": []
     },
     {
-      "name": "passierte Tomaten (Dose)",
-      "systemIngredientId": 242521,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "passierte Tomaten aus der Dose",
-      "systemIngredientId": 51895,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "reife Avocado (180 g)",
-      "systemIngredientId": 58029,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "reife Bananen",
       "systemIngredientId": 51033,
       "officialRecipes": 0,
@@ -15868,34 +13340,10 @@
       "alternatives": []
     },
     {
-      "name": "reife Tomaten",
-      "systemIngredientId": 56122,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "rohe Schinkenwürfel",
       "systemIngredientId": 57141,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "rohe weiße Eier (Größe S, M oder L)",
-      "systemIngredientId": 53334,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "rosenscharfes Paprikapulver",
-      "systemIngredientId": 21988,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -15916,46 +13364,6 @@
       "alternatives": []
     },
     {
-      "name": "rote Paprikaschote",
-      "systemIngredientId": 3525,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "rote Paprikaschote, in Stücken",
-      "systemIngredientId": 242408,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "rote Zwiebeln",
-      "systemIngredientId": 54400,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "scharfer Senf",
-      "systemIngredientId": 47908,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "scharfes Paprikapulver",
-      "systemIngredientId": 56237,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "schwarze Pfefferkörner",
       "systemIngredientId": 49123,
       "officialRecipes": 0,
@@ -15972,14 +13380,6 @@
       "alternatives": []
     },
     {
-      "name": "sehr weiche Butter",
-      "systemIngredientId": 48590,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
       "name": "selbst gemachter Vanillezucker",
       "systemIngredientId": 241200,
       "officialRecipes": 0,
@@ -15992,14 +13392,6 @@
       "systemIngredientId": 53378,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "stückige Tomaten (800 g)",
-      "systemIngredientId": 53605,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -16020,58 +13412,10 @@
       "alternatives": []
     },
     {
-      "name": "säuerliche Äpfel (z. B.: Boskop)",
-      "systemIngredientId": 46467,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "trockener Rotwein",
-      "systemIngredientId": 50076,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "unbehandelte Zitrone",
-      "systemIngredientId": 51165,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "unbehandelte Zitrone (Abrieb und Saft)",
-      "systemIngredientId": 242126,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "ungesüßte Cornflakes",
-      "systemIngredientId": 57795,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "ungesüßtes Kakaopulver",
       "systemIngredientId": 50709,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "vorgegarte Maronen",
-      "systemIngredientId": 240715,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -16140,22 +13484,6 @@
       "alternatives": []
     },
     {
-      "name": "weißer Balsamicoessig",
-      "systemIngredientId": 46490,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "weißer Pfeffer",
-      "systemIngredientId": 45666,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "weißer Zucker",
       "systemIngredientId": 47520,
       "officialRecipes": 0,
@@ -16196,98 +13524,10 @@
       "alternatives": []
     },
     {
-      "name": "zimmerwarme Milch (H-Milch, 1,5 % Fett)",
-      "systemIngredientId": 49886,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "zimmerwarme Rinderbrühe",
-      "systemIngredientId": 52575,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "zimmerwarme Sahne (30 % Fett)",
-      "systemIngredientId": 21597,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": "Milchprodukte",
-      "alternatives": []
-    },
-    {
-      "name": "zimmerwarmes Olivenöl",
-      "systemIngredientId": 22095,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "zimmerwarmes helles Bier (z. B. Pils oder Export)",
-      "systemIngredientId": 288867,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
       "name": "¼ Tl Pfeffer",
       "systemIngredientId": 287387,
       "officialRecipes": 0,
       "memberRecipes": 4,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "¼ Tl Salz",
-      "systemIngredientId": 53814,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "½ Bund Basilikum, in Streifen",
-      "systemIngredientId": 242132,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "½ Bund Koriander",
-      "systemIngredientId": 55002,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "½ P. Vanillezucker (4 g)",
-      "systemIngredientId": 286788,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "½ TL of getrockneter Thymian",
-      "systemIngredientId": 195143,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "½ Tl Kreuzkümmel",
-      "systemIngredientId": 55006,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -16304,14 +13544,6 @@
       "systemIngredientId": 293009,
       "officialRecipes": 0,
       "memberRecipes": 8,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "½ Tl Senf",
-      "systemIngredientId": 54283,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },
@@ -16352,14 +13584,6 @@
       "systemIngredientId": 286024,
       "officialRecipes": 0,
       "memberRecipes": 2,
-      "category": null,
-      "alternatives": []
-    },
-    {
-      "name": "Äpfel (600 g)",
-      "systemIngredientId": 284989,
-      "officialRecipes": 0,
-      "memberRecipes": 1,
       "category": null,
       "alternatives": []
     },

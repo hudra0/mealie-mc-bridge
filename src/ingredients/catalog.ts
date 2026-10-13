@@ -10,8 +10,9 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import type { Config } from "../config.js";
+import { DEFAULT_KNOWLEDGE_DIR } from "../convert/settings.js";
 
-export const DEFAULT_KNOWLEDGE_DIR = "./knowledge";
 export const INGREDIENT_CATALOG_FILE = "ingredient-catalog.json";
 
 const id = z.number().int().positive();
@@ -99,4 +100,13 @@ export async function loadIngredientCatalog(
 // The primary id of the entry whose name equals `name` after normalization, or null.
 export function lookupCatalog(catalog: IngredientCatalog, name: string): number | null {
   return catalog.byName.get(normalizeIngredientName(name)) ?? null;
+}
+
+// The catalog the service runs with: none when resolution is off, otherwise the file in
+// KNOWLEDGE_DIR, the directory the converter reads its knowledge base from.
+export async function loadConfiguredCatalog(
+  config: Pick<Config, "MC_RESOLVE_INGREDIENTS" | "KNOWLEDGE_DIR">,
+): Promise<IngredientCatalog | null> {
+  if (config.MC_RESOLVE_INGREDIENTS === "off") return null;
+  return loadIngredientCatalog(config.KNOWLEDGE_DIR);
 }

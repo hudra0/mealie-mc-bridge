@@ -33,7 +33,8 @@ COPY package.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 # The knowledge base: device limits for the validator (DEVICE_PROGRAMS_PATH) and the
-# techniques, timing and unit rules the converter reads (KNOWLEDGE_DIR).
+# techniques, timing and unit rules the converter reads and the ingredient catalog
+# (KNOWLEDGE_DIR).
 COPY knowledge ./knowledge
 # The base image ships uid/gid 1000 as "node"; rename it instead of adding a second user.
 RUN groupmod --new-name bridge node \

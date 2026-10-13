@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { pino } from "pino";
 import { loadServiceConfig } from "./config.js";
-import { loadIngredientCatalog } from "./ingredients/catalog.js";
+import { loadConfiguredCatalog } from "./ingredients/catalog.js";
 import { loggerOptions } from "./logger.js";
 import { McClient, McTransport, StaticSessionProvider } from "./mc/index.js";
 import { MealieClient } from "./mealie/index.js";
@@ -62,7 +62,7 @@ async function main(): Promise<void> {
   });
   const mc = new McClient(transport, session);
   const converter = await loadConverter({ env: process.env, limits, logger });
-  const catalog = config.MC_RESOLVE_INGREDIENTS === "exact" ? await loadIngredientCatalog() : null;
+  const catalog = await loadConfiguredCatalog(config);
   const ingredients = new IngredientResolver({
     mode: config.MC_RESOLVE_INGREDIENTS,
     catalog,

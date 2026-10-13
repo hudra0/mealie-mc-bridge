@@ -52,7 +52,8 @@ export interface IngredientResolution {
 }
 
 export interface ResolveOptions {
-  // Checked before every search; once aborted, the remaining names stay without an id.
+  // Checked before and after the rate-limit wait of every search; once aborted, the
+  // remaining names stay without an id and nothing more is cached.
   signal?: AbortSignal;
 }
 
@@ -189,7 +190,7 @@ export class IngredientResolver implements IngredientResolverPort {
         miss(key, name);
         continue;
       }
-      const found = await this.#search(key, name);
+      const found = await this.#search(key, name, options.signal);
       if (found === null) {
         miss(key, name);
       } else {
@@ -201,10 +202,12 @@ export class IngredientResolver implements IngredientResolverPort {
   }
 
   // The id of a hit whose name equals the query after normalization, or null.
-  async #search(key: string, name: string): Promise<number | null> {
+  async #search(key: string, name: string, signal?: AbortSignal): Promise<number | null> {
     const search = this.#options.search;
     if (!search) return null;
     await this.#limiter.take();
+    // The wait can last a second; a shutdown in the meantime sends no further request.
+    if (signal?.aborted) return null;
     let hits: Awaited<ReturnType<IngredientSearch["searchIngredients"]>>;
     try {
       hits = await search.searchIngredients(name);

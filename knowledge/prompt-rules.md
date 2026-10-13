@@ -50,8 +50,8 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 
 ## Ingredient names
 
-- Write each ingredient list name in the Monsieur Cuisine catalog spelling (`ingredient-catalog.json`), so the bridge can link it to the app's ingredient database. The match is exact apart from case and spacing; a near miss gets no id. Counted items in the plural: "Zwiebeln", "Knoblauchzehen", "Möhren", "Eier (Größe M)". Qualifiers in parentheses: "Mehl (Type 405)", "Sahne (30 % Fett)", "Joghurt natur (3,5 % Fett)". Form and state after a comma: "Hefe, frisch", "Pfeffer, schwarz, gemahlen". To-taste items as in the amounts rules: "Salz zum Abschmecken".
-- Keep the preparation out of the list name ("Zwiebeln", not "Zwiebeln, gewürfelt"); the step that cuts them says how. Steps then use the name without its qualifiers (see `step-patterns.md`, rule 18).
+- Write each ingredient list name the way Monsieur Cuisine recipes spell it, so the bridge can link it to the app's ingredient database. Only an exact match apart from case and spacing gets an id; a near miss gets none. Counted items in the plural: "Zwiebeln", "Knoblauchzehen", "Möhren", "Eier (Größe M)". Qualifiers in parentheses: "Mehl (Type 405)", "Sahne (30 % Fett)", "Joghurt natur (3,5 % Fett)". Form and state after a comma: "Hefe, frisch", "Pfeffer, schwarz, gemahlen". To-taste items as in the amounts rules: "Salz zum Abschmecken".
+- Keep the preparation out of the list name ("Zwiebeln", not "Zwiebeln, gewürfelt"); the step that cuts them says how. Steps then use the name without its qualifiers: "die Zwiebeln" for "Zwiebeln (rot)".
 
 ## Chopping
 

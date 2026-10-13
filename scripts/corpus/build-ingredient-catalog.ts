@@ -10,7 +10,8 @@
 // Names group by normalizeIngredientName (src/ingredients/catalog.ts), the same comparison
 // the resolver uses at runtime. The entry name is the spelling used most within a group.
 // Weights: an official recipe counts 3, a member recipe 1, for both the spelling and the
-// primary id. Ingredients without an id (member free text carries -1) are left out.
+// primary id. Ingredients without an id (member free text carries -1) are left out, and so
+// are names below CATALOG_MIN_RECIPES (see there).
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -22,6 +23,10 @@ import type { NormalizedRecipe } from "./types.js";
 
 export const CATALOG_GENERATED_FROM = "published Monsieur Cuisine recipes (MC Smart, de-DE)";
 export const OFFICIAL_WEIGHT = 3;
+// A name enters the catalog when at least this many official recipes, or this many member
+// recipes, use it. A name from a single member recipe is mostly free text ("Eigelb und 2 El
+// Milch zum Bestreichen") that converter output never matches exactly.
+export const CATALOG_MIN_RECIPES = { official: 1, member: 2 } as const;
 
 export interface CatalogIngredient {
   name: string | null | undefined;
@@ -59,7 +64,10 @@ export function buildIngredientCatalog(
   recipes: readonly CatalogRecipe[],
   categories: ReadonlyMap<number, string | null> = new Map(),
 ): IngredientCatalogFile {
-  const groups = new Map<string, { spellings: Map<string, Counts>; ids: Map<number, Counts> }>();
+  const groups = new Map<
+    string,
+    { spellings: Map<string, Counts>; ids: Map<number, Counts>; recipes: Counts }
+  >();
   for (const recipe of recipes) {
     const official = recipe.source === "official";
     // A recipe counts once per name and id, even when it lists the ingredient twice.
@@ -72,10 +80,17 @@ export function buildIngredientCatalog(
       const group = groups.get(key) ?? {
         spellings: new Map<string, Counts>(),
         ids: new Map<number, Counts>(),
+        recipes: { official: 0, member: 0 },
       };
       groups.set(key, group);
       const spellingKey = `s\u0000${name}`;
       const idKey = `i\u0000${key}\u0000${id}`;
+      const recipeKey = `r\u0000${key}`;
+      if (!seen.has(recipeKey)) {
+        if (official) group.recipes.official++;
+        else group.recipes.member++;
+      }
+      seen.add(recipeKey);
       if (!seen.has(spellingKey)) bump(group.spellings, name, official);
       if (!seen.has(idKey)) bump(group.ids, id, official);
       seen.add(spellingKey);
@@ -85,6 +100,12 @@ export function buildIngredientCatalog(
 
   const entries: IngredientCatalogFile["entries"] = [];
   for (const group of groups.values()) {
+    if (
+      group.recipes.official < CATALOG_MIN_RECIPES.official &&
+      group.recipes.member < CATALOG_MIN_RECIPES.member
+    ) {
+      continue;
+    }
     const spellings = [...group.spellings].sort(
       ([a, ca], [b, cb]) => weight(cb) - weight(ca) || compareText(a, b),
     );

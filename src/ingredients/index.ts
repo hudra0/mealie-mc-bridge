@@ -32,11 +32,11 @@ export {
 } from "./units.js";
 export type { UnitCode, UnitKind, UnitMatch } from "./units.js";
 export {
-  DEFAULT_KNOWLEDGE_DIR,
   INGREDIENT_CATALOG_FILE,
   IngredientCatalogError,
   createIngredientCatalog,
   ingredientCatalogSchema,
+  loadConfiguredCatalog,
   loadIngredientCatalog,
   lookupCatalog,
   normalizeIngredientName,

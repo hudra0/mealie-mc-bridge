@@ -2,11 +2,13 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { loadConfig } from "../config.js";
 import { tempDir } from "../testing/temp.js";
 import {
   INGREDIENT_CATALOG_FILE,
   IngredientCatalogError,
   createIngredientCatalog,
+  loadConfiguredCatalog,
   loadIngredientCatalog,
   lookupCatalog,
   normalizeIngredientName,
@@ -126,5 +128,36 @@ describe("loadIngredientCatalog", () => {
     );
     expect(catalog.entries.length).toBeGreaterThan(1000);
     expect(catalog.byName.size).toBe(catalog.entries.length);
+  });
+});
+
+describe("loadConfiguredCatalog", () => {
+  let cleanup: (() => void) | null = null;
+  afterEach(() => {
+    cleanup?.();
+    cleanup = null;
+  });
+
+  it("reads the catalog from KNOWLEDGE_DIR", async () => {
+    const temp = tempDir();
+    cleanup = temp.cleanup;
+    writeFileSync(join(temp.dir, INGREDIENT_CATALOG_FILE), JSON.stringify(file));
+    const catalog = await loadConfiguredCatalog(loadConfig({ KNOWLEDGE_DIR: temp.dir }));
+    expect(catalog && lookupCatalog(catalog, "Testzutat A")).toBe(9001);
+  });
+
+  it("fails when exact mode finds no catalog in KNOWLEDGE_DIR", async () => {
+    const temp = tempDir();
+    cleanup = temp.cleanup;
+    await expect(
+      loadConfiguredCatalog(
+        loadConfig({ KNOWLEDGE_DIR: temp.dir, MC_RESOLVE_INGREDIENTS: "exact" }),
+      ),
+    ).rejects.toThrow(IngredientCatalogError);
+  });
+
+  it("loads nothing when resolution is off", async () => {
+    const config = loadConfig({ KNOWLEDGE_DIR: "/nonexistent", MC_RESOLVE_INGREDIENTS: "off" });
+    await expect(loadConfiguredCatalog(config)).resolves.toBeNull();
   });
 });

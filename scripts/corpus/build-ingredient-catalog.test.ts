@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ingredientCatalogSchema } from "../../src/ingredients/catalog.js";
 import {
   CATALOG_GENERATED_FROM,
+  CATALOG_MIN_RECIPES,
   buildIngredientCatalog,
   readCatalogSource,
 } from "./build-ingredient-catalog.js";
@@ -140,8 +141,31 @@ describe("buildIngredientCatalog rules", () => {
       official(["Zeta", 1], ["Beta", 2]),
       official(["Alpha", 3], ["Beta", 2]),
       member(["Gamma", 4]),
+      member(["Gamma", 4]),
     ]);
     expect(catalog.entries.map((entry) => entry.name)).toEqual(["Beta", "Alpha", "Zeta", "Gamma"]);
+  });
+
+  it("keeps a name from one official recipe or from two member recipes", () => {
+    expect(CATALOG_MIN_RECIPES).toEqual({ official: 1, member: 2 });
+    const catalog = buildIngredientCatalog([
+      official(["Official once", 1]),
+      member(["Member once", 2]),
+      member(["Member twice", 3]),
+      member(["member  twice", 3]),
+      member(["Split", 4]),
+      member(["split", 5]),
+    ]);
+    expect(catalog.entries.map((entry) => entry.name)).toEqual([
+      "Official once",
+      "Member twice",
+      "Split",
+    ]);
+  });
+
+  it("counts a recipe once per name for the threshold", () => {
+    const catalog = buildIngredientCatalog([member(["Twice listed", 1], ["twice listed", 2])]);
+    expect(catalog.entries).toEqual([]);
   });
 
   it("skips names without a positive id and empty names", () => {

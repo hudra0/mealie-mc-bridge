@@ -407,6 +407,8 @@ class JobRun {
     const resolution = await this.#stage("ingredients", () =>
       resolver.resolveAll(names, signal ? { signal } : {}),
     );
+    // Names skipped for a shutdown were never looked up; record nothing and requeue.
+    this.#checkAbort();
     this.#jobs.update(this.#job.id, {
       ingredients: {
         ...resolution.stats,

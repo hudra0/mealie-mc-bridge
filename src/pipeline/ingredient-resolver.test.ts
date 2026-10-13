@@ -234,6 +234,24 @@ describe("IngredientResolver", () => {
     expect(result.stats).toEqual({ catalog: 1, cache: 0, search: 0, unresolved: 1 });
   });
 
+  it("sends no request when the signal is aborted during the rate-limit wait", async () => {
+    const controller = new AbortController();
+    const limiter = {
+      take: vi.fn(() => {
+        controller.abort();
+        return Promise.resolve();
+      }),
+    };
+    const t = resolver({ limiter });
+    const result = await t.resolver.resolveAll(["Testzutat B", "Testzutat C"], {
+      signal: controller.signal,
+    });
+    expect(limiter.take).toHaveBeenCalledTimes(1);
+    expect(t.search.searchIngredients).not.toHaveBeenCalled();
+    expect(t.cache.put).not.toHaveBeenCalled();
+    expect(result.stats.unresolved).toBe(2);
+  });
+
   it("works without a search client", async () => {
     const t = resolver({ search: null });
     const result = await t.resolver.resolveAll(["Testzutat B"]);

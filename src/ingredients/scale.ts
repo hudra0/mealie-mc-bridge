@@ -20,9 +20,12 @@ export interface ScaledIngredient extends NormalizedIngredient {
 
 // Used only when a recipe states neither servings nor a yield and was not scaled.
 export const DEFAULT_SERVINGS = 4;
-// The servings range a Monsieur Cuisine recipe accepts.
+// The servings range a Monsieur Cuisine recipe accepts. Mirrors
+// recipeLimits.servings.amount.effective in knowledge/device-programs.json: official
+// recipes go up to 100 (counted in pieces or slices), so the older limit of 24 was too low.
+// scale.test.ts fails when the two drift apart.
 export const MIN_SERVINGS = 1;
-export const MAX_SERVINGS = 24;
+export const MAX_SERVINGS = 100;
 
 const clean = (value: number): number => Math.round(value * 1000) / 1000;
 const toStep = (value: number, step: number): number => clean(Math.round(value / step) * step);

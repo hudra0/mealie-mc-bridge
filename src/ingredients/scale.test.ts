@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { NormalizedIngredient } from "./normalize.js";
 import {
@@ -167,7 +168,8 @@ describe("servingsFor", () => {
     [4, 0, 0.1, 1],
     [2.5, 0, 1, 3],
     [4, 2, 2, 8],
-    [20, 0, 3, MAX_SERVINGS],
+    [20, 0, 3, 60],
+    [40, 0, 3, MAX_SERVINGS],
     [Number.NaN, 0, 1, DEFAULT_SERVINGS],
     [4, 0, 0, 4],
     [4, 0, Number.NaN, 4],
@@ -193,8 +195,20 @@ describe("servingsFor", () => {
 
   it("limits the servings to the device range", () => {
     expect(MIN_SERVINGS).toBe(1);
-    expect(MAX_SERVINGS).toBe(24);
-    expect(servingsFor({ recipeServings: 12, recipeYieldQuantity: 0 }, 3)).toBe(24);
+    expect(MAX_SERVINGS).toBe(100);
+    expect(servingsFor({ recipeServings: 12, recipeYieldQuantity: 0 }, 3)).toBe(36);
+    expect(servingsFor({ recipeServings: 50, recipeYieldQuantity: 0 }, 2)).toBe(100);
+    expect(servingsFor({ recipeServings: 50, recipeYieldQuantity: 0 }, 3)).toBe(100);
+    expect(servingsFor({ recipeServings: 24, recipeYieldQuantity: 0 }, 0.01)).toBe(1);
+  });
+
+  it("uses the servings range from knowledge/device-programs.json", () => {
+    const file = new URL("../../knowledge/device-programs.json", import.meta.url);
+    const programs = JSON.parse(readFileSync(file, "utf8")) as {
+      recipeLimits: { servings: { amount: { effective: { min: number; max: number } } } };
+    };
+    const { min, max } = programs.recipeLimits.servings.amount.effective;
+    expect([MIN_SERVINGS, MAX_SERVINGS]).toEqual([min, max]);
   });
 });
 

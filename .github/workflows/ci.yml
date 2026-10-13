@@ -68,7 +68,28 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+          load: true
+          tags: mealie-mc-bridge:ci
           cache-from: type=gha
+      # Starts the image with throwaway settings: the native modules load, migrations run
+      # on the volume and /health answers.
+      - name: Check /health of the image
+        run: |
+          docker run -d --name bridge -p 127.0.0.1:3000:3000 \
+            -e WEBHOOK_TOKEN="$(openssl rand -hex 32)" \
+            -e SETTINGS_KEY="$(openssl rand -base64 32)" \
+            -e MEALIE_URL=http://127.0.0.1:9 \
+            -e MEALIE_API_TOKEN=ci-placeholder \
+            mealie-mc-bridge:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/health; then
+              docker stop bridge >/dev/null
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs bridge
+          exit 1
 
   # Publishes only after format, lint, typecheck, tests, build and the secret scan passed.
   publish:

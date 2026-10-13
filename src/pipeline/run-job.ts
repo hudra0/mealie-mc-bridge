@@ -428,7 +428,10 @@ class JobRun {
       this.#event("info", "Saved on the device only (private-publish)");
       return false;
     } catch (error) {
-      this.#event("warn", `Status change failed, the recipe stays a draft: ${errorMessage(error)}`);
+      this.#event(
+        "warn",
+        `Status change failed, the recipe stays a draft and does not show up on the device: ${errorMessage(error)}`,
+      );
       if (error instanceof McSessionError) await this.#deps.session?.onSessionError(error.kind);
       return true;
     }

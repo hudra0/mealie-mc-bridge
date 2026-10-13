@@ -2,14 +2,14 @@
 
 Status: the service runs end to end. The LLM converter (`src/convert`) is built separately; until it is wired in, `src/pipeline/converter-port.ts` hands the pipeline a placeholder that fails every conversion with "converter not configured". Everything else on this page exists, except where it is marked as planned.
 
-The bridge turns a Mealie recipe into a private draft in a Monsieur Cuisine account. It runs as one container next to Mealie and keeps its state in `/data/bridge.db`.
+The bridge turns a Mealie recipe into a private recipe in a Monsieur Cuisine account: it creates a draft and then sets private-publish, so the recipe appears on the machine. It runs as one container next to Mealie and keeps its state in `/data/bridge.db`.
 
 ## Components
 
 - **Mealie.** Holds the recipes. A recipe action posts the recipe id and the scale to the bridge. The bridge reads the recipe and image through the Mealie REST API and writes a tag, machine state in `extras` and a timeline entry back.
 - **Bridge.** A Node/TypeScript service (Fastify, better-sqlite3). It receives the webhook, queues jobs, normalizes and scales ingredients, calls the converter, validates the result, uploads the draft and reports the outcome. Admin pages show jobs and the session.
 - **LLM provider.** Produces the guided-cooking recipe as structured JSON, behind the converter interface.
-- **monsieur-cuisine.com.** Receives the recipe as a draft in the user's account through the same web API the recipe editor uses. Saved on the device, it syncs to the machine.
+- **monsieur-cuisine.com.** Receives the recipe as a draft in the user's account through the same web API the recipe editor uses. Only a recipe with status `private-publish` appears on the machine under "Meine Rezepte"; a draft is visible in the web editor only.
 
 ## Job flow
 
@@ -20,7 +20,7 @@ The bridge turns a Mealie recipe into a private draft in a Monsieur Cuisine acco
 5. Categories: the live catalog (cached for a day in `settings`) is matched by name against the Mealie categories and tags. The converter gets the catalog with the matches first; afterwards the matched ids and the converter's known ids are merged.
 6. The converter turns the request into a `RecipeInput`; the validator checks it against the schema, the device limits and the catalog. A result that passes is stored on the job (`conversion_json`, with the fingerprint), so a retry after a later temporary failure reuses it and does not pay for the conversion again. A plain admin retry reuses it as well; a force rebuild or a changed recipe converts again.
 7. The photo is cropped and uploaded. Then the job is marked (`create_started_at`) and the draft is created. This is the point of no return: after a timeout the server may have created the draft anyway, so the request is never retried, a shutdown no longer sends the job back to the queue, and a job found running with the mark on start fails with a "check your drafts" message. Once the draft exists, the job cannot fail.
-8. With `MC_RECIPE_STATUS=private-publish` the status is changed so the recipe appears on the device. A failure here is a warning; the recipe stays a draft.
+8. The status is set to private-publish (the default of `MC_RECIPE_STATUS`) so the recipe appears on the device. A draft is not shown there. A failure here is a warning; the recipe stays a draft and the timeline entry says so. With `MC_RECIPE_STATUS=draft` this step is skipped, which is meant for debugging.
 9. Write-back to Mealie: the tag (created on first use) and `extras` (`mc_recipe_id`, `mc_recipe_url`, `mc_source_hash`, `mc_synced_at`, `mc_servings`) in one merged PATCH, then a timeline entry with the link, servings, model and review hints. A 403 on the PATCH (no edit rights) is logged and the timeline entry, which needs no edit rights, is still written.
 
 Every stage appends a job event, which the admin page shows as the job's log.

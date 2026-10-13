@@ -1,6 +1,6 @@
 # mealie-mc-bridge
 
-Sends a recipe from your Mealie instance to a Monsieur Cuisine Smart as a guided-cooking draft. A language model converts the recipe, the bridge checks the result against the device limits, and the draft lands in your Monsieur Cuisine account for you to review and cook.
+Sends a recipe from your Mealie instance to a Monsieur Cuisine Smart as a guided-cooking recipe. A language model converts the recipe, the bridge checks the result against the device limits, and the recipe lands in your Monsieur Cuisine account and on your machine.
 
 ## Status
 
@@ -18,11 +18,13 @@ What exists:
 
 1. In Mealie you open a recipe, set the servings, and pick "Send to Monsieur Cuisine" (or whatever you called the action) from the three-dot menu.
 2. Mealie posts the recipe id and the scale to the bridge. The bridge queues a job and answers at once.
-3. The worker loads the recipe from Mealie, scales the ingredients, has the LLM convert it, validates the result and uploads it with its photo as a draft to your Monsieur Cuisine account.
-4. The bridge tags the recipe in Mealie and adds a timeline entry with a link to the draft and the points you should check.
-5. You open the draft in the Monsieur Cuisine web editor, check times and temperatures, and save it to your device.
+3. The worker loads the recipe from Mealie, scales the ingredients, has the LLM convert it, validates the result and uploads it with its photo to your Monsieur Cuisine account. The bridge creates the recipe as a draft and then sets it to private-publish, so it appears on the machine under "Meine Rezepte".
+4. The bridge tags the recipe in Mealie and adds a timeline entry with a link to the recipe and the points you should check.
+5. You check times and temperatures against the timeline entry, in the Monsieur Cuisine web editor if you want to change something, and cook.
 
-A recipe that has not changed since it was last sent is not sent again; the timeline entry points to the existing draft instead. The admin page can force a rebuild.
+A recipe that has not changed since it was last sent is not sent again; the timeline entry points to the existing recipe instead. The admin page can force a rebuild.
+
+`MC_RECIPE_STATUS` controls the last step of step 3. The default, `private-publish`, is what makes the recipe show up on the machine. `draft` stops after creating the draft; a draft is visible in the web editor only and does not show up on the device, so use it for debugging.
 
 ## Requirements
 
@@ -169,7 +171,7 @@ npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publi
 
 `.env` is gitignored. If you prefer an environment variable, set it without echoing the value, for example `read -rs MC_COOKIE && export MC_COOKIE` in bash.
 
-`create` adds a real recipe to your account. It is created as a draft; `--status private-publish` then saves it on your device only. If that second step fails, the tool prints the id and editor link of the draft it left behind; set the status there instead of running `create` again. The tool never submits a recipe for publication. Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
+`create` adds a real recipe to your account. It is created as a draft, which is visible in the web editor only; `--status private-publish` then saves it on your device only, which is what makes it show up on the machine. If that second step fails, the tool prints the id and editor link of the draft it left behind; set the status there instead of running `create` again. The tool never submits a recipe for publication. Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
 
 ## Development
 

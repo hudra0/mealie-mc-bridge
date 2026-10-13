@@ -69,7 +69,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     MEALIE_URL: "http://mealie:9000",
     MEALIE_PUBLIC_URL: "https://mealie.example.com",
     MEALIE_GROUP_SLUG: "home",
-    MC_RECIPE_STATUS: "draft",
+    MC_RECIPE_STATUS: "private-publish",
     TAG_NAME: "Monsieur Cuisine",
     TIMELINE_LANGUAGE: "de",
     ...(options.auth === false ? {} : { ADMIN_USER: ADMIN.user, ADMIN_PASSWORD: ADMIN.password }),

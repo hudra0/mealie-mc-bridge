@@ -29,8 +29,10 @@ export const envSchema = z.object({
   MEALIE_PUBLIC_URL: httpUrl.optional(),
   // The part after /g/ in a Mealie recipe URL, for links.
   MEALIE_GROUP_SLUG: z.string().min(1).default("home"),
-  // What the bridge does with a new draft: leave it a draft, or save it on the device only.
-  MC_RECIPE_STATUS: z.enum(["draft", "private-publish"]).default("draft"),
+  // What the bridge does after it creates the draft. private-publish saves the recipe on the
+  // device only, which is the only way it shows up on the machine. A draft is visible in the
+  // web editor but not on the device, so "draft" is for debugging.
+  MC_RECIPE_STATUS: z.enum(["draft", "private-publish"]).default("private-publish"),
   // Cookie header of a logged-in monsieur-cuisine.com session. A secret. The service stores
   // it on first start and whenever the value changes; the admin page can replace it.
   MC_COOKIE: z.string().min(1).optional(),

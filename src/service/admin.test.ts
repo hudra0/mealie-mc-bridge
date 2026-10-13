@@ -147,7 +147,12 @@ describe("dashboard", () => {
     expect(body).toContain("boom &quot;quoted&quot; &lt;b&gt;");
     expect(body).toContain(`name="_csrf" value="${FORM_TOKEN}"`);
     expect(body).toContain('href="/admin/jobs?status=failed">1</a>');
-    expect(body).toContain("kept as drafts");
+    expect(body).toContain("saved on the device only");
+  });
+
+  it("says that drafts do not show up on the device", async () => {
+    svc = testService({ config: { MC_RECIPE_STATUS: "draft" } });
+    expect((await get("/admin")).body).toContain("kept as drafts, not shown on the device");
   });
 
   it("shows a known notice and ignores unknown ones", async () => {

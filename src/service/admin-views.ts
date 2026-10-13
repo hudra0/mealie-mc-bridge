@@ -115,7 +115,7 @@ export function dashboardView(data: DashboardData): SafeHtml {
         <dd>${session.lastError ?? "–"}</dd>
         <dt>New recipes</dt>
         <dd>
-          ${data.recipeStatus === "private-publish" ? "saved on the device only" : "kept as drafts"}
+          ${data.recipeStatus === "private-publish" ? "saved on the device only" : "kept as drafts, not shown on the device"}
         </dd>
       </dl>
       <form class="inline" method="post" action="/admin/session/check">

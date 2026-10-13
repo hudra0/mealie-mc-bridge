@@ -5,12 +5,15 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "scripts/**/*.test.ts"],
     coverage: {
       provider: "v8",
-      include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts"],
-      reporter: ["text-summary", "text"],
+      include: ["src/**/*.ts", "scripts/**/*.ts"],
+      exclude: ["**/*.test.ts"],
+      reporter: ["text-summary", "text", "html"],
+      // The product modules keep a line threshold each; scripts/ is reported without one.
       thresholds: {
-        "src/mealie/**": { lines: 85 },
-        "src/ingredients/**": { lines: 85 },
+        "src/mc/**/*.ts": { lines: 85 },
+        "src/recipe/**/*.ts": { lines: 85 },
+        "src/mealie/**/*.ts": { lines: 85 },
+        "src/ingredients/**/*.ts": { lines: 85 },
       },
     },
   },

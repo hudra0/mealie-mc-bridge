@@ -1,0 +1,133 @@
+{
+  "code": 0,
+  "message": "The available categories are returned",
+  "data": {
+    "categories": [
+      {
+        "id": 554,
+        "name": "Food Processor",
+        "order": 0
+      },
+      {
+        "id": 579,
+        "name": "Vegan",
+        "order": 0
+      },
+      {
+        "id": 588,
+        "name": "Vegetarisch",
+        "order": 0
+      },
+      {
+        "id": 220,
+        "name": "Saucen & Dips",
+        "order": 1
+      },
+      {
+        "id": 563,
+        "name": "Dampfentsafter",
+        "order": 2
+      },
+      {
+        "id": 228,
+        "name": "Suppen & Eintöpfe",
+        "order": 2
+      },
+      {
+        "id": 236,
+        "name": "Salate",
+        "order": 3
+      },
+      {
+        "id": 244,
+        "name": "Beilagen",
+        "order": 4
+      },
+      {
+        "id": 252,
+        "name": "Snacks",
+        "order": 5
+      },
+      {
+        "id": 260,
+        "name": "Hauptgerichte",
+        "order": 6
+      },
+      {
+        "id": 276,
+        "name": "Getränke",
+        "order": 8
+      },
+      {
+        "id": 284,
+        "name": "One-Pot / All-in-One",
+        "order": 9
+      },
+      {
+        "id": 268,
+        "name": "Babynahrung",
+        "order": 11
+      },
+      {
+        "id": 308,
+        "name": "Desserts",
+        "order": 11
+      },
+      {
+        "id": 316,
+        "name": "Backen",
+        "order": 12
+      },
+      {
+        "id": 324,
+        "name": "Frühstück",
+        "order": 13
+      },
+      {
+        "id": 332,
+        "name": "Abendessen",
+        "order": 14
+      },
+      {
+        "id": 340,
+        "name": "Vorspeisen",
+        "order": 15
+      },
+      {
+        "id": 348,
+        "name": "Marmelade & Gelee",
+        "order": 16
+      },
+      {
+        "id": 471,
+        "name": "Küche Deutsch",
+        "order": 18
+      },
+      {
+        "id": 472,
+        "name": "Küche Französisch",
+        "order": 19
+      },
+      {
+        "id": 473,
+        "name": "Küche Italienisch",
+        "order": 20
+      },
+      {
+        "id": 498,
+        "name": "Küche Polnisch",
+        "order": 21
+      },
+      {
+        "id": 499,
+        "name": "Küche Spanisch",
+        "order": 22
+      },
+      {
+        "id": 500,
+        "name": "ZauberTopf",
+        "order": 23
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "code": 0,
+  "message": "Success",
+  "data": {
+    "url": "https://storage.example.com/upload/sample-thumbnail.jpeg?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=synthetic",
+    "extraHeaders": {},
+    "mediaId": 700001
+  }
+}

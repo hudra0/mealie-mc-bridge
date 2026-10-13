@@ -1,0 +1,12 @@
+{
+  "code": 0,
+  "message": "Recipe status updated",
+  "data": {
+    "recipe": {
+      "id": 900002,
+      "status": "private-publish",
+      "firstPublishedAt": null,
+      "lastPublishedAt": "2026-10-13 07:52:00"
+    }
+  }
+}

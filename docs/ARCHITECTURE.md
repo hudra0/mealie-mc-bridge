@@ -1,6 +1,6 @@
 # Architecture
 
-Status: partly implemented. The HTTP skeleton with `/health`, the Mealie side (`src/mealie`) and ingredient handling (`src/ingredients`) exist as libraries; see [Modules](#modules). They are not yet wired into a job queue. The rest of this page describes what the finished service will do.
+Status: partly built. Implemented are the HTTP skeleton with `/health`, the Mealie side (`src/mealie`), ingredient handling (`src/ingredients`), the Monsieur Cuisine client (`src/mc`), the recipe input format with its validator and payload builder (`src/recipe`), and the knowledge base. They exist as libraries and are not yet wired together: the webhook route, the job queue, the LLM conversion and the pipeline that runs the Mealie write-back are still target design. [Modules](#modules) lists what exists; the rest of this page describes what the finished service will do.
 
 The bridge turns a Mealie recipe into a private draft in a Monsieur Cuisine account. It runs as one container next to Mealie and keeps its state under `/data`.
 
@@ -23,6 +23,35 @@ The bridge turns a Mealie recipe into a private draft in a Monsieur Cuisine acco
 8. On failure, write the error to the timeline. If the Monsieur Cuisine session has expired, pause the job, flag it in the admin page, send a notification and resume the waiting jobs after the session is renewed.
 
 ## Modules
+
+What exists today, and which module owns which rule:
+
+```text
+knowledge/device-programs.json   the only source of device and recipe limits: programs, API keys per
+                                 program, temperature grids, time ranges, speed rules and their
+                                 conditions, text lengths, servings, times, categories, nutrients,
+                                 cover photo aspect, device type id
+src/recipe/
+  schema.ts     recipe input format (zod): structure and types only, plus a JSON Schema export
+                that carries the knowledge file's recipe limits for structured LLM output
+  modes.ts      step kind -> API mode type, time granularity, input field -> API setting
+  limits.ts     loads and checks the knowledge file; rejects conditions the validator could
+                not evaluate and contradicting step description rules
+  validate.ts   checks an input against the schema and every limit of the loaded file;
+                errors carry a field path and a plain explanation for the correction round
+  payload.ts    builds the API payload from a validated input; API keys, description rule
+                and device type ids come from the loaded file
+src/mc/
+  transport.ts  website proxy envelope, headers, timeouts, session error classification;
+                retries an idempotent call once when no response arrived, never a create
+  session.ts    session provider interface (cookie source, renewal signal) and a static one
+  client.ts     account calls: user, recipes, status, categories, ingredients, image upload;
+                McRecipeSink is the narrow interface the pipeline will depend on
+  image.ts      photo -> 16:9 JPEG variants (aspect from the knowledge file)
+scripts/mc-smoke.ts   manual checks against a real account (whoami, categories, dry-run, create)
+```
+
+The Mealie side and ingredient handling:
 
 - **`src/mealie`**: everything that talks to Mealie.
   - `webhook.ts` parses the recipe action body (snake_case) down to the recipe id and the scale (job flow step 1).

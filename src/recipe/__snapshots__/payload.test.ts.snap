@@ -1,0 +1,434 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildMcPayload > builds the all-modes sample 1`] = `
+{
+  "allowSocialSharing": false,
+  "categoryIds": [
+    228,
+  ],
+  "complexityId": 142,
+  "description": "Testrezept der mealie-mc-bridge mit je einem Schritt pro Geräteprogramm. Nicht kochen.",
+  "detailsImage": {
+    "landscapeIsAiGenerated": false,
+    "landscapeMediaId": 700002,
+    "portraitIsAiGenerated": false,
+    "portraitMediaId": 700002,
+  },
+  "deviceTypeIds": [
+    13,
+  ],
+  "languageLocale": "de-DE",
+  "nutrients": [
+    {
+      "amount": 300,
+      "name": "calories",
+      "unit": "kCal",
+    },
+    {
+      "amount": 60,
+      "name": "carbohydrate",
+      "unit": "g",
+    },
+    {
+      "amount": 1,
+      "name": "fat",
+      "unit": "g",
+    },
+    {
+      "amount": 9,
+      "name": "protein",
+      "unit": "g",
+    },
+  ],
+  "servingSizes": [
+    {
+      "amount": 4,
+      "ingredientGroups": [
+        {
+          "ingredients": [
+            {
+              "amount": "500",
+              "iconUrl": null,
+              "ingredientCategory": null,
+              "isOptional": false,
+              "name": "Wasser",
+              "order": 1,
+              "systemIngredientId": null,
+              "unit": "g",
+            },
+            {
+              "amount": "1",
+              "iconUrl": null,
+              "ingredientCategory": null,
+              "isOptional": false,
+              "name": "Zwiebel",
+              "order": 2,
+              "systemIngredientId": null,
+              "unit": "Stück",
+            },
+            {
+              "amount": "1/2",
+              "iconUrl": null,
+              "ingredientCategory": null,
+              "isOptional": true,
+              "name": "Salz",
+              "order": 3,
+              "systemIngredientId": null,
+              "unit": "TL",
+            },
+            {
+              "amount": "300",
+              "iconUrl": null,
+              "ingredientCategory": null,
+              "isOptional": false,
+              "name": "Mehl",
+              "order": 4,
+              "systemIngredientId": null,
+              "unit": "g",
+            },
+          ],
+          "isDefault": true,
+          "name": "Zutaten",
+          "order": 0,
+        },
+      ],
+      "instruction": "Testrezept mit je einem Schritt pro Geräteprogramm. Nicht kochen.",
+      "isDefault": true,
+      "maxServing": null,
+      "order": 0,
+      "preparationTime": 5,
+      "readyInTime": 130,
+      "steps": [
+        {
+          "description": "500 g Wasser in den Mixbehälter geben.",
+          "duration": null,
+          "mode": null,
+          "order": 0,
+          "title": "Wasser einfüllen",
+          "videoMedia": null,
+        },
+        {
+          "description": "500 g Wasser abwiegen.",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "weight": 500,
+              },
+            ],
+            "modeSetting": null,
+            "type": "scale",
+          },
+          "order": 1,
+          "title": "Waage",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "clockwise": false,
+                "order": 0,
+                "speed": 1,
+                "temperature": 100,
+                "time": 300,
+              },
+            ],
+            "modeSetting": null,
+            "type": "customized",
+          },
+          "order": 2,
+          "title": "Manuell 100 °C Linkslauf",
+          "videoMedia": null,
+        },
+        {
+          "description": "Zwiebel zugeben.",
+          "duration": null,
+          "mode": null,
+          "order": 3,
+          "title": "Zwiebel",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "temperature": 120,
+                "time": 180,
+              },
+            ],
+            "modeSetting": null,
+            "type": "roasting",
+          },
+          "order": 4,
+          "title": "Anbraten",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 60,
+              },
+            ],
+            "modeSetting": null,
+            "type": "kneading_solid_dough",
+          },
+          "order": 5,
+          "title": "Kneten fester Teig",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 60,
+              },
+            ],
+            "modeSetting": null,
+            "type": "kneading_soft_dough",
+          },
+          "order": 6,
+          "title": "Kneten weicher Teig",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 60,
+              },
+            ],
+            "modeSetting": null,
+            "type": "kneading_liquid_dough",
+          },
+          "order": 7,
+          "title": "Kneten flüssiger Teig",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 600,
+              },
+            ],
+            "modeSetting": null,
+            "type": "steaming",
+          },
+          "order": 8,
+          "title": "Dampfgaren",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 60,
+              },
+            ],
+            "modeSetting": null,
+            "type": "puree",
+          },
+          "order": 9,
+          "title": "Pürieren",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 60,
+              },
+            ],
+            "modeSetting": null,
+            "type": "smoothie",
+          },
+          "order": 10,
+          "title": "Smoothie",
+          "videoMedia": null,
+        },
+        {
+          "description": "Zwiebel 5 Sekunden zerkleinern.",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 5,
+              },
+            ],
+            "modeSetting": null,
+            "type": "turbo",
+          },
+          "order": 11,
+          "title": "Turbo",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "clockwise": true,
+                "order": 0,
+                "speed": 5,
+                "temperature": 0,
+                "time": 20,
+              },
+            ],
+            "modeSetting": null,
+            "type": "customized",
+          },
+          "order": 12,
+          "title": "Manuell ohne Hitze Stufe 5",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "temperature": 80,
+                "time": 900,
+              },
+            ],
+            "modeSetting": null,
+            "type": "slow_cooking",
+          },
+          "order": 13,
+          "title": "Slow Cooking",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "temperature": 60,
+                "time": 900,
+              },
+            ],
+            "modeSetting": null,
+            "type": "sous_vide",
+          },
+          "order": 14,
+          "title": "Sous-vide",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "temperature": 40,
+                "time": 1800,
+              },
+            ],
+            "modeSetting": null,
+            "type": "fermentation",
+          },
+          "order": 15,
+          "title": "Fermentieren",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": [
+              {
+                "order": 0,
+                "time": 1200,
+              },
+            ],
+            "modeSetting": null,
+            "type": "rice_cooking",
+          },
+          "order": 16,
+          "title": "Reis kochen",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": null,
+            "modeSetting": {
+              "size": "medium",
+              "texture": "hard",
+            },
+            "type": "cooking_eggs",
+          },
+          "order": 17,
+          "title": "Eier kochen",
+          "videoMedia": null,
+        },
+        {
+          "description": "",
+          "duration": null,
+          "mode": {
+            "deviceSettings": null,
+            "modeSetting": {
+              "duration": "short",
+            },
+            "type": "precleaning",
+          },
+          "order": 18,
+          "title": "Vorreinigung",
+          "videoMedia": null,
+        },
+        {
+          "description": "Fertig. Testrezept der Bridge, bitte löschen.",
+          "duration": null,
+          "mode": null,
+          "order": 19,
+          "title": "Fertig",
+          "videoMedia": null,
+        },
+      ],
+      "unit": "Portionen",
+    },
+  ],
+  "source": "member",
+  "status": "draft",
+  "thumbnail": {
+    "landscapeIsAiGenerated": false,
+    "landscapeMediaId": 700001,
+    "portraitIsAiGenerated": false,
+    "portraitMediaId": 700001,
+  },
+  "title": "Bridge Test Alle Modi",
+}
+`;

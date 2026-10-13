@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeIngredients } from "../ingredients/index.js";
-import type { MealieRecipe } from "../mealie/index.js";
+import { NUTRITION_KEYS, type MealieRecipe, type NutritionKey } from "../mealie/index.js";
 import { mealieRecipe } from "../testing/fakes.js";
 import { sourceHash } from "./source-hash.js";
 
@@ -36,6 +36,20 @@ describe("sourceHash", () => {
       original,
     );
     expect(hashOf(base, 2)).not.toBe(original);
+  });
+
+  it("changes with the description, the times and the nutrition the converter sees", () => {
+    const original = hashOf(base);
+    expect(hashOf({ ...base, description: "Neu beschrieben" })).not.toBe(original);
+    expect(hashOf({ ...base, totalTime: "2 Stunden" })).not.toBe(original);
+    expect(hashOf({ ...base, prepTime: "5 Minuten" })).not.toBe(original);
+    expect(hashOf({ ...base, cookTime: "40 Minuten" })).not.toBe(original);
+    expect(hashOf({ ...base, performTime: "30 Minuten" })).not.toBe(original);
+    const empty = Object.fromEntries(NUTRITION_KEYS.map((key) => [key, null])) as Record<
+      NutritionKey,
+      string | null
+    >;
+    expect(hashOf({ ...base, nutrition: { ...empty, calories: "512 kcal" } })).not.toBe(original);
   });
 
   it("ignores tags, categories, the image, extras and timestamps", () => {

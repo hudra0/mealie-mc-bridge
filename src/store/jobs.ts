@@ -12,7 +12,7 @@ import { JOB_STATUSES } from "./migrations.js";
 export type JobStatus = (typeof JOB_STATUSES)[number];
 export { JOB_STATUSES };
 
-// Waiting for or holding the worker. A recipe has at most one such job.
+// Waiting for or holding the worker. A recipe has at most one such job per scale.
 export const ACTIVE_STATUSES: readonly JobStatus[] = ["queued", "running", "session_expired"];
 export const FINAL_STATUSES: readonly JobStatus[] = ["done", "skipped", "failed", "cancelled"];
 
@@ -23,6 +23,14 @@ export interface JobUsage {
   outputTokens: number;
   cachedInputTokens?: number;
   costUsd?: number;
+}
+
+// A converted recipe that passed validation, kept so a retry does not pay for the
+// conversion again. Valid only while the recipe's source hash is unchanged.
+export interface StoredConversion {
+  sourceHash: string;
+  // The converter's result (ConversionResult in src/pipeline/converter-port.ts).
+  result: unknown;
 }
 
 export interface Job {
@@ -46,6 +54,10 @@ export interface Job {
   startedAt: string | null;
   finishedAt: string | null;
   force: boolean;
+  conversion: StoredConversion | null;
+  // Set right before the draft creation request goes out. A job interrupted after this
+  // point may have left a draft behind and is never run again on its own.
+  createStartedAt: string | null;
 }
 
 export interface JobEvent {
@@ -87,6 +99,8 @@ export interface JobPatch {
   startedAt?: string | null;
   finishedAt?: string | null;
   force?: boolean;
+  conversion?: StoredConversion | null;
+  createStartedAt?: string | null;
 }
 
 export interface ListJobsOptions {
@@ -132,6 +146,8 @@ interface JobRow {
   started_at: string | null;
   finished_at: string | null;
   force: number;
+  conversion_json: string | null;
+  create_started_at: string | null;
 }
 
 interface EventRow {
@@ -158,7 +174,12 @@ const COLUMNS: Readonly<Record<keyof JobPatch, string>> = {
   startedAt: "started_at",
   finishedAt: "finished_at",
   force: "force",
+  conversion: "conversion_json",
+  createStartedAt: "create_started_at",
 };
+
+export const INTERRUPTED_CREATE =
+  "Interrupted while the draft was being created. The draft may exist on monsieur-cuisine.com: check your drafts before you retry this job.";
 
 const MAX_EVENT_LENGTH = 2000;
 const MAX_LIST = 500;
@@ -177,11 +198,12 @@ export class JobStore {
   }
 
   // Adds a job unless the recipe already has an active one (queued, running or waiting for
-  // a session), which is then returned. Protects against double clicks.
+  // a session) at the same scale, which is then returned. Protects against double clicks;
+  // a click at another scale is a new job, like the separate draft it leads to.
   enqueue(input: EnqueueInput): EnqueueResult {
     return this.#db
       .transaction((): EnqueueResult => {
-        const existing = this.activeForRecipe(input.recipeId);
+        const existing = this.activeForRecipe(input.recipeId, input.scale);
         if (existing) return { job: existing, created: false };
         const id = this.#newId();
         const ts = this.#ts();
@@ -207,13 +229,13 @@ export class JobStore {
       .immediate();
   }
 
-  activeForRecipe(recipeId: string): Job | null {
+  activeForRecipe(recipeId: string, scale: number): Job | null {
     const row = this.#db
-      .prepare<[string], JobRow>(
-        `SELECT * FROM jobs WHERE mealie_recipe_id = ? AND status IN (${activeList})
+      .prepare<[string, number], JobRow>(
+        `SELECT * FROM jobs WHERE mealie_recipe_id = ? AND scale = ? AND status IN (${activeList})
          ORDER BY created_at, rowid LIMIT 1`,
       )
-      .get(recipeId);
+      .get(recipeId, scale);
     return row ? toJob(row) : null;
   }
 
@@ -231,7 +253,8 @@ export class JobStore {
         this.#db
           .prepare(
             `UPDATE jobs SET status = 'running', attempts = attempts + 1, started_at = ?,
-               finished_at = NULL, updated_at = ? WHERE id = ? AND status = 'queued'`,
+               finished_at = NULL, create_started_at = NULL, updated_at = ?
+             WHERE id = ? AND status = 'queued'`,
           )
           .run(ts, ts, row.id);
         return this.#require(row.id);
@@ -324,8 +347,9 @@ export class JobStore {
     return stats;
   }
 
-  // Puts a finished or waiting job back into the queue. With force, the next run ignores
-  // the "already sent" check.
+  // Puts a finished or waiting job back into the queue. A plain retry reuses a stored
+  // conversion; with force, the next run converts again and ignores the "already sent"
+  // check.
   requeue(id: string, options: { force?: boolean } = {}): Job {
     return this.#db
       .transaction((): Job => {
@@ -333,9 +357,11 @@ export class JobStore {
         if (!job) throw new JobConflictError(`Job ${id} does not exist`);
         if (job.status === "running") throw new JobConflictError("The job is running");
         if (job.status === "queued" && options.force === undefined) return job;
-        const other = this.activeForRecipe(job.mealieRecipeId);
+        const other = this.activeForRecipe(job.mealieRecipeId, job.scale);
         if (other && other.id !== id) {
-          throw new JobConflictError(`Job ${other.id} for the same recipe is ${other.status}`);
+          throw new JobConflictError(
+            `Job ${other.id} for the same recipe and scale is ${other.status}`,
+          );
         }
         const force = options.force ?? false;
         const updated = this.update(id, {
@@ -343,6 +369,8 @@ export class JobStore {
           error: null,
           finishedAt: null,
           force,
+          createStartedAt: null,
+          ...(force ? { conversion: null } : {}),
         });
         this.#event(id, "info", force ? "Queued again, forced" : "Queued again");
         return updated;
@@ -376,9 +404,38 @@ export class JobStore {
     return this.#move("session_expired", "queued", "Session renewed, queued again");
   }
 
-  // Jobs left running by a crash or a hard stop go back to the queue on start.
+  // Jobs left running by a crash or a hard stop, handled on start. Most go back to the
+  // queue. A job stopped after it created its draft is done. A job stopped while the draft
+  // creation request was out may have left a draft behind; it fails, so it is never sent
+  // twice. Returns the number of jobs handled.
   recoverInterrupted(): number {
-    return this.#move("running", "queued", "Interrupted by a restart, queued again");
+    return this.#db
+      .transaction((): number => {
+        const rows = this.#db
+          .prepare<
+            [],
+            { id: string; create_started_at: string | null; mc_recipe_id: number | null }
+          >("SELECT id, create_started_at, mc_recipe_id FROM jobs WHERE status = 'running'")
+          .all();
+        for (const row of rows) {
+          if (row.mc_recipe_id !== null) {
+            this.finish(row.id, "done");
+            this.#event(
+              row.id,
+              "warn",
+              "Interrupted by a restart after the draft was created; the Mealie write-back may be incomplete",
+            );
+          } else if (row.create_started_at !== null) {
+            this.finish(row.id, "failed", { error: INTERRUPTED_CREATE });
+            this.#event(row.id, "error", INTERRUPTED_CREATE);
+          } else {
+            this.update(row.id, { status: "queued", startedAt: null });
+            this.#event(row.id, "info", "Interrupted by a restart, queued again");
+          }
+        }
+        return rows.length;
+      })
+      .immediate();
   }
 
   #move(from: JobStatus, to: JobStatus, message: string): number {
@@ -420,7 +477,7 @@ export class JobStore {
 
 function toColumn(key: keyof JobPatch, value: unknown): unknown {
   if (value === null) return null;
-  if (key === "usage") return JSON.stringify(value);
+  if (key === "usage" || key === "conversion") return JSON.stringify(value);
   if (key === "force") return value ? 1 : 0;
   return value;
 }
@@ -440,20 +497,22 @@ function toJob(row: JobRow): Job {
     mcRecipeUrl: row.mc_recipe_url,
     provider: row.provider,
     model: row.model,
-    usage: parseUsage(row.usage_json),
+    usage: parseJson<JobUsage>(row.usage_json),
     costUsd: row.cost_usd,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
     force: row.force === 1,
+    conversion: parseJson<StoredConversion>(row.conversion_json),
+    createStartedAt: row.create_started_at,
   };
 }
 
-function parseUsage(json: string | null): JobUsage | null {
+function parseJson<T>(json: string | null): T | null {
   if (json === null) return null;
   try {
-    return JSON.parse(json) as JobUsage;
+    return JSON.parse(json) as T;
   } catch {
     return null;
   }

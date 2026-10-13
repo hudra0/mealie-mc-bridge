@@ -132,6 +132,18 @@ describe("setCookie", () => {
     expect(manager.isPaused()).toBe(false);
     await expect(manager.getCookie()).resolves.toBe("a=1; b=2");
   });
+
+  it("ignores a late session error for a cookie that was replaced", async () => {
+    store = tempStore();
+    const { manager } = build({ seedCookie: COOKIE });
+    await manager.setCookie("a=fresh");
+    await manager.onSessionError("expired", COOKIE);
+    expect(manager.status().state).toBe("valid");
+    expect(manager.isPaused()).toBe(false);
+
+    await manager.onSessionError("expired", "a=fresh");
+    expect(manager.status().state).toBe("expired");
+  });
 });
 
 describe("health check", () => {

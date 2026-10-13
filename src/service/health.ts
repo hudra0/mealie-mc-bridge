@@ -1,6 +1,9 @@
 // The /health report. The HTTP status stays 200 while the process works, so a container
 // orchestrator does not restart the bridge over an expired session, which a restart cannot
 // fix; "status" says "degraded" instead.
+//
+// /health needs no login, so it carries no free text: the last worker error shows only
+// when it happened. Its message is on the admin dashboard.
 
 import type { WorkerStatus } from "../pipeline/worker.js";
 import type { SessionState, SessionStatus } from "../session/manager.js";
@@ -19,7 +22,7 @@ export interface HealthReport {
   session: { state: SessionState; checkedAt: string | null };
   queue: { depth: number; running: number; waitingForSession: number };
   worker: { running: boolean; paused: boolean };
-  lastError: { message: string; at: string | null } | null;
+  lastError: { at: string | null } | null;
 }
 
 export function healthReport(deps: HealthDeps): HealthReport {
@@ -37,6 +40,6 @@ export function healthReport(deps: HealthDeps): HealthReport {
       waitingForSession: stats.session_expired,
     },
     worker: { running: worker.running, paused: worker.paused },
-    lastError: worker.lastError ? { message: worker.lastError, at: worker.lastErrorAt } : null,
+    lastError: worker.lastError ? { at: worker.lastErrorAt } : null,
   };
 }

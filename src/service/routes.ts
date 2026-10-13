@@ -6,6 +6,7 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { InvalidRecipeActionError, parseRecipeActionBody } from "../mealie/index.js";
+import { NOT_FOUND_BODY } from "../server.js";
 import type { Job, JobEvent, JobStore } from "../store/jobs.js";
 import { safeEqual } from "./security.js";
 
@@ -38,7 +39,7 @@ export interface PublicJob {
 }
 
 function notFound(reply: FastifyReply): FastifyReply {
-  return reply.code(404).send({ message: "Not Found", error: "Not Found", statusCode: 404 });
+  return reply.code(404).send(NOT_FOUND_BODY);
 }
 
 export function routes(

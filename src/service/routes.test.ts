@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RECIPE_ID } from "../testing/fakes.js";
 import { WEBHOOK_TOKEN, testService, type TestService } from "../testing/service.js";
 import { version } from "../version.js";
+import { healthReport } from "./health.js";
 import { WEBHOOK_BODY_LIMIT } from "./routes.js";
 import { requestLogSerializers, safeEqual } from "./security.js";
 
@@ -123,6 +124,37 @@ describe("POST /hooks/mealie/:token", () => {
     expect(log).not.toContain(WEBHOOK_TOKEN);
     expect(log).not.toContain("x".repeat(48));
   });
+
+  it("keeps the token out of the log when the right token misses the route", async () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        lines.push(chunk.toString());
+        callback();
+      },
+    });
+    const logger = pino({ level: "trace", serializers: requestLogSerializers }, stream);
+    svc = testService({ logger: { loggerInstance: logger } });
+    const get = await svc.app.inject({ method: "GET", url: hook() });
+    const slash = await svc.app.inject({ method: "POST", url: `${hook()}/`, payload: actionBody });
+    const csrf = await svc.app.inject({
+      method: "GET",
+      url: "/admin/typo?_csrf=secret-form-token",
+    });
+    for (const response of [get, slash, csrf]) expect(response.statusCode).toBe(404);
+    const log = lines.join("");
+    expect(log).toContain("/hooks/mealie/[redacted]");
+    expect(log).not.toContain(WEBHOOK_TOKEN);
+    expect(log).not.toContain("secret-form-token");
+  });
+
+  it("answers a wrong token exactly like an unknown route", async () => {
+    svc = testService();
+    const wrong = await svc.app.inject({ method: "POST", url: hook("x".repeat(48)), payload: {} });
+    const unknown = await svc.app.inject({ method: "POST", url: "/nothing/here", payload: {} });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.body).toBe(wrong.body);
+  });
 });
 
 describe("GET /jobs/:id", () => {
@@ -174,6 +206,25 @@ describe("GET /health", () => {
       session: { state: "valid" },
       worker: { running: true },
     });
+  });
+
+  it("says when the worker last failed, but not what the error said", () => {
+    svc = testService();
+    const report = healthReport({
+      session: svc.session,
+      jobs: svc.store.jobs,
+      worker: {
+        status: () => ({
+          running: true,
+          paused: false,
+          currentJobId: null,
+          lastError: "GET http://mealie.internal:9000/api/recipes/Secret-Soup failed",
+          lastErrorAt: "2026-10-13T10:00:00.000Z",
+        }),
+      },
+    });
+    expect(report.lastError).toEqual({ at: "2026-10-13T10:00:00.000Z" });
+    expect(JSON.stringify(report)).not.toContain("Secret-Soup");
   });
 
   it("answers 503 when the store is gone", async () => {

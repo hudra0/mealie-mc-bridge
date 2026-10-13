@@ -94,7 +94,7 @@ export class EmailNotifier implements Notifier {
       "",
       "So geht es weiter:",
       "1. Auf www.monsieur-cuisine.com anmelden.",
-      "2. Das Cookie aus den Entwicklerwerkzeugen des Browsers kopieren (siehe README, Abschnitt „Operations“).",
+      "2. Das Cookie aus den Entwicklerwerkzeugen des Browsers kopieren (siehe README, „Run it“, Schritt 5: „Paste the Monsieur Cuisine session“).",
       "3. Auf der Admin-Seite der Bridge (/admin) einfügen und speichern.",
       "",
       `Zuletzt geprüft: ${formatDate(status.checkedAt)}`,

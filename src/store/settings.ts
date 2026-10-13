@@ -9,6 +9,7 @@ import type { Db } from "./db.js";
 const ALGORITHM = "aes-256-gcm";
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
+const TAG_BYTES = 16;
 const FORMAT = "v1";
 
 export class SettingsKeyError extends Error {
@@ -33,7 +34,7 @@ export function parseSettingsKey(base64: string): Buffer {
 
 export function encryptSecret(key: Buffer, name: string, plaintext: string): string {
   const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: TAG_BYTES });
   cipher.setAAD(Buffer.from(name, "utf8"));
   const body = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -45,10 +46,16 @@ export function decryptSecret(key: Buffer, name: string, stored: string): string
   if (format !== FORMAT || iv === undefined || tag === undefined || body === undefined) {
     throw new SettingsKeyError(`Setting ${name} is not an encrypted value`);
   }
+  const ivBytes = Buffer.from(iv, "base64");
+  const tagBytes = Buffer.from(tag, "base64");
+  // GCM accepts shorter tags; a stored value with one would be far easier to forge.
+  if (ivBytes.length !== IV_BYTES || tagBytes.length !== TAG_BYTES) {
+    throw new SettingsKeyError(`Setting ${name} is not a valid encrypted value`);
+  }
   try {
-    const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(iv, "base64"));
+    const decipher = createDecipheriv(ALGORITHM, key, ivBytes, { authTagLength: TAG_BYTES });
     decipher.setAAD(Buffer.from(name, "utf8"));
-    decipher.setAuthTag(Buffer.from(tag, "base64"));
+    decipher.setAuthTag(tagBytes);
     return Buffer.concat([decipher.update(Buffer.from(body, "base64")), decipher.final()]).toString(
       "utf8",
     );

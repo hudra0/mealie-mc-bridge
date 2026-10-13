@@ -21,6 +21,7 @@ export interface ServiceConfig extends PipelineConfig {
   WEBHOOK_TOKEN: string;
   ADMIN_USER?: string | undefined;
   ADMIN_PASSWORD?: string | undefined;
+  ADMIN_HOSTS?: string[] | undefined;
   WORKER_POLL_SECONDS: number;
   MEALIE_URL: string;
   MEALIE_PUBLIC_URL?: string | undefined;
@@ -96,8 +97,9 @@ export function buildService(parts: ServiceParts): Service {
           config,
           logger,
           notifier: parts.notifier,
+          // No `session` here: McClient reports a rejected cookie to the session manager
+          // itself, together with the cookie it used.
           store,
-          session: parts.session,
         },
         options,
       ),
@@ -114,6 +116,7 @@ export function buildService(parts: ServiceParts): Service {
       config.ADMIN_USER && config.ADMIN_PASSWORD
         ? { user: config.ADMIN_USER, password: config.ADMIN_PASSWORD }
         : null,
+    ...(config.ADMIN_HOSTS ? { allowedHosts: config.ADMIN_HOSTS } : {}),
     store,
     session: parts.session,
     mealie: parts.mealie,

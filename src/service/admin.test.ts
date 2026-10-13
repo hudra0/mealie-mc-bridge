@@ -67,6 +67,36 @@ describe("admin authentication", () => {
     expect(response.body).toContain("The admin pages have no password");
   });
 
+  it("refuses unknown host names without credentials, against DNS rebinding", async () => {
+    svc = testService({ auth: false });
+    const status = async (host: string) => (await get("/admin", { host })).statusCode;
+    expect(await status("rebind.example.com")).toBe(403);
+    expect(await status("rebind.example.com:3000")).toBe(403);
+    expect(await status("localhost:3000")).toBe(200);
+    expect(await status("127.0.0.1:3000")).toBe(200);
+    expect(await status("[::1]:3000")).toBe(200);
+    expect(await status("192.0.2.5")).toBe(200);
+    // The webhook does not depend on the admin host check.
+    expect(
+      (await svc.app.inject({ method: "GET", url: "/health", headers: { host: "mc-bridge:3000" } }))
+        .statusCode,
+    ).toBe(200);
+  });
+
+  it("lets listed host names in, and checks them with credentials only when listed", async () => {
+    svc = testService({ auth: false, config: { ADMIN_HOSTS: ["bridge.example.com"] } });
+    expect((await get("/admin", { host: "Bridge.example.com:3000" })).statusCode).toBe(200);
+    expect((await get("/admin", { host: "other.example.com" })).statusCode).toBe(403);
+    await svc.dispose();
+
+    svc = testService();
+    expect((await get("/admin", { ...auth, host: "bridge.example.com" })).statusCode).toBe(200);
+    await svc.dispose();
+
+    svc = testService({ config: { ADMIN_HOSTS: ["bridge.example.com"] } });
+    expect((await get("/admin", { ...auth, host: "other.example.com" })).statusCode).toBe(403);
+  });
+
   it("refuses form posts without the form token", async () => {
     svc = testService();
     const missing = await post("/admin/session", { cookie: "a=1" });

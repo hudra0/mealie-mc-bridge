@@ -10,6 +10,10 @@
 //   would attach the Basic Auth credentials. The dry-run conversion, which costs money,
 //   needs the token as well. After a restart, reload the page before submitting a form.
 // - A POST whose Origin header names another host is refused.
+// - Without Basic Auth, only requests for an IP address, localhost or a name in
+//   ADMIN_HOSTS get through. A malicious site could otherwise rebind its own name to the
+//   bridge's address and use the pages as same-origin. With Basic Auth, the browser does
+//   not send the credentials to the rebound name, so the list applies only when set.
 
 import { randomBytes } from "node:crypto";
 import formbody from "@fastify/formbody";
@@ -48,6 +52,8 @@ import { credentialsMatch, parseBasicAuth, safeEqual, type Credentials } from ".
 export interface AdminOptions {
   // Null turns Basic Auth off.
   auth: Credentials | null;
+  // ADMIN_HOSTS: host names, lower case, without ports.
+  allowedHosts?: readonly string[];
   store: { jobs: JobStore; mcRecipes: McRecipeStore; settings: SettingsStore };
   session: Pick<SessionManager, "status" | "setCookie" | "check">;
   mealie: Pick<MealiePort, "getRecipe">;
@@ -130,7 +136,17 @@ export function admin(
 
   void app.register(formbody, { bodyLimit: FORM_BODY_LIMIT });
 
+  const checkHost = authDisabled || options.allowedHosts !== undefined;
+  const allowedHosts = new Set(options.allowedHosts ?? []);
+
   app.addHook("onRequest", (request, reply, next) => {
+    if (checkHost && !hostAllowed(request.headers.host, allowedHosts)) {
+      void reply
+        .code(403)
+        .header("content-type", "text/plain; charset=utf-8")
+        .send("Unknown host name. Add it to ADMIN_HOSTS or use the IP address.");
+      return;
+    }
     if (
       options.auth &&
       !credentialsMatch(parseBasicAuth(request.headers.authorization), options.auth)
@@ -334,6 +350,21 @@ export function admin(
   });
 
   done();
+}
+
+// IP addresses cannot be rebound and localhost resolves locally, so both are safe without
+// a list. Any other name must be on it.
+export function hostAllowed(header: string | undefined, allowed: ReadonlySet<string>): boolean {
+  if (!header) return false;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${header}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (hostname === "localhost" || hostname.startsWith("[")) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) return true;
+  return allowed.has(hostname);
 }
 
 // A POST from a form on this host carries no Origin (older browsers) or our own host.

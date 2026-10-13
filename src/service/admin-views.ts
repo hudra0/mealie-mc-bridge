@@ -156,6 +156,14 @@ export function dashboardView(data: DashboardData): SafeHtml {
               : html`<span class="bad">stopped</span>`
         }
       </p>
+      ${
+        data.worker?.lastError
+          ? html`<p>
+              Last worker error (${formatTime(data.worker.lastErrorAt)}):
+              <span class="bad">${data.worker.lastError}</span>
+            </p>`
+          : ""
+      }
       <div class="scroll">
         <table>
           <tr>

@@ -41,6 +41,18 @@ export const envSchema = z.object({
     .optional(),
   ADMIN_USER: z.string().min(1).optional(),
   ADMIN_PASSWORD: z.string().min(1).optional(),
+  // Host names the admin pages answer to, comma-separated, without ports. IP addresses and
+  // localhost always work. Enforced when Basic Auth is off (it blocks DNS rebinding) and
+  // whenever it is set.
+  ADMIN_HOSTS: z
+    .string()
+    .transform((value) =>
+      value
+        .split(",")
+        .map((host) => host.trim().toLowerCase())
+        .filter(Boolean),
+    )
+    .optional(),
   // smtp:// or smtps:// URL with credentials. Without it, no mail is sent.
   SMTP_URL: z.url({ protocol: /^smtps?$/, error: "must be an smtp or smtps URL" }).optional(),
   NOTIFY_EMAIL: z.email("must be an email address").optional(),

@@ -300,6 +300,9 @@ describe("runJob happy path", () => {
         "The converter set 3 servings instead of 4",
       ]),
     );
+    // Mealie records what the draft carries, like the timeline entry.
+    expect(s.mealie.patches[0]?.patch.extras?.mc_servings).toBe("3");
+    expect(s.store.jobs.get(job.id)?.servings).toBe(3);
   });
 
   it("uses the cached category catalog on the next run", async () => {
@@ -477,13 +480,54 @@ describe("runJob failures", () => {
     expect(s.calls).not.toContain("mc.createRecipe");
   });
 
+  it("converts once across retries and reuses the stored conversion", async () => {
+    const s = setup({ mc: { upload: [networkError(), networkError()] } });
+    let job = s.claim();
+    for (const expected of ["retry", "retry", "done"]) {
+      const outcome = await runJob(job, s.deps, { finalAttempt: expected === "done" });
+      expect(outcome.status).toBe(expected);
+      job = s.store.jobs.update(job.id, { attempts: outcome.job.attempts + 1 });
+    }
+    expect(s.converter.requests).toHaveLength(1);
+    expect(messages(s, job).filter((m) => m.startsWith("Reusing the conversion"))).toHaveLength(2);
+    expect(s.mc.payloads).toHaveLength(1);
+  });
+
+  it("converts again when the recipe changed since the stored conversion", async () => {
+    const s = setup({ mc: { upload: networkError() } });
+    const job = s.claim();
+    await runJob(job, s.deps, { finalAttempt: false });
+    s.store.jobs.update(job.id, {
+      conversion: { sourceHash: "an older fingerprint", result: conversionResult() },
+    });
+    const outcome = await runJob(s.store.jobs.get(job.id)!, s.deps);
+    expect(outcome.status).toBe("done");
+    expect(s.converter.requests).toHaveLength(2);
+  });
+
   it("never retries creating the draft, so a timeout cannot leave two drafts", async () => {
     const s = setup({ mc: { create: networkError() } });
     const outcome = await runJob(s.claim(), s.deps, { finalAttempt: false });
     expect(outcome).toMatchObject({ status: "failed", stage: "upload" });
+    expect(outcome).toMatchObject({ error: expect.stringMatching(/check your drafts/) as unknown });
     expect(s.mealie.timeline[0]?.event.subject).toBe(
       "Monsieur Cuisine: Fehler – Hochladen fehlgeschlagen",
     );
+  });
+
+  it("does not suggest a hidden draft when Monsieur Cuisine refused the draft", async () => {
+    const refused = new McApiError({
+      status: 422,
+      code: null,
+      serverMessage: "invalid",
+      endpoint: "POST api/v3/auth/user/recipes/",
+    });
+    const s = setup({ mc: { create: refused } });
+    const outcome = await runJob(s.claim(), s.deps, { finalAttempt: false });
+    expect(outcome).toMatchObject({ status: "failed" });
+    expect(outcome).not.toMatchObject({
+      error: expect.stringMatching(/check your drafts/) as unknown,
+    });
   });
 
   it("retries when no category catalog is available yet", async () => {
@@ -622,6 +666,49 @@ describe("runJob and shutdown", () => {
     expect(outcome.status).toBe("interrupted");
     expect(s.converter.signals[0]).toBe(controller.signal);
     expect(s.mealie.timeline).toEqual([]);
+  });
+
+  it("marks the job before creating the draft", async () => {
+    const s = setup();
+    const job = s.claim();
+    let marked: string | null = null;
+    s.mc.createRecipe = vi.fn(() => {
+      marked = s.store.jobs.get(job.id)?.createStartedAt ?? null;
+      return Promise.resolve({ id: 4242, status: "draft", editorUrl: mcEditorUrl(4242) });
+    });
+    await runJob(job, s.deps);
+    expect(marked).not.toBeNull();
+  });
+
+  it("fails instead of requeueing when a shutdown hits the draft creation", async () => {
+    const controller = new AbortController();
+    const s = setup();
+    s.mc.createRecipe = vi.fn(() => {
+      controller.abort();
+      return Promise.reject(
+        new McNetworkError({ endpoint: "POST proxy", timedOut: true, reason: "no response" }),
+      );
+    });
+    const job = s.claim();
+    const outcome = await runJob(job, s.deps, { signal: controller.signal });
+    expect(outcome.status).toBe("failed");
+    expect(s.store.jobs.get(job.id)).toMatchObject({
+      status: "failed",
+      error: expect.stringMatching(/check your drafts/) as unknown,
+    });
+  });
+
+  it("finishes the job when the draft is created during a shutdown", async () => {
+    const controller = new AbortController();
+    const s = setup();
+    s.mc.createRecipe = vi.fn(() => {
+      controller.abort();
+      return Promise.resolve({ id: 4242, status: "draft", editorUrl: mcEditorUrl(4242) });
+    });
+    const job = s.claim();
+    const outcome = await runJob(job, s.deps, { signal: controller.signal });
+    expect(outcome.status).toBe("done");
+    expect(s.store.jobs.get(job.id)?.mcRecipeId).toBe(4242);
   });
 });
 

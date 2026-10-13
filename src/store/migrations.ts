@@ -79,6 +79,14 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: "stored conversion and draft creation marker",
+    sql: `
+      ALTER TABLE jobs ADD COLUMN conversion_json TEXT;
+      ALTER TABLE jobs ADD COLUMN create_started_at TEXT;
+    `,
+  },
 ];
 
 export interface MigrationResult {

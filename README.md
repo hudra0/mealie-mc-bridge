@@ -43,7 +43,18 @@ mv compose.example.yml compose.yml
 mkdir -p data && sudo chown 1000:1000 data   # the container runs as uid 1000
 ```
 
-The bridge has to share a Docker network with Mealie: Mealie calls the bridge, and the bridge calls Mealie. The simplest setup puts the `mc-bridge` service into the same compose file as Mealie.
+The bridge has to share a Docker network with Mealie: Mealie calls the bridge, and the bridge calls Mealie. Pick one layout:
+
+- **In Mealie's compose project (simplest).** Paste the `mc-bridge` service from `compose.yml` into Mealie's compose file, and put `.env` and `data/` into Mealie's directory instead of `mc-bridge/`. Both services are then on Mealie's default network.
+- **As its own project.** Keep `mc-bridge/compose.yml` and join Mealie's network: find its name with `docker network ls` (usually `<mealie directory>_default`), then uncomment the two `networks:` blocks in `compose.yml` and put that name in.
+
+With either layout, Mealie must reach the bridge by name. After step 4, check it from the Mealie container:
+
+```sh
+docker exec mealie python -c "import urllib.request as u; print(u.urlopen('http://mc-bridge:3000/health').read().decode())"
+```
+
+Replace `mealie` with the name of your Mealie container (`docker ps`). No answer means the two are not on one network, and the recipe action will fail without any message.
 
 ### 2. Generate the secrets
 
@@ -72,7 +83,7 @@ docker compose up -d
 curl http://127.0.0.1:3000/health
 ```
 
-The admin pages are at `http://127.0.0.1:3000/admin`. The example compose file publishes the port on localhost only; put a LAN address there if you want to reach it from another machine, and keep it off the internet.
+The admin pages are at `http://127.0.0.1:3000/admin`. The example compose file publishes the port on localhost only; put a LAN address there if you want to reach it from another machine, and keep it off the internet. Without a password, the admin pages answer only to an IP address or `localhost`; list any host name you use for them (a reverse proxy name, say) in `ADMIN_HOSTS`.
 
 ### 5. Paste the Monsieur Cuisine session
 
@@ -124,7 +135,7 @@ Paste a fresh cookie on the dashboard (step 5 above). The waiting jobs then run 
 
 ### Mail
 
-Set `SMTP_URL` (for example `smtps://user:password@mail.example.com:465`) and `NOTIFY_EMAIL`. `SMTP_FROM` sets the sender; it defaults to the recipient. The bridge mails when the session stops working (once per change), when a job fails for good (once per job) and when the session check itself fails, for example because the site is down. Mails are short German plain text and never contain cookies or tokens.
+Set `SMTP_URL` (for example `smtps://user:password@mail.example.com:465`) and `NOTIFY_EMAIL`. `SMTP_FROM` sets the sender; it defaults to the recipient. The bridge mails when the session stops working (once per change), when a job fails for good (once per job) and when the session check itself fails, for example because the site is down. Mails are short German plain text, whatever `TIMELINE_LANGUAGE` says, and never contain cookies or tokens.
 
 ### Jobs
 

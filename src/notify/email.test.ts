@@ -41,6 +41,8 @@ const job = (overrides: Partial<Job> = {}): Job => ({
   startedAt: null,
   finishedAt: null,
   force: false,
+  conversion: null,
+  createStartedAt: null,
   ...overrides,
 });
 

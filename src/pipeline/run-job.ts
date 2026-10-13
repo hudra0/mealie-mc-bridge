@@ -3,9 +3,16 @@
 // Stages: load the recipe and its image, fingerprint it and skip unchanged recipes,
 // normalize, scale and render, pick categories, convert, validate, prepare and upload the
 // image, create the draft, set its status, write back to Mealie. Every stage appends a job
-// event. Creating the draft is the point of no return: from there on the job ends as done,
-// and problems in the status change or the write-back become warnings, so a retry can
-// never leave a second draft behind.
+// event.
+//
+// A conversion that passed validation is stored on the job, so a retry after a later
+// temporary failure (an image upload, say) reuses it instead of paying for it again.
+//
+// Creating the draft is the point of no return. The job is marked before the request goes
+// out; a job interrupted from there on fails instead of going back to the queue, and a
+// restart fails it too (JobStore.recoverInterrupted). Once the draft exists, the job ends
+// as done, and problems in the status change or the write-back become warnings, so a
+// retry can never leave a second draft behind.
 
 import { errorMessage, type AppLogger } from "../app-logger.js";
 import {
@@ -30,10 +37,10 @@ import {
 import type { Notifier } from "../notify/email.js";
 import { buildMcPayload } from "../recipe/payload.js";
 import type { DeviceLimits } from "../recipe/limits.js";
-import type { Job, JobStore, EventLevel } from "../store/jobs.js";
+import { INTERRUPTED_CREATE, type Job, type JobStore, type EventLevel } from "../store/jobs.js";
 import type { McRecipeStore } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
-import type { Converter } from "./converter-port.js";
+import type { ConversionResult, Converter } from "./converter-port.js";
 import {
   timelineTexts,
   type FailureStage,
@@ -74,8 +81,9 @@ export interface RunJobDeps {
   logger: AppLogger;
   notifier: Notifier;
   store: PipelineStore;
-  // Told about a rejected session. McClient already reports it to its provider; this
-  // covers fakes and keeps the pause explicit.
+  // Told about a rejected session, for sinks that do not report it themselves. Leave it
+  // out with McClient: it reports to its provider along with the cookie it used, and a
+  // report without the cookie could mark a freshly replaced cookie as dead.
   session?: Pick<SessionProvider, "onSessionError">;
   prepareImage?: (bytes: Uint8Array, aspect: ImageAspect) => Promise<PreparedRecipeImage>;
   now?: () => Date;
@@ -147,6 +155,8 @@ class JobRun {
   readonly #options: RunJobOptions;
   readonly #texts: TimelineTexts;
   #recipe: MealieRecipe | null = null;
+  // True from the moment the draft creation request may have reached the server.
+  #creating = false;
 
   constructor(job: Job, deps: RunJobDeps, options: RunJobOptions) {
     this.#job = job;
@@ -212,25 +222,39 @@ class JobRun {
     );
 
     this.#checkAbort();
-    const signal = this.#options.signal;
-    const result = await this.#stage(
-      "convert",
-      () =>
-        deps.converter.convert(conversionRequest(recipe, prepared, plan), signal ? { signal } : {}),
-      false,
-    );
-    this.#jobs.update(job.id, {
-      provider: result.provider,
-      model: result.model,
-      usage: result.usage,
-      costUsd: result.usage.costUsd ?? null,
-    });
-    const cost = result.usage.costUsd === undefined ? "" : `, $${result.usage.costUsd.toFixed(4)}`;
-    this.#event(
-      "info",
-      `Converted with ${result.provider}/${result.model} in ${result.attempts} attempt(s) (${result.usage.inputTokens} input, ${result.usage.outputTokens} output tokens${cost})`,
-    );
-    for (const warning of result.warnings) this.#event("warn", `Converter: ${warning}`);
+    const stored = storedConversion(job, prepared.hash);
+    let result: ConversionResult;
+    if (stored) {
+      result = stored;
+      this.#event(
+        "info",
+        `Reusing the conversion from an earlier attempt (${result.provider}/${result.model}); no new LLM call`,
+      );
+    } else {
+      const signal = this.#options.signal;
+      result = await this.#stage(
+        "convert",
+        () =>
+          deps.converter.convert(
+            conversionRequest(recipe, prepared, plan),
+            signal ? { signal } : {},
+          ),
+        false,
+      );
+      this.#jobs.update(job.id, {
+        provider: result.provider,
+        model: result.model,
+        usage: result.usage,
+        costUsd: result.usage.costUsd ?? null,
+      });
+      const usage = result.usage;
+      const cost = usage.costUsd === undefined ? "" : `, $${usage.costUsd.toFixed(4)}`;
+      this.#event(
+        "info",
+        `Converted with ${result.provider}/${result.model} in ${result.attempts} attempt(s) (${usage.inputTokens} input, ${usage.outputTokens} output tokens${cost})`,
+      );
+      for (const warning of result.warnings) this.#event("warn", `Converter: ${warning}`);
+    }
 
     const checked = checkConverted(result, plan, deps.limits);
     if (checked.categories.dropped.length > 0) {
@@ -240,6 +264,7 @@ class JobRun {
       );
     }
     if (!checked.validation.ok) {
+      if (stored) this.#jobs.update(job.id, { conversion: null });
       throw new StageError(
         "validate",
         new ValidationFailedError(summarizeValidation(checked.validation)),
@@ -253,6 +278,7 @@ class JobRun {
       );
     }
     this.#event("info", "Validation passed");
+    if (!stored) this.#jobs.update(job.id, { conversion: { sourceHash: prepared.hash, result } });
 
     this.#checkAbort();
     const { media, imageSkipped } = await this.#uploadImage(image);
@@ -264,7 +290,10 @@ class JobRun {
       detailsMediaId: media?.detailsMediaId ?? null,
       thumbnailMediaId: media?.thumbnailMediaId ?? null,
     });
-    // Not retried: after a timeout the server may have created the draft anyway.
+    // The point of no return. Not retried: after a timeout the server may have created the
+    // draft anyway. The signal is not passed on, so a shutdown waits for the answer.
+    this.#jobs.update(job.id, { createStartedAt: this.#now().toISOString() });
+    this.#creating = true;
     const ref = await this.#stage("upload", () => deps.mc.createRecipe(payload), false);
     deps.store.mcRecipes.record({
       mealieRecipeId: recipe.id,
@@ -273,18 +302,25 @@ class JobRun {
       mcRecipeId: ref.id,
       mcRecipeUrl: ref.editorUrl,
     });
-    this.#jobs.update(job.id, { mcRecipeId: ref.id, mcRecipeUrl: ref.editorUrl, error: null });
+    // The servings the draft carries, which may differ from the requested ones.
+    const servings = checked.recipe.servingSize.amount;
+    this.#jobs.update(job.id, {
+      mcRecipeId: ref.id,
+      mcRecipeUrl: ref.editorUrl,
+      servings,
+      error: null,
+    });
     this.#event("info", `Created draft ${ref.id}: ${ref.editorUrl}`);
     deps.logger.info({ jobId: job.id, mcRecipeId: ref.id }, "draft created");
 
     // The draft exists. Nothing below fails the job.
     const statusFailed = await this.#setStatus(ref.id);
-    await this.#writeBack(recipe, ref.id, ref.editorUrl, prepared.servings, prepared.hash);
+    await this.#writeBack(recipe, ref.id, ref.editorUrl, servings, prepared.hash);
     await this.#timeline(
       this.#texts.createdSubject,
       this.#texts.created({
         url: ref.editorUrl,
-        servings: checked.recipe.servingSize.amount,
+        servings,
         status: deps.config.MC_RECIPE_STATUS,
         statusFailed,
         provider: result.provider,
@@ -304,13 +340,19 @@ class JobRun {
     const stage: FailureStage = error instanceof StageError ? error.stage : "unexpected";
     const reason = error instanceof StageError ? error.reason : error;
 
-    if (this.#options.signal?.aborted || reason instanceof InterruptedError) {
+    // Once the draft creation request is out, a shutdown no longer sends the job back to
+    // the queue: the failure below asks the operator to check the drafts instead.
+    const interrupted = this.#options.signal?.aborted || reason instanceof InterruptedError;
+    if (interrupted && !this.#creating) {
       const queued = this.#jobs.update(job.id, { status: "queued", startedAt: null });
       this.#event("warn", "Interrupted by shutdown; the job runs again after the restart");
       return { status: "interrupted", job: queued };
     }
 
-    const message = errorMessage(reason);
+    let message = errorMessage(reason);
+    if (this.#creating && !(reason instanceof McSessionError) && !isRefusal(reason)) {
+      message = `${message}. ${INTERRUPTED_CREATE}`;
+    }
     if (reason instanceof McSessionError) {
       const waiting = this.#jobs.finish(job.id, "session_expired", { error: message });
       this.#event(
@@ -322,7 +364,7 @@ class JobRun {
       return { status: "session_expired", job: waiting };
     }
 
-    const retryable = error instanceof StageError && error.retryable;
+    const retryable = error instanceof StageError && error.retryable && !this.#creating;
     if (retryable && this.#options.finalAttempt === false) {
       const pending = this.#jobs.update(job.id, { error: message });
       this.#event("warn", `Temporary failure at ${stage}: ${message}`);
@@ -406,7 +448,7 @@ class JobRun {
     } catch (error) {
       this.#event("warn", `Tag "${deps.config.TAG_NAME}" not available: ${errorMessage(error)}`);
     }
-    const now = (deps.now ?? (() => new Date()))();
+    const now = this.#now();
     try {
       await deps.mealie.patchRecipeMerged(recipe.id, {
         extras: {
@@ -462,6 +504,10 @@ class JobRun {
     }
   }
 
+  #now(): Date {
+    return (this.#deps.now ?? (() => new Date()))();
+  }
+
   #checkAbort(): void {
     if (this.#options.signal?.aborted) throw new InterruptedError();
   }
@@ -469,4 +515,32 @@ class JobRun {
   #event(level: EventLevel, message: string): void {
     this.#jobs.appendEvent(this.#job.id, level, message);
   }
+}
+
+// Monsieur Cuisine answered and turned the request down, so it created nothing.
+function isRefusal(error: unknown): boolean {
+  return error instanceof McApiError && error.status >= 400 && error.status < 500;
+}
+
+// The validated conversion from an earlier attempt of this job, when the recipe has not
+// changed since. The stored value was written by this code; the checks only guard against
+// a hand-edited or truncated row.
+function storedConversion(job: Job, hash: string): ConversionResult | null {
+  const stored = job.conversion;
+  if (!stored || stored.sourceHash !== hash) return null;
+  const result = stored.result as Partial<ConversionResult> | null;
+  if (
+    !result ||
+    typeof result !== "object" ||
+    !result.recipe ||
+    typeof result.recipe !== "object" ||
+    typeof result.provider !== "string" ||
+    typeof result.model !== "string" ||
+    !result.usage ||
+    !Array.isArray(result.warnings) ||
+    !Array.isArray(result.reviewHints)
+  ) {
+    return null;
+  }
+  return result as ConversionResult;
 }

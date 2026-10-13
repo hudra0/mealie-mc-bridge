@@ -110,6 +110,10 @@ describe("loadServiceConfig", () => {
   });
 
   it("wants both admin credentials or neither", () => {
+    expect(
+      loadServiceConfig({ ...service, ADMIN_HOSTS: " Bridge.example.com, ,mc.example.com" })
+        .ADMIN_HOSTS,
+    ).toEqual(["bridge.example.com", "mc.example.com"]);
     expect(() => loadServiceConfig({ ...service, ADMIN_USER: "admin" })).toThrow(
       /ADMIN_USER, ADMIN_PASSWORD: set both or neither/,
     );

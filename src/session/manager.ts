@@ -169,9 +169,16 @@ export class SessionManager implements SessionProvider {
     return this.#checking;
   }
 
-  // Called by McClient after Monsieur Cuisine rejected the cookie. Never throws.
-  async onSessionError(kind: SessionErrorKind): Promise<void> {
+  // Called by McClient after Monsieur Cuisine rejected the cookie. `used` is the cookie the
+  // rejected request sent; an error for a cookie that has since been replaced is ignored, so
+  // a request still in flight with the old cookie cannot mark a freshly pasted one as dead.
+  // Never throws.
+  async onSessionError(kind: SessionErrorKind, used?: string | null): Promise<void> {
     try {
+      if (used !== undefined && used !== (await this.getCookie())) {
+        this.#logger.info({ kind }, "ignored a session error for a cookie that was replaced");
+        return;
+      }
       const message =
         kind === "expired"
           ? "Monsieur Cuisine reported the session as expired"
@@ -198,7 +205,7 @@ export class SessionManager implements SessionProvider {
       this.#markValid();
     } catch (error) {
       if (error instanceof McSessionError) {
-        await this.onSessionError(error.kind);
+        await this.onSessionError(error.kind, cookie);
       } else {
         // The account did not answer; the session itself may still be fine.
         const message = errorMessage(error);

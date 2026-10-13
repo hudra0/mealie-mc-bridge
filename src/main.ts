@@ -14,7 +14,7 @@ import { SessionManager } from "./session/manager.js";
 import { generateSettingsKey, openStore, parseSettingsKey } from "./store/index.js";
 
 // A stuck job or converter must not keep the container from stopping.
-const SHUTDOWN_TIMEOUT_MS = 25_000;
+const SHUTDOWN_TIMEOUT_MS = 40_000;
 
 async function main(): Promise<void> {
   // `node dist/main.js generate-secrets` prints fresh values for .env and exits.

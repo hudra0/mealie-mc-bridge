@@ -37,10 +37,11 @@ describe("openDatabase and migrations", () => {
   it("is idempotent: running the migrations again changes nothing", () => {
     store = tempStore();
     store.jobs.enqueue({ recipeId: RECIPE, scale: 1 });
-    expect(migrate(store.db)).toEqual({ from: 1, to: 1, applied: [] });
+    const newest = MIGRATIONS.at(-1)?.version;
+    expect(migrate(store.db)).toEqual({ from: newest, to: newest, applied: [] });
     store.close();
     const reopened = openDatabase(store.path);
-    expect(schemaVersion(reopened)).toBe(1);
+    expect(schemaVersion(reopened)).toBe(newest);
     expect(reopened.prepare("SELECT COUNT(*) AS n FROM jobs").get()).toEqual({ n: 1 });
     reopened.close();
   });
@@ -121,11 +122,15 @@ describe("JobStore", () => {
     ]);
   });
 
-  it("returns the active job instead of adding a second one for the same recipe", () => {
+  it("returns the active job instead of adding a second one for the same recipe and scale", () => {
     store = tempStore();
     const first = store.jobs.enqueue({ recipeId: RECIPE, scale: 1 });
-    const again = store.jobs.enqueue({ recipeId: RECIPE, scale: 2 });
+    const again = store.jobs.enqueue({ recipeId: RECIPE, scale: 1 });
     expect(again).toEqual({ job: first.job, created: false });
+    // Another scale is another draft, so it is its own job.
+    const doubled = store.jobs.enqueue({ recipeId: RECIPE, scale: 2 });
+    expect(doubled.created).toBe(true);
+    store.jobs.cancel(doubled.job.id);
 
     store.jobs.claimNext();
     expect(store.jobs.enqueue({ recipeId: RECIPE, scale: 1 }).created).toBe(false);
@@ -240,7 +245,7 @@ describe("JobStore", () => {
 
     store.jobs.finish(job.id, "done");
     store.jobs.enqueue({ recipeId: RECIPE, scale: 1 });
-    expect(() => store.jobs.requeue(job.id)).toThrow(/for the same recipe is queued/);
+    expect(() => store.jobs.requeue(job.id)).toThrow(/for the same recipe and scale is queued/);
     expect(() => store.jobs.requeue("missing")).toThrow(/does not exist/);
   });
 
@@ -276,6 +281,40 @@ describe("JobStore", () => {
     store.jobs.claimNext();
     expect(store.jobs.recoverInterrupted()).toBe(1);
     expect(store.jobs.get(job.id)?.status).toBe("queued");
+  });
+
+  it("never queues a job again that was stopped while creating its draft", () => {
+    store = tempStore();
+    const creating = store.jobs.enqueue({ recipeId: RECIPE, scale: 1 }).job;
+    const created = store.jobs.enqueue({ recipeId: OTHER, scale: 1 }).job;
+    store.jobs.claimNext();
+    store.jobs.claimNext();
+    const ts = "2026-10-13T10:00:00.000Z";
+    store.jobs.update(creating.id, { createStartedAt: ts });
+    store.jobs.update(created.id, { createStartedAt: ts, mcRecipeId: 7, mcRecipeUrl: "u" });
+
+    expect(store.jobs.recoverInterrupted()).toBe(2);
+    expect(store.jobs.get(creating.id)).toMatchObject({
+      status: "failed",
+      error: expect.stringMatching(/check your drafts/) as unknown,
+    });
+    expect(store.jobs.get(created.id)?.status).toBe("done");
+
+    // An admin retry clears the marker; claiming a job clears it as well.
+    expect(store.jobs.requeue(creating.id).createStartedAt).toBeNull();
+    store.jobs.update(creating.id, { createStartedAt: ts });
+    expect(store.jobs.claimNext()?.createStartedAt).toBeNull();
+  });
+
+  it("keeps a stored conversion on a plain retry and drops it on a forced one", () => {
+    store = tempStore();
+    const { job } = store.jobs.enqueue({ recipeId: RECIPE, scale: 1 });
+    const conversion = { sourceHash: "abc", result: { provider: "fake" } };
+    store.jobs.finish(job.id, "failed", { conversion });
+    expect(store.jobs.get(job.id)?.conversion).toEqual(conversion);
+    expect(store.jobs.requeue(job.id).conversion).toEqual(conversion);
+    store.jobs.finish(job.id, "failed");
+    expect(store.jobs.requeue(job.id, { force: true }).conversion).toBeNull();
   });
 
   it("deletes events with their job", () => {
@@ -353,6 +392,19 @@ describe("SettingsStore", () => {
     expect(decryptSecret(key, "a", stored)).toBe("value");
     expect(() => decryptSecret(key, "b", stored)).toThrow(SettingsKeyError);
     expect(() => decryptSecret(key, "a", "plain")).toThrow(/not an encrypted value/);
+  });
+
+  it("refuses a truncated auth tag or a wrong IV length", () => {
+    const key = Buffer.alloc(32, 4);
+    const [format, iv, tag, body] = encryptSecret(key, "a", "value").split(":");
+    const shortTag = Buffer.from(tag!, "base64").subarray(0, 4).toString("base64");
+    expect(() => decryptSecret(key, "a", [format, iv, shortTag, body].join(":"))).toThrow(
+      /not a valid encrypted value/,
+    );
+    const longIv = Buffer.alloc(16, 1).toString("base64");
+    expect(() => decryptSecret(key, "a", [format, longIv, tag, body].join(":"))).toThrow(
+      /not a valid encrypted value/,
+    );
   });
 
   it("refuses secrets without a key", () => {

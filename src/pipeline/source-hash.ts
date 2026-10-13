@@ -1,13 +1,14 @@
 // The fingerprint of what the bridge sends: the recipe content that shapes the converted
-// recipe, plus the scale. Tags, categories, images, ratings and timestamps are left out,
-// so organizing a recipe in Mealie does not count as a change.
+// recipe (everything renderRecipeForLlm puts into the converter input), plus the scale.
+// Tags, categories, images, ratings and timestamps are left out, so organizing a recipe in
+// Mealie does not count as a change.
 
 import { createHash } from "node:crypto";
 import type { NormalizedIngredient } from "../ingredients/index.js";
-import type { MealieRecipe } from "../mealie/index.js";
+import { NUTRITION_KEYS, type MealieRecipe } from "../mealie/index.js";
 
 // Bump when the fingerprint's inputs change, so every recipe counts as changed once.
-export const SOURCE_HASH_VERSION = 1;
+export const SOURCE_HASH_VERSION = 2;
 
 export function sourceHash(
   recipe: MealieRecipe,
@@ -15,9 +16,13 @@ export function sourceHash(
   scale: number,
 ): string {
   // Built field by field, so key order and extra fields from a newer Mealie cannot change it.
+  const nutrition = recipe.nutrition;
   const content = {
     v: SOURCE_HASH_VERSION,
     name: recipe.name,
+    description: recipe.description,
+    times: [recipe.prepTime, recipe.cookTime, recipe.performTime, recipe.totalTime],
+    nutrition: nutrition ? NUTRITION_KEYS.map((key) => nutrition[key] ?? null) : null,
     ingredients: ingredients.map((item) => [
       item.section,
       item.quantity,

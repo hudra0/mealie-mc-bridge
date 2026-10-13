@@ -1,0 +1,287 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "userId": "00000000-0000-4000-8000-000000000901",
+  "householdId": "00000000-0000-4000-8000-000000000902",
+  "groupId": "00000000-0000-4000-8000-000000000903",
+  "name": "Zimtschnecken",
+  "slug": "zimtschnecken",
+  "image": null,
+  "recipeServings": 0,
+  "recipeYieldQuantity": 12,
+  "recipeYield": "Stück",
+  "totalTime": "2 Stunden 15 Minuten",
+  "prepTime": "30 Minuten",
+  "cookTime": null,
+  "performTime": "20 Minuten",
+  "description": "<p>Weiche Hefeschnecken mit Zimt&amp;Zucker.</p>",
+  "recipeCategory": [],
+  "tags": [],
+  "tools": [],
+  "rating": null,
+  "orgURL": "https://example.com/zimtschnecken",
+  "dateAdded": "2026-09-20",
+  "dateUpdated": "2026-09-21T07:15:00.000000Z",
+  "createdAt": "2026-09-20T16:00:00Z",
+  "updatedAt": "2026-09-21T07:15:00.000000Z",
+  "lastMade": null,
+  "recipeIngredient": [
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "500 g Mehl (Type 550)",
+      "display": "500 g Mehl (Type 550)",
+      "title": "Teig",
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000121"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "1 Würfel Hefe (42 g)",
+      "display": "1 Würfel Hefe (42 g)",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000122"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "250 ml Milch, lauwarm",
+      "display": "250 ml Milch, lauwarm",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000123"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "80 g Zucker",
+      "display": "80 g Zucker",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000124"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "1 Prise Salz",
+      "display": "1 Prise Salz",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000125"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "1 Ei",
+      "display": "1 Ei",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000126"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "Butter 80 g",
+      "display": "Butter 80 g",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000127"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "Mehl Type 405 für die Arbeitsfläche",
+      "display": "Mehl Type 405 für die Arbeitsfläche",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000128"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "Für die Füllung:",
+      "display": "Für die Füllung:",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000129"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "100 g Butter, weich",
+      "display": "100 g Butter, weich",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000130"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": null,
+      "display": "",
+      "title": null,
+      "originalText": "2 EL Zimt",
+      "referenceId": "00000000-0000-4000-8000-000000000131"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "3–4 EL brauner Zucker",
+      "display": "3–4 EL brauner Zucker",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000132"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "50 g/ ¼ Tasse gehackte Haselnüsse",
+      "display": "50 g/ ¼ Tasse gehackte Haselnüsse",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000137"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "1 Handvoll Rosinen (optional)",
+      "display": "1 Handvoll Rosinen (optional)",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000133"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "1 Eigelb",
+      "display": "1 Eigelb",
+      "title": "Zum Bestreichen",
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000134"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "etwas Milch",
+      "display": "etwas Milch",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000135"
+    },
+    {
+      "quantity": 0,
+      "unit": null,
+      "food": null,
+      "referencedRecipe": null,
+      "note": "Hagelzucker nach Belieben",
+      "display": "Hagelzucker nach Belieben",
+      "title": null,
+      "originalText": null,
+      "referenceId": "00000000-0000-4000-8000-000000000136"
+    }
+  ],
+  "recipeInstructions": [
+    {
+      "id": "00000000-0000-4000-8000-000000000721",
+      "title": "Teig",
+      "summary": "",
+      "text": "Hefe in der lauwarmen Milch auflösen.<br>Mit Mehl, Zucker, Salz, Ei und Butter zu einem glatten Teig kneten.",
+      "ingredientReferences": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000722",
+      "title": "",
+      "summary": "Gehen lassen",
+      "text": "Zugedeckt an einem warmen Ort 1 Stunde gehen lassen.",
+      "ingredientReferences": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000723",
+      "title": "Formen und Backen",
+      "summary": "",
+      "text": "Teig auf der bemehlten Fläche ausrollen, mit Butter bestreichen und mit Zimt, Zucker und Rosinen bestreuen. Aufrollen und in 12 Scheiben schneiden.",
+      "ingredientReferences": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000724",
+      "title": null,
+      "summary": null,
+      "text": "",
+      "ingredientReferences": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000725",
+      "title": "",
+      "summary": "",
+      "text": "Mit Eigelb und Milch bestreichen, mit Hagelzucker bestreuen und bei 180 °C 20 Minuten backen.",
+      "ingredientReferences": []
+    }
+  ],
+  "nutrition": {
+    "calories": null,
+    "carbohydrateContent": null,
+    "cholesterolContent": null,
+    "fatContent": null,
+    "fiberContent": null,
+    "proteinContent": null,
+    "saturatedFatContent": null,
+    "sodiumContent": null,
+    "sugarContent": null,
+    "transFatContent": null,
+    "unsaturatedFatContent": null
+  },
+  "settings": {
+    "public": true,
+    "showNutrition": false,
+    "showAssets": false,
+    "landscapeView": false,
+    "disableComments": false,
+    "locked": false
+  },
+  "assets": [],
+  "notes": [
+    {
+      "title": "Aufbewahrung",
+      "text": "Luftdicht verpackt zwei Tage frisch."
+    },
+    {
+      "title": "",
+      "text": ""
+    }
+  ],
+  "extras": {},
+  "comments": []
+}

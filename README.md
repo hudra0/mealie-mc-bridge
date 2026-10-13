@@ -4,7 +4,14 @@ Sends a recipe from your Mealie instance to a Monsieur Cuisine Smart as a guided
 
 ## Status
 
-Early development, not usable yet. Only the HTTP skeleton with a `/health` endpoint exists.
+Early development, not usable yet. What exists:
+
+- the HTTP skeleton with a `/health` endpoint
+- the Monsieur Cuisine client (session check, drafts, status change, categories, ingredient search, image upload)
+- the recipe format the converter will produce, its validator against the device limits in `knowledge/device-programs.json`, and the builder for the Monsieur Cuisine payload
+- `npm run mc:smoke`, a command line tool for manual checks against your own account
+
+The Mealie side, the LLM converter and the job queue are still missing.
 
 ## Planned architecture
 
@@ -52,6 +59,30 @@ curl http://127.0.0.1:3000/health
 
 CI publishes `ghcr.io/hudra0/mealie-mc-bridge` on every push to `main` (tags `latest` and `sha-<commit>`) and for `v*` tags (semver tags). The example compose file keeps its state in a named volume. If you switch `/data` to a bind mount, run `mkdir -p data && sudo chown 1000:1000 data` first, because the container runs as uid 1000.
 
+## Monsieur Cuisine session
+
+The bridge talks to the same internal API as the recipe editor on www.monsieur-cuisine.com and authenticates with the browser session cookies. To get them:
+
+1. Log in on www.monsieur-cuisine.com and open "Create recipe".
+2. Open the browser developer tools, Network tab, and reload the page.
+3. Pick a request to `proxy-api` and copy the value of its `Cookie` request header.
+
+Put that value into `MC_COOKIE`. It is a secret: anyone who has it can change the recipes in your account. Keep it out of git, shell history, screenshots and issue reports. The session lasts about two weeks; after that, copy a fresh value.
+
+## Manual checks
+
+`npm run mc:smoke` checks the Monsieur Cuisine side against your own account:
+
+```sh
+export MC_COOKIE='...'   # or keep it in .env: npx tsx --env-file=.env scripts/mc-smoke.ts whoami
+npm run mc:smoke -- whoami                        # is the session valid?
+npm run mc:smoke -- categories                    # category ids for recipes
+npm run mc:smoke -- dry-run recipe.json           # validate and print the payload, offline, no cookie needed
+npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publish]
+```
+
+`create` adds a real recipe to your account. It is created as a draft; `--status private-publish` then saves it on your device only. The tool never submits a recipe for publication. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
+
 ## Development
 
 ```sh
@@ -59,6 +90,8 @@ npm run check           # format, lint, typecheck, tests
 npm run build
 npm run hooks:install   # secret scan before every commit, needs gitleaks 8.19 or newer
 ```
+
+Image conversion uses [sharp](https://sharp.pixelplumbing.com), which ships prebuilt native binaries per platform. `npm ci` installs the one for the machine it runs on. The Docker image runs `npm ci` on linux during the build, so it gets the linux binaries; do not copy a `node_modules` folder from Windows or macOS into an image.
 
 See `CONTRIBUTING.md` for the pull request format and the secrets policy. The architecture is described in `docs/ARCHITECTURE.md`.
 

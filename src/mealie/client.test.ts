@@ -131,15 +131,37 @@ describe("MealieClient reads", () => {
 });
 
 describe("MealieClient.ensureTag", () => {
-  it("returns an existing tag found by slug", async () => {
+  it("returns an existing tag found by name", async () => {
     const { client: mealie, calls } = client({
       [`GET ${tagsPath}`]: () =>
         json(200, { page: 1, per_page: -1, total: 1, total_pages: 1, items: [mcTag] }),
     });
     await expect(mealie.ensureTag(" Monsieur Cuisine ")).resolves.toEqual(mcTag);
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.query.get("queryFilter")).toBe('slug="monsieur-cuisine"');
+    expect(calls[0]?.query.get("search")).toBe("Monsieur Cuisine");
     expect(calls[0]?.query.get("perPage")).toBe("-1");
+  });
+
+  it("finds a tag whose server slug differs from the local one", async () => {
+    // python-slugify with unidecode turns ø into o; the local slugify drops it.
+    const tag = {
+      id: "00000000-0000-4000-8000-000000000399",
+      name: "Smørrebrød",
+      slug: "smorrebrod",
+    };
+    const { client: mealie, calls } = client({
+      [`GET ${tagsPath}`]: () =>
+        json(200, { items: [{ id: "x", name: "Smørrebrød-Variante", slug: "sm-rrebr-d" }, tag] }),
+    });
+    await expect(mealie.ensureTag("smørrebrød")).resolves.toEqual(tag);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("falls back to the slug when no name matches", async () => {
+    const { client: mealie } = client({
+      [`GET ${tagsPath}`]: () => json(200, { items: [{ ...mcTag, name: "Monsieur-Cuisine" }] }),
+    });
+    await expect(mealie.ensureTag("Monsieur Cuisine")).resolves.toMatchObject({ id: mcTag.id });
   });
 
   it("creates the tag when it does not exist", async () => {
@@ -235,6 +257,41 @@ describe("MealieClient.patchRecipeMerged", () => {
       text: "Luftdicht verpackt zwei Tage frisch.",
     });
     expect(notes).toHaveLength(3);
+  });
+
+  it("does not stack a note that is sent twice", async () => {
+    let stored = fixture("recipe-structured-v3.28.json");
+    const { client: mealie, calls } = client({
+      [`GET ${recipePath}`]: () => json(200, stored),
+      [`PATCH ${recipePath}`]: (call) => {
+        stored = { ...stored, ...(call.body as object) };
+        return json(200, stored);
+      },
+    });
+    const patch = { notes: [{ title: "Monsieur Cuisine", text: "Entwurf angelegt." }] };
+    await mealie.patchRecipeMerged(RECIPE_ID, patch);
+    await mealie.patchRecipeMerged(RECIPE_ID, patch);
+    expect(calls.map((call) => call.method)).toEqual(["GET", "PATCH", "GET"]);
+    expect(stored.notes).toHaveLength(2);
+  });
+
+  it("replaces a note with the same title when asked to", async () => {
+    let stored = fixture("recipe-structured-v3.28.json");
+    const { client: mealie, calls } = client({
+      [`GET ${recipePath}`]: () => json(200, stored),
+      [`PATCH ${recipePath}`]: (call) => {
+        stored = { ...stored, ...(call.body as object) };
+        return json(200, stored);
+      },
+    });
+    const note = (text: string) => ({ title: "Monsieur Cuisine", text, replaceSameTitle: true });
+    await mealie.patchRecipeMerged(RECIPE_ID, { notes: [note("Entwurf angelegt.")] });
+    await mealie.patchRecipeMerged(RECIPE_ID, { notes: [note("Entwurf erneuert.")] });
+    expect(calls.map((call) => call.method)).toEqual(["GET", "PATCH", "GET", "PATCH"]);
+    expect(stored.notes).toEqual([
+      expect.objectContaining({ title: "Tipp" }),
+      { title: "Monsieur Cuisine", text: "Entwurf erneuert." },
+    ]);
   });
 
   it("skips the PATCH when nothing changes", async () => {

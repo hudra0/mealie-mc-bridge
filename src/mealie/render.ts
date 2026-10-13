@@ -3,8 +3,13 @@
 // deterministic for the same input and contains no HTML. Headings are German because the
 // generated Monsieur Cuisine recipe is German.
 
-import { mentionsOptional } from "../ingredients/parse.js";
-import type { ScaledIngredient, ScaleFlag } from "../ingredients/scale.js";
+import {
+  mentionsOptional,
+  scalerBase,
+  unitLabel,
+  type ScaledIngredient,
+  type ScaleFlag,
+} from "../ingredients/index.js";
 import { NUTRITION_KEYS, type MealieRecipe, type NutritionKey } from "./types.js";
 
 export interface RenderOptions {
@@ -13,34 +18,10 @@ export interface RenderOptions {
   ingredients: readonly ScaledIngredient[];
 }
 
-// How a unit code is written, singular and plural. Codes not listed are written as they are.
-const UNIT_LABELS: Readonly<Record<string, readonly [string, string]>> = {
-  Prise: ["Prise", "Prisen"],
-  Stueck: ["Stück", "Stück"],
-  Zehe: ["Zehe", "Zehen"],
-  Scheibe: ["Scheibe", "Scheiben"],
-  Blatt: ["Blatt", "Blätter"],
-  Stange: ["Stange", "Stangen"],
-  Knolle: ["Knolle", "Knollen"],
-  Dose: ["Dose", "Dosen"],
-  Packung: ["Packung", "Packungen"],
-  Tasse: ["Tasse", "Tassen"],
-  Wuerfel: ["Würfel", "Würfel"],
-  Tuete: ["Tüte", "Tüten"],
-  Flasche: ["Flasche", "Flaschen"],
-  cup: ["cup", "cups"],
-  pinch: ["pinch", "pinches"],
-  can: ["can", "cans"],
-  clove: ["clove", "cloves"],
-  slice: ["slice", "slices"],
-};
-
-function unitLabel(item: ScaledIngredient): string {
+function unitText(item: ScaledIngredient): string {
   if (item.unit === null) return "";
-  const labels = UNIT_LABELS[item.unit];
-  if (!labels) return item.unit;
   const plural = item.quantityMax !== null || (item.quantity !== null && item.quantity > 1);
-  return plural ? labels[1] : labels[0];
+  return unitLabel(item.unit, plural);
 }
 
 const NUTRITION_LABELS: Readonly<Record<NutritionKey, string>> = {
@@ -113,7 +94,7 @@ function ingredientLine(item: ScaledIngredient, scale: number): string {
   if (item.source === "unparsed") {
     parts.push(`[Original: ${item.original || item.food}]`);
   } else {
-    const main = [amountText(item), unitLabel(item), item.food]
+    const main = [amountText(item), unitText(item), item.food]
       .filter((part) => part !== "")
       .join(" ");
     parts.push(main);
@@ -129,13 +110,16 @@ function ingredientLine(item: ScaledIngredient, scale: number): string {
 
 function metaLine(recipe: MealieRecipe, options: RenderOptions): string {
   const parts: string[] = [];
-  const original = recipe.recipeServings;
-  if (original > 0 && original !== options.servings) {
-    parts.push(`Portionen: ${formatNumber(original)} → ${options.servings}`);
-  } else if (original > 0) {
-    parts.push(`Portionen: ${options.servings}`);
-  } else {
+  // The same base as Mealie's servings scaler: servings, else the yield quantity.
+  const base = scalerBase(recipe);
+  const fromYield = base !== null && !(recipe.recipeServings > 0);
+  const source = fromYield ? " (aus der Ergibt-Menge)" : "";
+  if (base === null) {
     parts.push(`Portionen: ${options.servings} (im Rezept nicht angegeben)`);
+  } else if (base !== options.servings) {
+    parts.push(`Portionen: ${formatNumber(base)} → ${options.servings}${source}`);
+  } else {
+    parts.push(`Portionen: ${options.servings}${source}`);
   }
   if (options.scale !== 1) parts.push(`Faktor: ${formatNumber(options.scale)}`);
   const yieldText = [

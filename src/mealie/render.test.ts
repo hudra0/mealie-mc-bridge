@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { normalizeIngredients } from "../ingredients/normalize.js";
-import { scaleIngredients, servingsFor, type ScaledIngredient } from "../ingredients/scale.js";
+import {
+  normalizeIngredients,
+  scaleIngredients,
+  servingsFor,
+  type ScaledIngredient,
+} from "../ingredients/index.js";
 import { formatNumber, plainText, renderRecipeForLlm } from "./render.js";
 import { mealieRecipeSchema, type MealieRecipe } from "./types.js";
 
@@ -17,7 +21,7 @@ function render(recipe: MealieRecipe, scale: number): string {
   const ingredients = scaleIngredients(normalizeIngredients(recipe), scale);
   return renderRecipeForLlm(recipe, {
     scale,
-    servings: servingsFor(recipe.recipeServings, scale),
+    servings: servingsFor(recipe, scale),
     ingredients,
   });
 }
@@ -122,6 +126,37 @@ describe("renderRecipeForLlm details", () => {
         "- 1 Handvoll Nüsse (optional)",
       ].join("\n"),
     );
+  });
+
+  it("writes every unit with its label from the unit table", () => {
+    const text = renderRecipeForLlm(minimal({ name: "Test" }), {
+      scale: 1,
+      servings: 2,
+      ingredients: [
+        scaled({ quantity: 2, unit: "Kopf", food: "Salat" }),
+        scaled({ quantity: 3, unit: "Glas", food: "Gurken" }),
+        scaled({ quantity: 8, unit: "floz", food: "Sahne" }),
+      ],
+    });
+    expect(text).toContain("- 2 Köpfe Salat\n- 3 Gläser Gurken\n- 8 fl oz Sahne\n");
+  });
+
+  it("shows the parsed text as the original when the display is stale", () => {
+    const recipe = minimal({
+      recipeIngredient: [{ quantity: 1, note: "500 g Mehl", display: "1 500 g Mehl" }],
+    });
+    expect(render(recipe, 3)).toContain("- 1500 g Mehl [Original: 500 g Mehl]\n");
+  });
+
+  it("counts servings from the yield quantity like Mealie's scaler", () => {
+    const recipe = minimal({ recipeServings: 0, recipeYieldQuantity: 2, recipeYield: "Brote" });
+    expect(render(recipe, 2)).toContain("Portionen: 2 → 4 (aus der Ergibt-Menge) · Faktor: 2");
+    expect(render(recipe, 1)).toContain("Portionen: 2 (aus der Ergibt-Menge)");
+  });
+
+  it("uses the factor as the servings when nothing is stated", () => {
+    expect(render(minimal(), 3)).toContain("Portionen: 3 (im Rezept nicht angegeben)");
+    expect(render(minimal(), 1)).toContain("Portionen: 4 (im Rezept nicht angegeben)");
   });
 
   it("names the step summary and skips empty steps", () => {

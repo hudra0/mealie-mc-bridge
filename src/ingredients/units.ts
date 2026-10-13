@@ -35,6 +35,7 @@ export const UNIT_CODES = [
   "tbsp",
   "tsp",
   "oz",
+  "floz",
   "lb",
   "pinch",
   "can",
@@ -46,47 +47,72 @@ export type UnitCode = (typeof UNIT_CODES)[number];
 
 // How a unit behaves when a recipe is scaled.
 // metric: g and ml. metricLarge: kg and l. spoon: EL, TL, tbsp, tsp.
-// pinch: amounts that do not scale linearly. cup: cups. ounce and pound: US weights.
-// count: everything that is counted in whole or half pieces.
+// pinch: amounts that do not scale linearly. cup: cups. ounce: US weight and fluid ounces.
+// pound: US pounds. count: everything that is counted in whole or half pieces.
 export type UnitKind =
   "metric" | "metricLarge" | "spoon" | "pinch" | "cup" | "ounce" | "pound" | "count";
 
 interface UnitDefinition {
   kind: UnitKind;
+  // How the unit is written for the language model, singular and plural.
+  label: readonly [singular: string, plural: string];
   // Lower-case spellings without a trailing dot, singular and plural.
   aliases: readonly string[];
 }
 
 export const UNITS: Readonly<Record<UnitCode, UnitDefinition>> = {
-  g: { kind: "metric", aliases: ["g", "gr", "gramm", "gram", "grams", "gramme", "grammes"] },
+  g: {
+    kind: "metric",
+    label: ["g", "g"],
+    aliases: ["g", "gr", "gramm", "gram", "grams", "gramme", "grammes"],
+  },
   kg: {
     kind: "metricLarge",
+    label: ["kg", "kg"],
     aliases: ["kg", "kilo", "kilos", "kilogramm", "kilogram", "kilograms", "kilogramme"],
   },
   ml: {
     kind: "metric",
+    label: ["ml", "ml"],
     aliases: ["ml", "milliliter", "millilitre", "milliliters", "millilitres"],
   },
-  l: { kind: "metricLarge", aliases: ["l", "liter", "litre", "liters", "litres", "ltr"] },
-  EL: { kind: "spoon", aliases: ["el", "esslöffel", "eßlöffel", "essl", "esslöffeln"] },
-  TL: { kind: "spoon", aliases: ["tl", "teelöffel", "teel", "teelöffeln"] },
-  Msp: { kind: "pinch", aliases: ["msp", "messerspitze", "messerspitzen"] },
-  Prise: { kind: "pinch", aliases: ["prise", "prisen"] },
-  Spritzer: { kind: "count", aliases: ["spritzer"] },
-  Tropfen: { kind: "count", aliases: ["tropfen"] },
-  Schuss: { kind: "count", aliases: ["schuss", "schüsse"] },
-  Stueck: { kind: "count", aliases: ["stück", "stücke", "stk", "st", "stck"] },
-  Zehe: { kind: "count", aliases: ["zehe", "zehen"] },
-  Scheibe: { kind: "count", aliases: ["scheibe", "scheiben"] },
-  Blatt: { kind: "count", aliases: ["blatt", "blätter"] },
-  Bund: { kind: "count", aliases: ["bund", "bunde", "bünde", "bd", "bunch", "bunches"] },
-  Stange: { kind: "count", aliases: ["stange", "stangen"] },
-  Kopf: { kind: "count", aliases: ["kopf", "köpfe", "head", "heads"] },
-  Knolle: { kind: "count", aliases: ["knolle", "knollen"] },
-  Dose: { kind: "count", aliases: ["dose", "dosen"] },
-  Glas: { kind: "count", aliases: ["glas", "gläser", "jar", "jars"] },
+  l: {
+    kind: "metricLarge",
+    label: ["l", "l"],
+    aliases: ["l", "liter", "litre", "liters", "litres", "ltr"],
+  },
+  EL: {
+    kind: "spoon",
+    label: ["EL", "EL"],
+    aliases: ["el", "esslöffel", "eßlöffel", "essl", "esslöffeln"],
+  },
+  TL: { kind: "spoon", label: ["TL", "TL"], aliases: ["tl", "teelöffel", "teel", "teelöffeln"] },
+  Msp: { kind: "pinch", label: ["Msp", "Msp"], aliases: ["msp", "messerspitze", "messerspitzen"] },
+  Prise: { kind: "pinch", label: ["Prise", "Prisen"], aliases: ["prise", "prisen"] },
+  Spritzer: { kind: "count", label: ["Spritzer", "Spritzer"], aliases: ["spritzer"] },
+  Tropfen: { kind: "count", label: ["Tropfen", "Tropfen"], aliases: ["tropfen"] },
+  Schuss: { kind: "count", label: ["Schuss", "Schuss"], aliases: ["schuss", "schüsse"] },
+  Stueck: {
+    kind: "count",
+    label: ["Stück", "Stück"],
+    aliases: ["stück", "stücke", "stk", "st", "stck"],
+  },
+  Zehe: { kind: "count", label: ["Zehe", "Zehen"], aliases: ["zehe", "zehen"] },
+  Scheibe: { kind: "count", label: ["Scheibe", "Scheiben"], aliases: ["scheibe", "scheiben"] },
+  Blatt: { kind: "count", label: ["Blatt", "Blätter"], aliases: ["blatt", "blätter"] },
+  Bund: {
+    kind: "count",
+    label: ["Bund", "Bund"],
+    aliases: ["bund", "bunde", "bünde", "bd", "bunch", "bunches"],
+  },
+  Stange: { kind: "count", label: ["Stange", "Stangen"], aliases: ["stange", "stangen"] },
+  Kopf: { kind: "count", label: ["Kopf", "Köpfe"], aliases: ["kopf", "köpfe", "head", "heads"] },
+  Knolle: { kind: "count", label: ["Knolle", "Knollen"], aliases: ["knolle", "knollen"] },
+  Dose: { kind: "count", label: ["Dose", "Dosen"], aliases: ["dose", "dosen"] },
+  Glas: { kind: "count", label: ["Glas", "Gläser"], aliases: ["glas", "gläser", "jar", "jars"] },
   Packung: {
     kind: "count",
+    label: ["Packung", "Packungen"],
     aliases: [
       "packung",
       "packungen",
@@ -101,24 +127,35 @@ export const UNITS: Readonly<Record<UnitCode, UnitDefinition>> = {
       "packets",
     ],
   },
-  Becher: { kind: "count", aliases: ["becher"] },
-  Tasse: { kind: "cup", aliases: ["tasse", "tassen"] },
-  Wuerfel: { kind: "count", aliases: ["würfel"] },
-  Tuete: { kind: "count", aliases: ["tüte", "tüten"] },
-  Beutel: { kind: "count", aliases: ["beutel"] },
-  Flasche: { kind: "count", aliases: ["flasche", "flaschen", "bottle", "bottles"] },
-  cup: { kind: "cup", aliases: ["cup", "cups"] },
+  Becher: { kind: "count", label: ["Becher", "Becher"], aliases: ["becher"] },
+  Tasse: { kind: "cup", label: ["Tasse", "Tassen"], aliases: ["tasse", "tassen"] },
+  Wuerfel: { kind: "count", label: ["Würfel", "Würfel"], aliases: ["würfel"] },
+  Tuete: { kind: "count", label: ["Tüte", "Tüten"], aliases: ["tüte", "tüten"] },
+  Beutel: { kind: "count", label: ["Beutel", "Beutel"], aliases: ["beutel"] },
+  Flasche: {
+    kind: "count",
+    label: ["Flasche", "Flaschen"],
+    aliases: ["flasche", "flaschen", "bottle", "bottles"],
+  },
+  cup: { kind: "cup", label: ["cup", "cups"], aliases: ["cup", "cups"] },
   tbsp: {
     kind: "spoon",
+    label: ["tbsp", "tbsp"],
     aliases: ["tbsp", "tbsps", "tbs", "tbl", "tblsp", "tablespoon", "tablespoons"],
   },
-  tsp: { kind: "spoon", aliases: ["tsp", "tsps", "teaspoon", "teaspoons"] },
-  oz: { kind: "ounce", aliases: ["oz", "ozs", "ounce", "ounces"] },
-  lb: { kind: "pound", aliases: ["lb", "lbs", "pound", "pounds"] },
-  pinch: { kind: "pinch", aliases: ["pinch", "pinches"] },
-  can: { kind: "count", aliases: ["can", "cans", "tin", "tins"] },
-  clove: { kind: "count", aliases: ["clove", "cloves"] },
-  slice: { kind: "count", aliases: ["slice", "slices"] },
+  tsp: { kind: "spoon", label: ["tsp", "tsp"], aliases: ["tsp", "tsps", "teaspoon", "teaspoons"] },
+  oz: { kind: "ounce", label: ["oz", "oz"], aliases: ["oz", "ozs", "ounce", "ounces"] },
+  // Mealie's standard unit "fluid ounce". Kept as its own unit so the amount stays readable.
+  floz: {
+    kind: "ounce",
+    label: ["fl oz", "fl oz"],
+    aliases: ["fl oz", "fl. oz", "fl.oz", "fluid ounce", "fluid ounces", "fluid oz"],
+  },
+  lb: { kind: "pound", label: ["lb", "lb"], aliases: ["lb", "lbs", "pound", "pounds"] },
+  pinch: { kind: "pinch", label: ["pinch", "pinches"], aliases: ["pinch", "pinches"] },
+  can: { kind: "count", label: ["can", "cans"], aliases: ["can", "cans", "tin", "tins"] },
+  clove: { kind: "count", label: ["clove", "cloves"], aliases: ["clove", "cloves"] },
+  slice: { kind: "count", label: ["slice", "slices"], aliases: ["slice", "slices"] },
 };
 
 // Units that map onto another code with a factor. The quantity is multiplied and the
@@ -187,7 +224,7 @@ const lookup = buildLookup();
 // trailing dot and the plural forms listed above are ignored.
 export function normalizeUnit(word: string | null | undefined): UnitMatch | null {
   if (!word) return null;
-  const key = word.normalize("NFC").trim().replace(/\.$/, "").toLowerCase();
+  const key = word.normalize("NFC").trim().replace(/\s+/g, " ").replace(/\.$/, "").toLowerCase();
   if (key === "") return null;
   return lookup.get(key) ?? null;
 }
@@ -199,4 +236,12 @@ export function unitKind(code: string | null): UnitKind {
 
 export function isUnitCode(value: string): value is UnitCode {
   return (UNIT_CODES as readonly string[]).includes(value);
+}
+
+// How a unit is written. A unit outside the vocabulary, such as a Mealie unit name the
+// bridge does not know, is written as it is.
+export function unitLabel(code: string, plural: boolean): string {
+  if (!isUnitCode(code)) return code;
+  const [singular, many] = UNITS[code].label;
+  return plural ? many : singular;
 }

@@ -3,9 +3,11 @@ import type { NormalizedIngredient } from "./normalize.js";
 import {
   DEFAULT_SERVINGS,
   MAX_SERVINGS,
+  MIN_SERVINGS,
   PINCH_MIN_FACTOR,
   ROUNDING,
   scaleIngredients,
+  scalerBase,
   servingsFor,
 } from "./scale.js";
 
@@ -155,19 +157,54 @@ describe("scaleIngredients input checks", () => {
 });
 
 describe("servingsFor", () => {
+  // Mealie's scaler sets recipe_scale = chosen / base with
+  // base = recipeServings || recipeYieldQuantity || 1, so the chosen servings are
+  // base × recipe_scale.
   it.each([
-    [4, 1, 4],
-    [4, 1.5, 6],
-    [3, 0.5, 2],
-    [4, 0.1, 1],
-    [2.5, 1, 3],
-    [50, 3, MAX_SERVINGS],
+    [4, 0, 1, 4],
+    [4, 0, 1.5, 6],
+    [3, 0, 0.5, 2],
+    [4, 0, 0.1, 1],
+    [2.5, 0, 1, 3],
+    [4, 2, 2, 8],
+    [20, 0, 3, MAX_SERVINGS],
+    [Number.NaN, 0, 1, DEFAULT_SERVINGS],
+    [4, 0, 0, 4],
+    [4, 0, Number.NaN, 4],
+  ])("turns %d servings and yield %d at factor %d into %d", (servings, yieldQty, factor, want) => {
+    expect(servingsFor({ recipeServings: servings, recipeYieldQuantity: yieldQty }, factor)).toBe(
+      want,
+    );
+  });
+
+  it.each([
+    // No servings: the scaler starts from the yield quantity. 2 → 4 means factor 2.
+    [2, 2, 4],
+    [2, 1, 2],
+    [6, 0.5, 3],
+    // Neither servings nor yield: Mealie starts from 1, so the factor is the choice.
+    [0, 4, 4],
+    [0, 3, 3],
+    // Not scaled and nothing stated: the default stands in.
     [0, 1, DEFAULT_SERVINGS],
-    [0, 2, 8],
-    [Number.NaN, 1, DEFAULT_SERVINGS],
-    [4, 0, 4],
-    [4, Number.NaN, 4],
-  ])("turns %d servings at factor %d into %d", (servings, factor, expected) => {
-    expect(servingsFor(servings, factor)).toBe(expected);
+  ])("without servings, uses yield %d at factor %d for %d servings", (yieldQty, factor, want) => {
+    expect(servingsFor({ recipeServings: 0, recipeYieldQuantity: yieldQty }, factor)).toBe(want);
+  });
+
+  it("limits the servings to the device range", () => {
+    expect(MIN_SERVINGS).toBe(1);
+    expect(MAX_SERVINGS).toBe(24);
+    expect(servingsFor({ recipeServings: 12, recipeYieldQuantity: 0 }, 3)).toBe(24);
+  });
+});
+
+describe("scalerBase", () => {
+  it.each([
+    [4, 2, 4],
+    [0, 2, 2],
+    [0, 0, null],
+    [Number.NaN, Number.NaN, null],
+  ])("picks %d servings or yield %d as %s", (servings, yieldQty, want) => {
+    expect(scalerBase({ recipeServings: servings, recipeYieldQuantity: yieldQty })).toBe(want);
   });
 });

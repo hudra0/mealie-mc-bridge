@@ -173,10 +173,20 @@ const PART_NOUNS =
 const UNIT_MODIFIER =
   /^(?:gehäufte[nmrs]?|gestrichene[nmrs]?|geh\.|gestr\.|knappe[nmrs]?|gute[nmrs]?|volle[nmrs]?|große[nmrs]?|grosse[nmrs]?|kleine[nmrs]?|mittelgroße[nmrs]?|heaped|heaping|level|rounded|scant|generous|good|large|small|medium|big)$/iu;
 
+// Standard German flour type numbers. Without a unit they are a name, never a count.
+const FLOUR_TYPE_NUMBERS = [405, 550, 630, 812, 997, 1050, 1150, 1370, 1600, 1700, 1740];
+const FLOUR_TYPES: ReadonlySet<number> = new Set(FLOUR_TYPE_NUMBERS);
+
 // A word before a trailing number that makes the number part of the name: "Mehl Type 405".
 const NAME_NUMBER_WORDS = /(?:^| )(?:type|typ|nr\.?|no\.?|größe|gr\.|stufe|size)$/iu;
-// The same words with their number. Such digits were read as part of the name.
-const NAME_NUMBERS = /(?:^| )(?:type|typ|nr\.?|no\.?|größe|gr\.|stufe|size) ?\d+/giu;
+// A bare number after a flour word is never a count: "Weizenmehl 550". "Mehl 500 g" is.
+const FLOUR_WORD = /(?:^| )\p{L}*mehl$/iu;
+// The same words with their number. Such digits were read as part of the name. After a
+// flour word only a standard type counts; "Mandelmehl 100" keeps its digits as not understood.
+const NAME_NUMBERS = new RegExp(
+  `(?:^| )(?:(?:type|typ|nr\\.?|no\\.?|größe|gr\\.|stufe|size) ?\\d+|\\p{L}*mehl (?:${FLOUR_TYPE_NUMBERS.join("|")})(?!\\d))`,
+  "giu",
+);
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const alternation = (words: readonly string[]): string =>
@@ -241,6 +251,8 @@ const WEIGHT_GROUP = new RegExp(
   `^(?:(?:${APPROX_ALT}|à|je) ?)?(${NUM}) ?(${WORD})(?: each)?$`,
   "iu",
 );
+// A weight stated for each piece: "je 150 g", "à 150 g", "150 g each".
+const PER_UNIT_WEIGHT = /^(?:à|je)(?: |$)|(?:^| )each$/iu;
 const MIXED_NUMBER = /^(\d+) (\d+) ?\/ ?(\d+)$/;
 const GLUED_FRACTION = new RegExp(`^(\\d+) ?([${FRACTION_CHARS}])$`, "u");
 const SIMPLE_FRACTION = /^(\d+) ?\/ ?(\d+)$/;
@@ -434,6 +446,11 @@ function readUnitWord(
 ): { unit: UnitMatch; modifier?: string; rest: string } | null {
   const words = text.split(" ");
   const first = words[0] ?? "";
+  // Two-word units such as "fl oz" or "fluid ounces".
+  if (words.length > 2) {
+    const pair = normalizeUnit(`${first} ${words[1]}`);
+    if (pair) return { unit: pair, rest: words.slice(2).join(" ") };
+  }
   const direct = unitFromWord(first, quantity);
   if (direct) return { unit: direct, rest: words.slice(1).join(" ") };
   const second = words[1];
@@ -562,6 +579,7 @@ function readTrailingAmount(text: string, pattern: RegExp): TrailingAmount | nul
     unit = unitFromWord(match[4], range.quantity);
     if (!unit) return null;
   }
+  if (!unit && (FLOUR_WORD.test(before) || FLOUR_TYPES.has(range.quantity))) return null;
   const trailing: TrailingAmount = {
     before,
     amount: { ...scaled(range, unit), unit: unit?.code ?? null, rest: "", notes: [] },
@@ -626,7 +644,10 @@ export function parseIngredientLine(text: string, options: ParseOptions = {}): P
 
   const optional = OPTIONAL_RE.test(cleaned);
   const { text: unbracketed, groups } = extractGroups(cleaned);
-  let weightGrams = groups.map(weightFromGroup).find((grams) => grams !== undefined);
+  const weightGroup = groups.find((group) => weightFromGroup(group) !== undefined);
+  let weightGrams = weightGroup === undefined ? undefined : weightFromGroup(weightGroup);
+  // "2 Zwiebeln (ca. 300 g)" weighs both onions; "(je 150 g)" weighs one.
+  const groupWeightIsTotal = weightGroup !== undefined && !PER_UNIT_WEIGHT.test(weightGroup);
   const [headText, tail] = splitAtComma(unbracketed);
 
   const prefixNotes: string[] = [];
@@ -677,8 +698,12 @@ export function parseIngredientLine(text: string, options: ParseOptions = {}): P
       if (amount.wordText && part) prefixNotes.push(amount.wordText);
     } else {
       // Rule 9: "Mehl 500 g", "Wasser, lauwarm 250 ml".
-      const trailing = readTrailingAmount(head, TRAILING_AMOUNT);
-      const fromTail = trailing || tail === "" ? null : readTrailingAmount(tail, TAIL_AMOUNT);
+      let trailing = readTrailingAmount(head, TRAILING_AMOUNT);
+      const tailAmount = tail === "" ? null : readTrailingAmount(tail, TAIL_AMOUNT);
+      // "Hefe 1, 42 g": a bare number in front and a measured amount after the comma. The
+      // measured amount wins; the bare number stays in the food and lowers the confidence.
+      if (trailing && trailing.amount.unit === null && tailAmount?.amount.unit) trailing = null;
+      const fromTail = trailing ? null : tailAmount;
       const [tailHead, tailRest] = splitAtComma(tail);
       const leadingTail =
         trailing || fromTail || tail === "" ? null : readAmount(tailHead, options.lang);
@@ -745,8 +770,27 @@ export function parseIngredientLine(text: string, options: ParseOptions = {}): P
       digitsInText: hasLooseDigits(unbracketed),
     }),
   };
+  if (weightGrams !== undefined && groupWeightIsTotal) {
+    weightGrams = perUnitWeight(weightGrams, quantity, result.quantityMax, unit);
+  }
   if (weightGrams !== undefined) result.weightGrams = weightGrams;
   return result;
+}
+
+// Rule 6: weightGrams is per unit. A weight in parentheses after a container ("1 Dose
+// (400 g)") is the container's weight. After a count or a measure ("2 Zwiebeln (300 g)",
+// "2 cups (250 g)") it weighs all of them, so it is divided by the quantity. A range has
+// no single count, so it carries no weight.
+function perUnitWeight(
+  grams: number,
+  quantity: number | null,
+  quantityMax: number | null,
+  unit: UnitCode | null,
+): number | undefined {
+  if (unit !== null && CONTAINER_UNIT_CODES.has(unit)) return grams;
+  if (quantity === null || quantity === 1) return grams;
+  if (quantityMax !== null) return undefined;
+  return round3(grams / quantity);
 }
 
 interface ConfidenceFacts {

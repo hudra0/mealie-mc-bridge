@@ -2,6 +2,7 @@ export { MealieClient, MealieApiError, slugify, tagRef } from "./client.js";
 export type {
   MealieClientOptions,
   MealieErrorKind,
+  NotePatch,
   RecipePatch,
   TimelineEventInput,
 } from "./client.js";

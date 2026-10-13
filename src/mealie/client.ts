@@ -83,8 +83,16 @@ export interface RecipePatch {
   extras?: Record<string, string>;
   // Appended when the recipe does not carry them yet.
   addTags?: readonly MealieTagRef[];
-  // Appended after the existing notes.
-  notes?: ReadonlyArray<{ title: string; text: string }>;
+  // Appended after the existing notes. A note with the same title and text is not added
+  // again. With replaceSameTitle, the first note with that title gets the new text instead,
+  // so a rerun updates the bridge's status note rather than stacking another one.
+  notes?: ReadonlyArray<NotePatch>;
+}
+
+export interface NotePatch {
+  title: string;
+  text: string;
+  replaceSameTitle?: boolean;
 }
 
 export interface TimelineEventInput {
@@ -197,8 +205,7 @@ export class MealieClient {
   async ensureTag(name: string): Promise<MealieTagRef> {
     const wanted = name.trim();
     if (wanted === "") throw new Error("Tag name is empty");
-    const slug = slugify(wanted);
-    const existing = await this.#findTag(slug, wanted);
+    const existing = await this.#findTag(wanted);
     if (existing) return existing;
     try {
       const created = await this.#json("POST", "/api/organizers/tags", mealieTagSchema, {
@@ -208,7 +215,7 @@ export class MealieClient {
     } catch (error) {
       // Another request may have created the tag in the meantime.
       if (error instanceof MealieApiError && (error.status === 400 || error.status === 409)) {
-        const raced = await this.#findTag(slug, wanted);
+        const raced = await this.#findTag(wanted);
         if (raced) return raced;
       }
       throw error;
@@ -241,10 +248,19 @@ export class MealieClient {
     }
 
     if (patch.notes && patch.notes.length > 0) {
-      body.notes = [
-        ...current.notes.map(noteForPatch),
-        ...patch.notes.map((note) => ({ title: note.title, text: note.text })),
-      ];
+      const notes = current.notes.map(noteForPatch);
+      let changed = false;
+      for (const note of patch.notes) {
+        if (notes.some((kept) => kept.title === note.title && kept.text === note.text)) continue;
+        const same = note.replaceSameTitle
+          ? notes.findIndex((kept) => kept.title === note.title)
+          : -1;
+        const existing = notes[same];
+        if (existing) notes[same] = { ...existing, text: note.text };
+        else notes.push({ title: note.title, text: note.text });
+        changed = true;
+      }
+      if (changed) body.notes = notes;
     }
 
     if (Object.keys(body).length === 0) return current;
@@ -275,14 +291,17 @@ export class MealieClient {
     return this.#json("POST", "/api/comments", mealieCommentSchema, { body: { recipeId, text } });
   }
 
-  async #findTag(slug: string, name: string): Promise<MealieTagRef | null> {
+  // Searches by name, because Mealie's slugs come from python-slugify with unidecode and a
+  // local slug can differ for letters such as ø or æ. The local slug is only a fallback.
+  async #findTag(name: string): Promise<MealieTagRef | null> {
     const page = await this.#json("GET", "/api/organizers/tags", paginated(mealieTagSchema), {
-      query: { queryFilter: `slug="${slug}"`, perPage: "-1" },
+      query: { search: name, perPage: "-1" },
     });
     const lower = name.toLowerCase();
-    const match = page.items.find(
-      (tag: MealieTag) => tag.slug === slug || tag.name.toLowerCase() === lower,
-    );
+    const slug = slugify(name);
+    const match =
+      page.items.find((tag: MealieTag) => tag.name.toLowerCase() === lower) ??
+      page.items.find((tag: MealieTag) => tag.slug === slug);
     return match ? tagRef(match) : null;
   }
 

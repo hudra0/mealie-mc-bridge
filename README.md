@@ -55,7 +55,9 @@ CI publishes `ghcr.io/hudra0/mealie-mc-bridge` on every push to `main` (tags `la
 ## Development
 
 ```sh
-npm run check           # format, lint, typecheck, tests
+npm run check           # format, lint, typecheck, tests with coverage
+npm test                # tests only
+npm run test:coverage   # tests with the 85 % line threshold for src/mealie and src/ingredients
 npm run build
 npm run hooks:install   # secret scan before every commit, needs gitleaks 8.19 or newer
 ```

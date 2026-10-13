@@ -23,7 +23,7 @@
     "start": "node dist/main.js",
     "format:check": "prettier --check . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude",
     "format": "prettier --write . --ignore-path .gitignore --ignore-path .prettierignore --ignore-path .git/info/exclude",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage",
     "hooks:install": "git config core.hooksPath .githooks"
   },
   "dependencies": {

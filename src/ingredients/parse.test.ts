@@ -20,14 +20,16 @@ interface FixtureLine {
   tags: string[];
 }
 
-const fixtureFile = new URL(
-  "../../test/fixtures/ingredients/ingredient-lines.jsonl",
-  import.meta.url,
-);
-const fixtures: FixtureLine[] = readFileSync(fixtureFile, "utf8")
-  .split(/\r?\n/)
-  .filter((line) => line.trim() !== "")
-  .map((line) => JSON.parse(line) as FixtureLine);
+const readFixtures = (name: string): FixtureLine[] =>
+  readFileSync(new URL(`../../test/fixtures/ingredients/${name}`, import.meta.url), "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as FixtureLine);
+
+// The development set: the parser rules were written against these lines.
+const fixtures = readFixtures("ingredient-lines.jsonl");
+// Lines written after the rules and kept out of tuning. They show how the rules carry over.
+const heldOut = readFixtures("held-out-lines.jsonl");
 
 const sameNumber = (a: number | null, b: number | null | undefined): boolean =>
   a === null || b === null || b === undefined ? a === (b ?? null) : Math.abs(a - b) <= 0.001;
@@ -115,6 +117,37 @@ describe("ingredient fixture gate", () => {
       return JSON.stringify(auto) !== JSON.stringify(withLang);
     });
     expect(differing.map((line) => line.id)).toEqual([]);
+  });
+});
+
+describe("held-out ingredient lines", () => {
+  const results = heldOut.map((line) => ({ line, got: parseIngredientLine(line.input) }));
+  const failures = results.filter(({ line, got }) => !passes(line, got));
+
+  it("matches at least 90 % of the lines exactly", () => {
+    const report = failures
+      .map(
+        ({ line, got }) =>
+          `FAIL ${line.id} ${JSON.stringify(line.input)} got ${JSON.stringify(pick(got))}`,
+      )
+      .join("\n");
+    console.info(`Held-out (exact match): ${results.length - failures.length}/${results.length}`);
+    expect(results.length).toBeGreaterThanOrEqual(30);
+    expect((results.length - failures.length) / results.length, report).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("invents no quantities", () => {
+    const phantoms = results.filter(
+      ({ line, got }) => line.expected.quantity === null && got.quantity !== null,
+    );
+    expect(phantoms.map(({ line }) => line.id)).toEqual([]);
+  });
+
+  it("states weights per unit", () => {
+    const wrong = results.filter(
+      ({ line, got }) => !sameNumber(line.expected.weightGrams ?? null, got.weightGrams),
+    );
+    expect(wrong.map(({ line }) => line.id)).toEqual([]);
   });
 });
 
@@ -208,6 +241,14 @@ describe("parseIngredientLine", () => {
     });
   });
 
+  it("divides a weight in parentheses by the count when it covers all pieces", () => {
+    expect(parse("2 Zwiebeln (ca. 300 g)").weightGrams).toBe(150);
+    expect(parse("2 cups (250 g) flour").weightGrams).toBe(125);
+    expect(parse("2 Zwiebeln (je 150 g)").weightGrams).toBe(150);
+    expect(parse("2 Dosen (400 g) Tomaten").weightGrams).toBe(400);
+    expect(parse("2-3 Zwiebeln (300 g)").weightGrams).toBeUndefined();
+  });
+
   it("reads sized containers without a count", () => {
     expect(parse("400-g-Dose Tomaten")).toMatchObject({
       quantity: 1,
@@ -243,17 +284,41 @@ describe("parseIngredientLine", () => {
     expect(parse("Weizenmehl Type 405 500 g")).toMatchObject({ quantity: 500, unit: "g" });
   });
 
+  it("keeps a flour type number in the name", () => {
+    expect(parse("Weizenmehl 405, 500 g")).toMatchObject({
+      quantity: 500,
+      unit: "g",
+      food: "Weizenmehl 405",
+      confidence: 0.95,
+    });
+    for (const line of ["Weizenmehl 550", "Dinkelmehl 630", "Mehl 405", "Roggenmehl 1150"]) {
+      expect(parse(line), line).toMatchObject({ quantity: null, food: line, confidence: 0.85 });
+    }
+    expect(parse("500 g Weizenmehl 550")).toMatchObject({ quantity: 500, food: "Weizenmehl 550" });
+    expect(parse("Mehl 500 g")).toMatchObject({ quantity: 500, unit: "g", food: "Mehl" });
+  });
+
+  it("does not read a bare number after a flour word as a count", () => {
+    expect(parse("Mandelmehl 100")).toMatchObject({ quantity: null, confidence: 0.3 });
+  });
+
+  it("prefers a measured amount after the comma over a bare number in front", () => {
+    const result = parse("Hefe 1, 42 g");
+    expect(result).toMatchObject({ quantity: 42, unit: "g", food: "Hefe 1" });
+    expect(result.confidence).toBeLessThan(0.5);
+  });
+
   it("does not take an unknown word after a trailing number as a unit", () => {
     expect(parse("Zwiebeln 2 rote").quantity).toBeNull();
   });
 
   it("splits purpose phrases and dash comments off the food", () => {
     expect(parse("2 EL Öl zum Braten")).toMatchObject({ food: "Öl", note: "zum Braten" });
-    expect(parse("½ Tasse Mandelmehl – oder gemahlene Mandeln")).toMatchObject({
+    expect(parse("½ Tasse Haferflocken – oder Dinkelflocken")).toMatchObject({
       quantity: 0.5,
       unit: "Tasse",
-      food: "Mandelmehl",
-      note: "oder gemahlene Mandeln",
+      food: "Haferflocken",
+      note: "oder Dinkelflocken",
     });
     expect(parse("1 1/2 Tassen Brühe plus mehr zum Verdünnen")).toMatchObject({ food: "Brühe" });
   });
@@ -351,5 +416,19 @@ describe("parseIngredientLine", () => {
   it("parses number values", () => {
     expect(numberValue("3/4")).toBe(0.75);
     expect(numberValue("abc")).toBeNull();
+  });
+});
+
+describe("parseIngredientLine with two-word units", () => {
+  it("reads fluid ounces", () => {
+    expect(parseIngredientLine("8 fl oz heavy cream")).toMatchObject({
+      quantity: 8,
+      unit: "floz",
+      food: "heavy cream",
+    });
+    expect(parseIngredientLine("2 fluid ounces milk")).toMatchObject({
+      unit: "floz",
+      food: "milk",
+    });
   });
 });

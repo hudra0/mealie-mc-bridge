@@ -18,9 +18,11 @@ export interface ScaledIngredient extends NormalizedIngredient {
   flags: ScaleFlag[];
 }
 
+// Used only when a recipe states neither servings nor a yield and was not scaled.
 export const DEFAULT_SERVINGS = 4;
+// The servings range a Monsieur Cuisine recipe accepts.
 export const MIN_SERVINGS = 1;
-export const MAX_SERVINGS = 100;
+export const MAX_SERVINGS = 24;
 
 const clean = (value: number): number => Math.round(value * 1000) / 1000;
 const toStep = (value: number, step: number): number => clean(Math.round(value / step) * step);
@@ -103,10 +105,27 @@ export function scaleIngredients(
   return items.map((item) => scaleOne(item, factor));
 }
 
-// Servings for the scaled recipe. A recipe without servings counts as DEFAULT_SERVINGS.
-export function servingsFor(recipeServings: number, factor: number): number {
-  const base =
-    Number.isFinite(recipeServings) && recipeServings > 0 ? recipeServings : DEFAULT_SERVINGS;
-  const scale = Number.isFinite(factor) && factor > 0 ? factor : 1;
-  return Math.min(MAX_SERVINGS, Math.max(MIN_SERVINGS, Math.round(base * scale)));
+export interface ServingsInfo {
+  recipeServings: number;
+  recipeYieldQuantity: number;
+}
+
+const positive = (value: number): boolean => Number.isFinite(value) && value > 0;
+
+// The amount Mealie's servings scaler starts from: recipeServings, else
+// recipeYieldQuantity. Null when the recipe states neither; Mealie then starts from 1.
+export function scalerBase(recipe: ServingsInfo): number | null {
+  if (positive(recipe.recipeServings)) return recipe.recipeServings;
+  if (positive(recipe.recipeYieldQuantity)) return recipe.recipeYieldQuantity;
+  return null;
+}
+
+// Servings for the scaled recipe, as the user picked them in Mealie's scaler:
+// base × recipe_scale. A recipe without servings and yield that was not scaled counts as
+// DEFAULT_SERVINGS. The result is limited to the range the device accepts.
+export function servingsFor(recipe: ServingsInfo, factor: number): number {
+  const scale = positive(factor) ? factor : 1;
+  const base = scalerBase(recipe);
+  const servings = base === null && scale === 1 ? DEFAULT_SERVINGS : (base ?? 1) * scale;
+  return Math.min(MAX_SERVINGS, Math.max(MIN_SERVINGS, Math.round(servings)));
 }

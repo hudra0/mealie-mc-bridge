@@ -8,6 +8,7 @@ import {
   isUnitCode,
   normalizeUnit,
   unitKind,
+  unitLabel,
 } from "./units.js";
 
 // The unit codes from test/fixtures/ingredients/SPEC.md, in the order listed there.
@@ -44,6 +45,7 @@ const SPEC_CODES = [
   "tbsp",
   "tsp",
   "oz",
+  "floz",
   "lb",
   "pinch",
   "can",
@@ -56,6 +58,34 @@ describe("unit vocabulary", () => {
     expect([...UNIT_CODES]).toEqual(SPEC_CODES);
     expect(Object.keys(UNITS).sort()).toEqual([...SPEC_CODES].sort());
   });
+
+  it("has a non-empty singular and plural label for every code", () => {
+    for (const code of UNIT_CODES) {
+      const [singular, plural] = UNITS[code].label;
+      expect(singular.trim(), code).not.toBe("");
+      expect(plural.trim(), code).not.toBe("");
+    }
+  });
+
+  it.each([
+    ["Kopf", false, "Kopf"],
+    ["Kopf", true, "Köpfe"],
+    ["Glas", true, "Gläser"],
+    ["Stueck", true, "Stück"],
+    ["g", true, "g"],
+    ["floz", true, "fl oz"],
+    ["Handvoll", true, "Handvoll"],
+  ])("writes %s (plural %s) as %s", (code, plural, label) => {
+    expect(unitLabel(code, plural)).toBe(label);
+  });
+
+  it.each(["fluid ounce", "Fluid Ounces", "fl oz", "fl. oz.", "fl  oz"])(
+    "maps Mealie's fluid ounce spelling %s to floz",
+    (word) => {
+      expect(normalizeUnit(word)).toEqual({ code: "floz", factor: 1 });
+      expect(unitKind("floz")).toBe("ounce");
+    },
+  );
 
   it.each(SPEC_CODES)("maps the code %s to itself in any case and with a dot", (code) => {
     expect(normalizeUnit(code)).toEqual({ code, factor: 1 });

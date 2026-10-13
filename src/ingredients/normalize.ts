@@ -3,10 +3,29 @@
 // imported recipes often have, go through the deterministic parser. Lines the parser
 // cannot read are kept as "unparsed" with their original text, so nothing is lost.
 
-import type { MealieIngredient, MealieRecipe, MealieUnit } from "../mealie/types.js";
 import { cleanIngredientText, mentionsOptional, parseIngredientLine } from "./parse.js";
 import type { ParsedIngredient } from "./parse.js";
 import { normalizeUnit } from "./units.js";
+
+// The shape of one ingredient row this module reads. It matches Mealie's recipe JSON, but
+// is declared here so the ingredient code does not depend on the Mealie client.
+export interface IngredientUnit {
+  name: string;
+  abbreviation?: string | null | undefined;
+  pluralName?: string | null | undefined;
+  pluralAbbreviation?: string | null | undefined;
+}
+
+export interface IngredientRow {
+  quantity: number | null;
+  unit: IngredientUnit | null;
+  food: { name: string } | null;
+  note: string | null;
+  display: string;
+  title: string | null;
+  originalText: string | null;
+  referenceId: string | null;
+}
 
 export type IngredientSource = "structured" | "parsed" | "unparsed";
 
@@ -31,7 +50,7 @@ export interface NormalizedIngredient {
 // Below this parser confidence a line counts as not understood.
 export const MIN_CONFIDENCE = 0.5;
 
-function unitOf(unit: MealieUnit | null): { code: string | null; factor: number } {
+function unitOf(unit: IngredientUnit | null): { code: string | null; factor: number } {
   if (!unit) return { code: null, factor: 1 };
   const spellings = [unit.abbreviation, unit.name, unit.pluralName, unit.pluralAbbreviation];
   for (const spelling of spellings) {
@@ -42,12 +61,16 @@ function unitOf(unit: MealieUnit | null): { code: string | null; factor: number 
   return { code: raw ?? null, factor: 1 };
 }
 
-function originalOf(ingredient: MealieIngredient): string {
-  const candidates = [ingredient.originalText, ingredient.display, ingredient.note];
-  return candidates.map((value) => value?.trim() ?? "").find(Boolean) ?? "";
+function firstText(...values: Array<string | null | undefined>): string {
+  return values.map((value) => value?.trim() ?? "").find(Boolean) ?? "";
 }
 
-function structured(ingredient: MealieIngredient, index: number, section: string | null) {
+// What Mealie shows for a structured row: the imported text, else the rendered display.
+function originalOf(ingredient: IngredientRow): string {
+  return firstText(ingredient.originalText, ingredient.display, ingredient.note);
+}
+
+function structured(ingredient: IngredientRow, index: number, section: string | null) {
   const unit = unitOf(ingredient.unit);
   const quantity =
     ingredient.quantity !== null && ingredient.quantity > 0
@@ -77,7 +100,7 @@ interface Candidate {
 }
 
 // Of note, originalText and display, the text whose parse carries the most information.
-function richest(ingredient: MealieIngredient): Candidate | null {
+function richest(ingredient: IngredientRow): Candidate | null {
   const texts = [ingredient.originalText, ingredient.note, ingredient.display]
     .map((value) => value?.trim() ?? "")
     .filter((value, position, all) => value !== "" && all.indexOf(value) === position);
@@ -111,9 +134,9 @@ function headerTitle(text: string): string {
     .trim();
 }
 
-export function normalizeIngredients(
-  recipe: Pick<MealieRecipe, "recipeIngredient">,
-): NormalizedIngredient[] {
+export function normalizeIngredients(recipe: {
+  recipeIngredient: readonly IngredientRow[];
+}): NormalizedIngredient[] {
   const items: NormalizedIngredient[] = [];
   let section: string | null = null;
 
@@ -145,7 +168,9 @@ export function normalizeIngredients(
       note: understood ? best.result.note : "",
       optional: best.result.optional,
       source: understood ? "parsed" : "unparsed",
-      original: originalOf(ingredient),
+      // The imported text, else the text that was parsed. A stale display such as
+      // "1 500 g Mehl" must not contradict the amount read from the note.
+      original: firstText(ingredient.originalText, best.text),
       referenceId: ingredient.referenceId,
     };
     if (understood && best.result.weightGrams !== undefined) {

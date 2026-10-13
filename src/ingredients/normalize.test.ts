@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { mealieRecipeSchema, type MealieRecipe } from "../mealie/types.js";
 import { normalizeIngredients } from "./normalize.js";
+import { scaleIngredients } from "./scale.js";
 
 const fixture = (name: string): MealieRecipe =>
   mealieRecipeSchema.parse(
@@ -188,8 +189,15 @@ describe("normalizeIngredients choosing the text to parse", () => {
       quantity: 500,
       unit: "g",
       food: "Mehl",
-      original: "1 500 g Mehl",
+      original: "500 g Mehl",
     });
+  });
+
+  it("keeps the imported text as the original of a parsed row", () => {
+    const [item] = normalizeIngredients(
+      recipeWith({ quantity: 1, note: "500 g Mehl", originalText: "500g Mehl (Type 405)" }),
+    );
+    expect(item).toMatchObject({ quantity: 500, original: "500g Mehl (Type 405)" });
   });
 
   it("prefers the original text over a shortened note", () => {
@@ -221,5 +229,20 @@ describe("normalizeIngredients choosing the text to parse", () => {
       recipeWith({ title: "Teig", note: "200 g Mehl" }, { note: "**:**" }, { note: "1 Ei" }),
     );
     expect(items.map((item) => item.section)).toEqual(["Teig", "Teig"]);
+  });
+});
+
+describe("normalizeIngredients with Mealie's standard units", () => {
+  it("maps fluid ounces to a volume unit that scales without a count flag", () => {
+    const [item] = normalizeIngredients(
+      recipeWith({
+        quantity: 8,
+        unit: { name: "fluid ounce", pluralName: "fluid ounces", abbreviation: "fl oz" },
+        food: { name: "heavy cream" },
+      }),
+    );
+    expect(item).toMatchObject({ quantity: 8, unit: "floz", source: "structured" });
+    const [scaled] = scaleIngredients(item ? [item] : [], 4 / 3);
+    expect(scaled).toMatchObject({ quantity: 10.5, flags: [] });
   });
 });

@@ -6,17 +6,23 @@ export {
 } from "./parse.js";
 export type { ParsedIngredient, ParseOptions } from "./parse.js";
 export { normalizeIngredients, MIN_CONFIDENCE } from "./normalize.js";
-export type { IngredientSource, NormalizedIngredient } from "./normalize.js";
+export type {
+  IngredientRow,
+  IngredientSource,
+  IngredientUnit,
+  NormalizedIngredient,
+} from "./normalize.js";
 export {
   scaleIngredients,
   servingsFor,
+  scalerBase,
   ROUNDING,
   DEFAULT_SERVINGS,
   MIN_SERVINGS,
   MAX_SERVINGS,
   PINCH_MIN_FACTOR,
 } from "./scale.js";
-export type { ScaledIngredient, ScaleFlag } from "./scale.js";
+export type { ScaledIngredient, ScaleFlag, ServingsInfo } from "./scale.js";
 export {
   UNIT_CODES,
   UNITS,
@@ -24,5 +30,6 @@ export {
   normalizeUnit,
   unitKind,
   isUnitCode,
+  unitLabel,
 } from "./units.js";
 export type { UnitCode, UnitKind, UnitMatch } from "./units.js";

@@ -1,0 +1,5 @@
+{
+  "code": 110000,
+  "message": "BadRequestException",
+  "data": ["xRequestId should not be empty"]
+}

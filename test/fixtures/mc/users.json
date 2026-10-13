@@ -1,0 +1,27 @@
+{
+  "code": 0,
+  "message": "User profile is returned",
+  "data": {
+    "user": {
+      "id": 1000001,
+      "displayName": "test-user",
+      "email": "user@example.com",
+      "firstName": "Test",
+      "lastName": "User",
+      "avatar": null,
+      "productPrivacyOptIn": false,
+      "allProductOptInViewed": true,
+      "userPrivacyOptIn": false,
+      "userPrivacyAllProductOptIn": false,
+      "privacyViewed": true,
+      "productPrivacyAllProductOptIn": false,
+      "consentLanguage": null,
+      "consentPolicyVersion": null,
+      "legacyUid": null,
+      "displayInfoUpdatedAt": "2026-01-01T00:00:00.000Z",
+      "alerts": {
+        "rejectedRecipeCount": 0
+      }
+    }
+  }
+}

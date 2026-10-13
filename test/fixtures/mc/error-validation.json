@@ -1,0 +1,5 @@
+{
+  "code": 40004,
+  "message": "The recipe data is not complete - servingSizes.0.steps.17.mode.modeSetting.size: size must be a valid enum value",
+  "data": null
+}

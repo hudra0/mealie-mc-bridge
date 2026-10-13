@@ -1,0 +1,27 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildSystemPrompt > has the sections in their fixed order 1`] = `
+[
+  "# Role and goal",
+  "# Device limits",
+  "## Recipe",
+  "## Programs",
+  "# Conversion rules",
+  "## Structure",
+  "## Standard phrases",
+  "## Typical sequences",
+  "## Amounts and units",
+  "## Chopping",
+  "## Sautéing and roasting",
+  "## Simmering, sauces and soups",
+  "## Dough",
+  "## Steaming",
+  "## Purée and blend",
+  "## Special programs",
+  "## Safety and limits",
+  "# Techniques",
+  "# Timing",
+  "# Units",
+  "# Output contract",
+]
+`;

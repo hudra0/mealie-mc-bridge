@@ -32,8 +32,9 @@ WORKDIR /app
 COPY package.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-# Device limits the recipe validator reads at runtime (DEVICE_PROGRAMS_PATH).
-COPY knowledge/device-programs.json ./knowledge/device-programs.json
+# The knowledge base: device limits for the validator (DEVICE_PROGRAMS_PATH) and the
+# techniques, timing and unit rules the converter reads (KNOWLEDGE_DIR).
+COPY knowledge ./knowledge
 # The base image ships uid/gid 1000 as "node"; rename it instead of adding a second user.
 RUN groupmod --new-name bridge node \
   && usermod --login bridge --home /home/bridge --move-home node \

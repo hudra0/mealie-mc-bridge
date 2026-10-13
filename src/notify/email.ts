@@ -1,10 +1,12 @@
 // Notifications for problems nobody watches the admin page for: a dead Monsieur Cuisine
 // session, a job that failed for good, a session check that keeps failing. Mails are plain
-// German text. They never carry cookies or tokens: the inputs contain none, and every
-// error text is scrubbed again before it is sent.
+// text in UI_LANGUAGE (src/i18n). They never carry cookies or tokens: the inputs contain
+// none, and every error text is scrubbed again before it is sent.
 
 import { createTransport } from "nodemailer";
 import { errorMessage, scrubSecrets, type AppLogger } from "../app-logger.js";
+import { formatDate } from "../i18n/format.js";
+import { messages, type Messages, type UiLanguage } from "../i18n/index.js";
 import type { SessionStatus } from "../session/manager.js";
 import type { Job } from "../store/jobs.js";
 
@@ -45,22 +47,12 @@ export interface EmailNotifierOptions {
   logger: AppLogger;
   // Builds the link to a recipe in Mealie, when the public URL is known.
   recipeUrl?: (job: Job) => string | null;
+  // The language of the mails; German by default.
+  language?: UiLanguage;
 }
 
-const SUBJECT_PREFIX = "Monsieur-Cuisine-Bridge";
 // Job ids already reported; older ones drop out first.
 const MAX_REMEMBERED_JOBS = 500;
-
-const SESSION_TEXT: Readonly<Record<string, { subject: string; lead: string }>> = {
-  expired: {
-    subject: "Sitzung abgelaufen",
-    lead: "Die Monsieur-Cuisine-Sitzung der Bridge ist abgelaufen.",
-  },
-  invalid: {
-    subject: "Sitzung ungültig",
-    lead: "Monsieur Cuisine lehnt das gespeicherte Sitzungs-Cookie ab, oder es ist keines hinterlegt.",
-  },
-};
 
 export class EmailNotifier implements Notifier {
   readonly #transport: MailTransport;
@@ -68,6 +60,7 @@ export class EmailNotifier implements Notifier {
   readonly #from: string;
   readonly #logger: AppLogger;
   readonly #recipeUrl: (job: Job) => string | null;
+  readonly #messages: Messages;
   #lastSessionKey: string | null = null;
   #lastHealthError: string | null = null;
   readonly #reportedJobs = new Set<string>();
@@ -78,6 +71,7 @@ export class EmailNotifier implements Notifier {
     this.#from = options.from;
     this.#logger = options.logger;
     this.#recipeUrl = options.recipeUrl ?? (() => null);
+    this.#messages = messages(options.language ?? "de");
   }
 
   // One mail per state change: the same state for the same cookie is reported once.
@@ -86,20 +80,18 @@ export class EmailNotifier implements Notifier {
     if (key === this.#lastSessionKey) return;
     this.#lastSessionKey = key;
     this.#lastHealthError = null;
-    const text = SESSION_TEXT[status.state] ?? SESSION_TEXT.invalid!;
+    const t = this.#messages.email;
+    const text = status.state === "expired" ? t.session.expired : t.session.invalid;
     const lines = [
       text.lead,
       "",
-      "Neue Aufträge aus Mealie warten, bis eine gültige Sitzung hinterlegt ist, und laufen dann automatisch weiter.",
+      t.sessionWaiting,
       "",
-      "So geht es weiter:",
-      "1. Auf www.monsieur-cuisine.com anmelden.",
-      "2. Das Cookie aus den Entwicklerwerkzeugen des Browsers kopieren (siehe README, „Run it“, Schritt 5: „Paste the Monsieur Cuisine session“).",
-      "3. Auf der Admin-Seite der Bridge (/admin) einfügen und speichern.",
+      ...t.sessionNextSteps,
       "",
-      `Zuletzt geprüft: ${formatDate(status.checkedAt)}`,
+      t.lastChecked(this.#date(status.checkedAt)),
     ];
-    if (status.lastError) lines.push(`Letzte Meldung: ${errorMessage(status.lastError)}`);
+    if (status.lastError) lines.push(t.lastMessage(errorMessage(status.lastError)));
     await this.#send(text.subject, lines);
   }
 
@@ -107,21 +99,19 @@ export class EmailNotifier implements Notifier {
   async jobFailed(job: Job, error: string): Promise<void> {
     if (this.#reportedJobs.has(job.id)) return;
     this.#remember(job.id);
+    const t = this.#messages.email;
     const title = job.title ?? job.mealieSlug ?? job.mealieRecipeId;
     const lines = [
-      `Das Rezept „${title}“ konnte nicht an Monsieur Cuisine gesendet werden.`,
+      t.jobFailedLead(title),
       "",
-      `Fehler: ${errorMessage(error)}`,
-      `Auftrag: ${job.id}`,
-      `Versuche: ${job.attempts}`,
+      t.error(errorMessage(error)),
+      t.job(job.id),
+      t.attempts(job.attempts),
     ];
     const url = this.#recipeUrl(job);
-    if (url) lines.push(`Rezept in Mealie: ${url}`);
-    lines.push(
-      "",
-      "Auf der Admin-Seite der Bridge (/admin/jobs) lässt sich der Auftrag erneut starten.",
-    );
-    await this.#send(`„${oneLine(title, 80)}“ nicht gesendet`, lines);
+    if (url) lines.push(t.recipeInMealie(url));
+    lines.push("", t.jobRetry);
+    await this.#send(t.jobFailedSubject(oneLine(title, 80)), lines);
   }
 
   // Consecutive failures with the same message are reported once.
@@ -129,20 +119,15 @@ export class EmailNotifier implements Notifier {
     const message = errorMessage(error);
     if (message === this.#lastHealthError) return;
     this.#lastHealthError = message;
-    await this.#send("Sitzungsprüfung fehlgeschlagen", [
-      "Die regelmäßige Prüfung der Monsieur-Cuisine-Sitzung ist fehlgeschlagen. Die Sitzung selbst wurde dabei nicht abgelehnt; meist ist die Website kurz nicht erreichbar.",
-      "",
-      `Fehler: ${message}`,
-      "",
-      "Die Bridge prüft weiter. Bleibt der Fehler bestehen, hilft ein Blick in die Logs.",
-    ]);
+    const t = this.#messages.email;
+    await this.#send(t.healthSubject, [t.healthLead, "", t.error(message), "", t.healthOutro]);
   }
 
   async #send(subject: string, lines: string[]): Promise<void> {
     const message: MailMessage = {
       from: this.#from,
       to: this.#to,
-      subject: scrubSecrets(`${SUBJECT_PREFIX}: ${subject}`),
+      subject: scrubSecrets(`${this.#messages.email.subjectPrefix}: ${subject}`),
       text: scrubSecrets(`${lines.join("\n")}\n`),
     };
     try {
@@ -152,6 +137,10 @@ export class EmailNotifier implements Notifier {
       // A broken mail server must not break the job or the session check.
       this.#logger.warn({ err: errorMessage(error) }, "notification failed");
     }
+  }
+
+  #date(iso: string | null): string {
+    return iso ? formatDate(iso, this.#messages.intlLocale) : this.#messages.email.never;
   }
 
   #remember(id: string): void {
@@ -167,6 +156,7 @@ export interface NotifierConfig {
   SMTP_URL?: string | undefined;
   NOTIFY_EMAIL?: string | undefined;
   SMTP_FROM?: string | undefined;
+  UI_LANGUAGE?: UiLanguage | undefined;
 }
 
 // An EmailNotifier when SMTP_URL and NOTIFY_EMAIL are set, otherwise a NullNotifier.
@@ -186,14 +176,8 @@ export function createNotifier(
     from: config.SMTP_FROM ?? config.NOTIFY_EMAIL,
     logger,
     ...(options.recipeUrl ? { recipeUrl: options.recipeUrl } : {}),
+    ...(config.UI_LANGUAGE ? { language: config.UI_LANGUAGE } : {}),
   });
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "noch nie";
-  return new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(iso),
-  );
 }
 
 function oneLine(text: string, max: number): string {

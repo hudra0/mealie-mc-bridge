@@ -9,6 +9,7 @@ import { MealieClient } from "./mealie/index.js";
 import { createNotifier } from "./notify/email.js";
 import { loadConverter } from "./pipeline/converter-port.js";
 import { IngredientResolver } from "./pipeline/ingredient-resolver.js";
+import { loadPipelineLocale } from "./pipeline/locale.js";
 import { loadDeviceLimits } from "./recipe/limits.js";
 import { buildService, mealieRecipeLink } from "./service/app.js";
 import { requestLogSerializers } from "./service/security.js";
@@ -44,23 +45,33 @@ async function main(): Promise<void> {
   }
 
   const limits = await loadDeviceLimits(config.DEVICE_PROGRAMS_PATH);
+  const locale = await loadPipelineLocale(config.KNOWLEDGE_DIR, config.MC_LOCALE);
+  const mcLocale = locale.pack.mc;
+  if (!mcLocale.verifiedOnDevice) {
+    logger.warn(
+      { locale: mcLocale.locale },
+      "the locale pack is not verified on a device; check the first recipes in the web editor",
+    );
+  }
   const mealie = new MealieClient(config.MEALIE_URL, config.MEALIE_API_TOKEN, fetch, { logger });
   const notifier = createNotifier(config, logger, {
     recipeUrl: (job) => (job.mealieSlug ? mealieRecipeLink(config, job.mealieSlug) : null),
   });
-  const transport = new McTransport({ logger });
+  const transport = new McTransport({ logger, locale: mcLocale });
   const session = new SessionManager({
     settings: store.settings,
     jobs: store.jobs,
     // A separate client with just this cookie, so a check never touches the stored one.
     validate: (cookie) =>
-      new McClient(transport, new StaticSessionProvider(cookie)).getCurrentUser(),
+      new McClient(transport, new StaticSessionProvider(cookie), {
+        editorPath: mcLocale.editorPath,
+      }).getCurrentUser(),
     notifier,
     logger,
     seedCookie: config.MC_COOKIE,
     checkIntervalMs: config.SESSION_CHECK_MINUTES * 60_000,
   });
-  const mc = new McClient(transport, session);
+  const mc = new McClient(transport, session, { editorPath: mcLocale.editorPath });
   const converter = await loadConverter({ env: process.env, limits, logger });
   const catalog = await loadConfiguredCatalog(config);
   const ingredients = new IngredientResolver({
@@ -79,6 +90,7 @@ async function main(): Promise<void> {
     mc,
     converter,
     limits,
+    locale,
     notifier,
     ingredients,
     logger,

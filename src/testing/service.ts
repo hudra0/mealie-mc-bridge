@@ -19,6 +19,7 @@ import {
   type FakeMealieOptions,
   type FakeNotifier,
 } from "./fakes.js";
+import { deLocale } from "./locale.js";
 import { tempStore, type TempStore } from "./temp.js";
 
 export const WEBHOOK_TOKEN = "t".repeat(48);
@@ -73,7 +74,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     MEALIE_GROUP_SLUG: "home",
     MC_RECIPE_STATUS: "private-publish",
     TAG_NAME: "Monsieur Cuisine",
-    TIMELINE_LANGUAGE: "de",
+    UI_LANGUAGE: "en",
     ...(options.auth === false ? {} : { ADMIN_USER: ADMIN.user, ADMIN_PASSWORD: ADMIN.password }),
     ...options.config,
   };
@@ -85,6 +86,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     mc,
     converter,
     limits,
+    locale: deLocale,
     notifier,
     logger: silentLogger(),
     formToken: FORM_TOKEN,

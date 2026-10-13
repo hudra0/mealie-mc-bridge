@@ -1,7 +1,8 @@
 // Page bodies of the admin UI. Pure functions from data to SafeHtml; admin.ts wires them to
 // routes. Every value from a recipe, a job or an error passes through html``, which
-// escapes it.
+// escapes it. The texts come from the message catalog of UI_LANGUAGE (src/i18n).
 
+import type { AdminMessages } from "../i18n/index.js";
 import type { ScaledIngredient } from "../ingredients/index.js";
 import type { CheckedRecipe, CategoryPlan, PreparedRecipe } from "../pipeline/prepare.js";
 import type { ConversionResult } from "../pipeline/converter-port.js";
@@ -11,13 +12,18 @@ import type { SessionStatus } from "../session/manager.js";
 import type { Job, JobEvent, JobStats, JobStatus } from "../store/jobs.js";
 import { JOB_STATUSES } from "../store/jobs.js";
 import type { SentRecipe } from "../store/mc-recipes.js";
-import { html, safeHref, type SafeHtml } from "./html.js";
+import { escapeHtml, html, safeHref, SafeHtml } from "./html.js";
 
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "–";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+}
+
+// Catalog text with `code` spans, escaped, the spans as <code>.
+export function withCode(text: string): SafeHtml {
+  return new SafeHtml(escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>"));
 }
 
 const STATUS_CLASS: Readonly<Record<JobStatus, string>> = {
@@ -30,8 +36,8 @@ const STATUS_CLASS: Readonly<Record<JobStatus, string>> = {
   cancelled: "muted",
 };
 
-export function statusBadge(status: JobStatus): SafeHtml {
-  return html`<span class="badge ${STATUS_CLASS[status]}">${status.replace("_", " ")}</span>`;
+export function statusBadge(status: JobStatus, t: AdminMessages): SafeHtml {
+  return html`<span class="badge ${STATUS_CLASS[status]}">${t.jobStatus[status]}</span>`;
 }
 
 const SESSION_CLASS: Readonly<Record<SessionStatus["state"], string>> = {
@@ -41,6 +47,10 @@ const SESSION_CLASS: Readonly<Record<SessionStatus["state"], string>> = {
   unknown: "muted",
 };
 
+function sessionBadge(state: SessionStatus["state"], t: AdminMessages): SafeHtml {
+  return html`<span class="badge ${SESSION_CLASS[state]}">${t.sessionState[state]}</span>`;
+}
+
 function csrfField(token: string): SafeHtml {
   return html`<input type="hidden" name="_csrf" value="${token}" />`;
 }
@@ -49,18 +59,19 @@ function jobTitle(job: Job): string {
   return job.title ?? job.mealieSlug ?? job.mealieRecipeId;
 }
 
-function jobsTable(jobs: readonly Job[]): SafeHtml {
-  if (jobs.length === 0) return html`<p class="muted">No jobs yet.</p>`;
+function jobsTable(jobs: readonly Job[], t: AdminMessages): SafeHtml {
+  const l = t.jobsTable;
+  if (jobs.length === 0) return html`<p class="muted">${l.empty}</p>`;
   return html`<div class="scroll">
     <table>
       <thead>
         <tr>
-          <th>Created</th>
-          <th>Recipe</th>
-          <th>Scale</th>
-          <th>Status</th>
-          <th>Attempts</th>
-          <th>Result</th>
+          <th>${l.created}</th>
+          <th>${l.recipe}</th>
+          <th>${l.scale}</th>
+          <th>${l.status}</th>
+          <th>${l.attempts}</th>
+          <th>${l.result}</th>
         </tr>
       </thead>
       <tbody>
@@ -70,13 +81,13 @@ function jobsTable(jobs: readonly Job[]): SafeHtml {
               <td>${formatTime(job.createdAt)}</td>
               <td><a href="/admin/jobs/${encodeURIComponent(job.id)}">${jobTitle(job)}</a></td>
               <td class="num">${job.scale}</td>
-              <td>${statusBadge(job.status)}</td>
+              <td>${statusBadge(job.status, t)}</td>
               <td class="num">${job.attempts}</td>
               <td>
                 ${
                   job.mcRecipeUrl
                     ? html`<a href="${safeHref(job.mcRecipeUrl)}" rel="noreferrer"
-                        >draft ${job.mcRecipeId}</a
+                        >${l.draft(job.mcRecipeId ?? "")}</a
                       >`
                     : job.error
                       ? html`<span class="bad">${truncate(job.error, 80)}</span>`
@@ -99,37 +110,32 @@ export interface DashboardData {
   recipeStatus: string;
 }
 
-export function dashboardView(data: DashboardData): SafeHtml {
+export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
   const { session } = data;
-  return html`<h1>Dashboard</h1>
+  const d = t.dashboard;
+  return html`<h1>${t.titles.dashboard}</h1>
     <section>
-      <h2>Monsieur Cuisine session</h2>
+      <h2>${d.session}</h2>
       <dl>
-        <dt>State</dt>
-        <dd><span class="badge ${SESSION_CLASS[session.state]}">${session.state}</span></dd>
-        <dt>Last check</dt>
+        <dt>${d.state}</dt>
+        <dd>${sessionBadge(session.state, t)}</dd>
+        <dt>${d.lastCheck}</dt>
         <dd>${formatTime(session.checkedAt)}</dd>
-        <dt>Cookie age</dt>
-        <dd>${session.cookieAgeHours === null ? "no cookie" : `${session.cookieAgeHours} h`}</dd>
-        <dt>Last error</dt>
+        <dt>${d.cookieAge}</dt>
+        <dd>${session.cookieAgeHours === null ? d.noCookie : d.hours(session.cookieAgeHours)}</dd>
+        <dt>${d.lastError}</dt>
         <dd>${session.lastError ?? "–"}</dd>
-        <dt>New recipes</dt>
-        <dd>
-          ${data.recipeStatus === "private-publish" ? "saved on the device only" : "kept as drafts, not shown on the device"}
-        </dd>
+        <dt>${d.newRecipes}</dt>
+        <dd>${data.recipeStatus === "private-publish" ? d.privatePublish : d.draftOnly}</dd>
       </dl>
       <form class="inline" method="post" action="/admin/session/check">
         ${csrfField(data.formToken)}
-        <p><button type="submit">Check now</button></p>
+        <p><button type="submit">${d.checkNow}</button></p>
       </form>
       <form method="post" action="/admin/session">
         ${csrfField(data.formToken)}
         <p>
-          <label for="cookie"
-            >Paste the <code>Cookie</code> request header of a logged-in www.monsieur-cuisine.com
-            tab (DevTools, Network, any <code>proxy-api</code> request). It is checked against your
-            account before it is stored, encrypted.</label
-          >
+          <label for="cookie">${withCode(d.cookieLabel)}</label>
         </p>
         <textarea
           id="cookie"
@@ -139,27 +145,27 @@ export function dashboardView(data: DashboardData): SafeHtml {
           spellcheck="false"
           required
         ></textarea>
-        <p><button type="submit">Save session</button></p>
+        <p><button type="submit">${d.saveSession}</button></p>
       </form>
     </section>
     <section>
-      <h2>Queue</h2>
+      <h2>${d.queue}</h2>
       <p>
-        Worker:
+        ${d.worker}
         ${
           data.worker === null
-            ? "unknown"
+            ? d.unknown
             : data.worker.running
               ? data.worker.paused
-                ? html`<span class="warn">paused until the session works</span>`
-                : html`<span class="ok">running</span>`
-              : html`<span class="bad">stopped</span>`
+                ? html`<span class="warn">${d.paused}</span>`
+                : html`<span class="ok">${d.running}</span>`
+              : html`<span class="bad">${d.stopped}</span>`
         }
       </p>
       ${
         data.worker?.lastError
           ? html`<p>
-              Last worker error (${formatTime(data.worker.lastErrorAt)}):
+              ${d.lastWorkerError(formatTime(data.worker.lastErrorAt))}
               <span class="bad">${data.worker.lastError}</span>
             </p>`
           : ""
@@ -167,7 +173,7 @@ export function dashboardView(data: DashboardData): SafeHtml {
       <div class="scroll">
         <table>
           <tr>
-            ${JOB_STATUSES.map((status) => html`<th>${statusBadge(status)}</th>`)}
+            ${JOB_STATUSES.map((status) => html`<th>${statusBadge(status, t)}</th>`)}
           </tr>
           <tr>
             ${JOB_STATUSES.map(
@@ -181,13 +187,13 @@ export function dashboardView(data: DashboardData): SafeHtml {
       </div>
     </section>
     <section>
-      <h2>Recent jobs</h2>
-      ${jobsTable(data.jobs)}
-      <p><a href="/admin/jobs">All jobs</a></p>
+      <h2>${d.recentJobs}</h2>
+      ${jobsTable(data.jobs, t)}
+      <p><a href="/admin/jobs">${t.links.allJobs}</a></p>
     </section>
     <section>
-      <h2>Dry run</h2>
-      ${dryRunForm("", 1)}
+      <h2>${d.dryRun}</h2>
+      ${dryRunForm("", 1, t)}
     </section>`;
 }
 
@@ -199,7 +205,8 @@ export interface JobListData {
   limit: number;
 }
 
-export function jobListView(data: JobListData): SafeHtml {
+export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
+  const l = t.jobList;
   const query = (offset: number) => {
     const params = new URLSearchParams();
     if (data.status) params.set("status", data.status);
@@ -207,39 +214,39 @@ export function jobListView(data: JobListData): SafeHtml {
     params.set("offset", String(offset));
     return `/admin/jobs?${params.toString()}`;
   };
-  return html`<h1>Jobs</h1>
+  return html`<h1>${t.titles.jobs}</h1>
     <section>
       <form method="get" action="/admin/jobs">
         <label
-          >Status
+          >${l.status}
           <select name="status">
-            <option value="">all</option>
+            <option value="">${l.all}</option>
             ${JOB_STATUSES.map(
               (status) =>
                 html`<option value="${status}" ${status === data.status ? html`selected` : ""}>
-                  ${status}
+                  ${t.jobStatus[status]}
                 </option>`,
             )}
           </select></label
         >
         <label
-          >Recipe
-          <input type="text" name="q" value="${data.search}" placeholder="title, slug or id"
+          >${l.recipe}
+          <input type="text" name="q" value="${data.search}" placeholder="${l.searchPlaceholder}"
         /></label>
-        <button type="submit">Filter</button>
+        <button type="submit">${l.filter}</button>
       </form>
     </section>
     <section>
-      ${jobsTable(data.jobs)}
+      ${jobsTable(data.jobs, t)}
       <p>
         ${
           data.offset > 0
-            ? html`<a href="${query(Math.max(0, data.offset - data.limit))}">Newer</a>`
+            ? html`<a href="${query(Math.max(0, data.offset - data.limit))}">${l.newer}</a>`
             : ""
         }
         ${
           data.jobs.length === data.limit
-            ? html`<a href="${query(data.offset + data.limit)}">Older</a>`
+            ? html`<a href="${query(data.offset + data.limit)}">${l.older}</a>`
             : ""
         }
       </p>
@@ -253,8 +260,9 @@ export interface JobDetailData {
   mealieUrl: string | null;
 }
 
-export function jobDetailView(data: JobDetailData): SafeHtml {
+export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
   const { job } = data;
+  const l = t.jobDetail;
   const usage = job.usage;
   const cancellable = job.status === "queued" || job.status === "session_expired";
   const action = (path: string, label: string, extra?: SafeHtml) =>
@@ -269,11 +277,11 @@ export function jobDetailView(data: JobDetailData): SafeHtml {
   return html`<h1>${jobTitle(job)}</h1>
     <section>
       <dl>
-        <dt>Status</dt>
-        <dd>${statusBadge(job.status)}</dd>
-        <dt>Job</dt>
+        <dt>${l.status}</dt>
+        <dd>${statusBadge(job.status, t)}</dd>
+        <dt>${l.job}</dt>
         <dd><code>${job.id}</code></dd>
-        <dt>Mealie recipe</dt>
+        <dt>${l.mealieRecipe}</dt>
         <dd>
           ${
             data.mealieUrl
@@ -283,75 +291,75 @@ export function jobDetailView(data: JobDetailData): SafeHtml {
               : job.mealieRecipeId
           }
         </dd>
-        <dt>Monsieur Cuisine</dt>
+        <dt>${l.monsieurCuisine}</dt>
         <dd>
           ${
             job.mcRecipeUrl
               ? html`<a href="${safeHref(job.mcRecipeUrl)}" rel="noreferrer"
-                  >open draft ${job.mcRecipeId} in the editor</a
+                  >${l.openDraft(job.mcRecipeId ?? "")}</a
                 >`
               : "–"
           }
         </dd>
-        <dt>Scale</dt>
-        <dd>${job.scale}${job.servings === null ? "" : ` (${job.servings} servings)`}</dd>
-        <dt>Attempts</dt>
-        <dd>${job.attempts}${job.force ? " · forced" : ""}</dd>
-        <dt>Created</dt>
+        <dt>${l.scale}</dt>
+        <dd>${job.scale}${job.servings === null ? "" : l.servings(job.servings)}</dd>
+        <dt>${l.attempts}</dt>
+        <dd>${job.attempts}${job.force ? l.forced : ""}</dd>
+        <dt>${l.created}</dt>
         <dd>${formatTime(job.createdAt)}</dd>
-        <dt>Started</dt>
+        <dt>${l.started}</dt>
         <dd>${formatTime(job.startedAt)}</dd>
-        <dt>Finished</dt>
+        <dt>${l.finished}</dt>
         <dd>${formatTime(job.finishedAt)}</dd>
-        <dt>Model</dt>
+        <dt>${l.model}</dt>
         <dd>${job.provider ? `${job.provider} / ${job.model ?? "?"}` : "–"}</dd>
-        <dt>Usage</dt>
+        <dt>${l.usage}</dt>
         <dd>
           ${
             usage
-              ? `${usage.inputTokens} input${usage.cachedInputTokens ? ` (${usage.cachedInputTokens} cached)` : ""}, ${usage.outputTokens} output tokens`
+              ? l.tokens(usage.inputTokens, usage.cachedInputTokens ?? null, usage.outputTokens)
               : "–"
           }
           ${job.costUsd === null ? "" : ` · $${job.costUsd.toFixed(4)}`}
         </dd>
-        <dt>Ingredient ids</dt>
-        <dd>${ingredientStats(job)}</dd>
+        <dt>${l.ingredientIds}</dt>
+        <dd>${ingredientStats(job, t)}</dd>
         ${
           job.ingredients && job.ingredients.unresolvedNames.length > 0
-            ? html`<dt>Without id</dt>
+            ? html`<dt>${l.withoutId}</dt>
                 <dd>${job.ingredients.unresolvedNames.join(", ")}</dd>`
             : ""
         }
-        <dt>Error</dt>
+        <dt>${l.error}</dt>
         <dd>${job.error ? html`<span class="bad">${job.error}</span>` : "–"}</dd>
       </dl>
       <p>
         ${
           job.status === "running"
-            ? html`<span class="muted">Running jobs cannot be changed.</span>`
+            ? html`<span class="muted">${l.runningLocked}</span>`
             : [
-                action("retry", "Retry"),
+                action("retry", l.retry),
                 " ",
                 action(
                   "retry",
-                  "Force rebuild",
+                  l.forceRebuild,
                   html`<input type="hidden" name="force" value="1" />`,
                 ),
                 " ",
-                cancellable ? action("cancel", "Cancel") : "",
+                cancellable ? action("cancel", l.cancel) : "",
               ]
         }
       </p>
     </section>
     <section>
-      <h2>Events</h2>
+      <h2>${l.events}</h2>
       <div class="scroll">
         <table>
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Level</th>
-              <th>Message</th>
+              <th>${l.time}</th>
+              <th>${l.level}</th>
+              <th>${l.message}</th>
             </tr>
           </thead>
           <tbody>
@@ -374,22 +382,29 @@ export function jobDetailView(data: JobDetailData): SafeHtml {
 }
 
 // Where the systemIngredientIds of the draft came from.
-function ingredientStats(job: Job): string {
+function ingredientStats(job: Job, t: AdminMessages): string {
   const stats = job.ingredients;
   if (!stats) return "–";
-  if (!stats.enabled) return `resolution off (${stats.unresolved} without id)`;
-  return `${stats.catalog} catalog, ${stats.cache} cache, ${stats.search} search, ${stats.unresolved} without id`;
+  if (!stats.enabled) return t.jobDetail.resolutionOff(stats.unresolved);
+  return t.jobDetail.resolution(stats.catalog, stats.cache, stats.search, stats.unresolved);
 }
 
-export function dryRunForm(recipe: string, scale: number): SafeHtml {
+export function dryRunForm(recipe: string, scale: number, t: AdminMessages): SafeHtml {
+  const l = t.dryRun;
   return html`<form method="get" action="/admin/dry-run">
     <label
-      >Recipe <input type="text" name="recipe" value="${recipe}" placeholder="id or slug" required
+      >${l.recipe}
+      <input
+        type="text"
+        name="recipe"
+        value="${recipe}"
+        placeholder="${l.recipePlaceholder}"
+        required
     /></label>
     <label
-      >Scale <input type="number" name="scale" value="${scale}" min="0.1" max="100" step="any"
+      >${l.scale} <input type="number" name="scale" value="${scale}" min="0.1" max="100" step="any"
     /></label>
-    <button type="submit">Preview</button>
+    <button type="submit">${l.preview}</button>
   </form>`;
 }
 
@@ -409,10 +424,11 @@ export interface DryRunData {
   loadError?: string;
 }
 
-export function dryRunView(data: DryRunData): SafeHtml {
+export function dryRunView(data: DryRunData, t: AdminMessages): SafeHtml {
+  const l = t.dryRun;
   const body: SafeHtml[] = [
-    html`<h1>Dry run</h1>
-      <section>${dryRunForm(data.recipeParam, data.scale)}</section>`,
+    html`<h1>${t.titles.dryRun}</h1>
+      <section>${dryRunForm(data.recipeParam, data.scale, t)}</section>`,
   ];
   if (data.loadError) body.push(html`<section><p class="bad">${data.loadError}</p></section>`);
   const prepared = data.prepared;
@@ -421,20 +437,20 @@ export function dryRunView(data: DryRunData): SafeHtml {
       html`<section>
         <h2>${data.title ?? ""}</h2>
         <dl>
-          <dt>Servings</dt>
+          <dt>${l.servings}</dt>
           <dd>${prepared.servings}</dd>
-          <dt>Source hash</dt>
+          <dt>${l.sourceHash}</dt>
           <dd><code>${prepared.hash.slice(0, 16)}</code></dd>
-          <dt>Already sent</dt>
+          <dt>${l.alreadySent}</dt>
           <dd>
             ${
               data.sent
-                ? html`yes, ${formatTime(data.sent.createdAt)}:
+                ? html`${l.sentAt(formatTime(data.sent.createdAt))}
                     <a href="${safeHref(data.sent.mcRecipeUrl)}" rel="noreferrer"
-                      >draft ${data.sent.mcRecipeId}</a
+                      >${t.jobsTable.draft(data.sent.mcRecipeId)}</a
                     >
-                    (a job would be skipped unless forced)`
-                : "no"
+                    ${l.wouldSkip}`
+                : l.no
             }
           </dd>
         </dl>
@@ -444,16 +460,16 @@ export function dryRunView(data: DryRunData): SafeHtml {
           <input type="hidden" name="convert" value="1" />
           ${csrfField(data.formToken)}
           <p>
-            <button type="submit">Convert without uploading</button>
-            <span class="muted">Calls the language model; this costs money.</span>
+            <button type="submit">${l.convert}</button>
+            <span class="muted">${l.costsMoney}</span>
           </p>
         </form>
       </section>`,
     );
-    body.push(ingredientsSection(prepared.scaled));
+    body.push(ingredientsSection(prepared.scaled, t));
     body.push(
       html`<section>
-        <h2>Converter input (Markdown)</h2>
+        <h2>${l.converterInput}</h2>
         <pre>${prepared.rendered}</pre>
       </section>`,
     );
@@ -461,29 +477,30 @@ export function dryRunView(data: DryRunData): SafeHtml {
   if (data.conversionError) {
     body.push(
       html`<section>
-        <h2>Conversion</h2>
+        <h2>${l.conversion}</h2>
         <p class="bad">${data.conversionError}</p>
       </section>`,
     );
   }
-  if (data.conversion) body.push(conversionSection(data.conversion));
+  if (data.conversion) body.push(conversionSection(data.conversion, t));
   return html`${body}`;
 }
 
-function ingredientsSection(items: readonly ScaledIngredient[]): SafeHtml {
+function ingredientsSection(items: readonly ScaledIngredient[], t: AdminMessages): SafeHtml {
+  const l = t.dryRun;
   return html`<section>
-    <h2>Ingredients</h2>
+    <h2>${l.ingredients}</h2>
     <div class="scroll">
       <table>
         <thead>
           <tr>
-            <th>Section</th>
-            <th>Amount</th>
-            <th>Unit</th>
-            <th>Food</th>
-            <th>Note</th>
-            <th>Source</th>
-            <th>Original</th>
+            <th>${l.section}</th>
+            <th>${l.amount}</th>
+            <th>${l.unit}</th>
+            <th>${l.food}</th>
+            <th>${l.note}</th>
+            <th>${l.source}</th>
+            <th>${l.original}</th>
           </tr>
         </thead>
         <tbody>
@@ -496,7 +513,7 @@ function ingredientsSection(items: readonly ScaledIngredient[]): SafeHtml {
                 </td>
                 <td>${item.unit ?? ""}</td>
                 <td>${item.food}</td>
-                <td>${item.note}${item.optional ? " (optional)" : ""}</td>
+                <td>${item.note}${item.optional ? ` ${l.optional}` : ""}</td>
                 <td class="${item.source === "unparsed" ? "warn" : "muted"}">
                   ${item.source}${item.flags.length > 0 ? ` · ${item.flags.join(", ")}` : ""}
                 </td>
@@ -529,47 +546,49 @@ export function stepSettings(step: RecipeStep): string {
   return parts.join(", ");
 }
 
-function conversionSection(conversion: NonNullable<DryRunData["conversion"]>): SafeHtml {
+function conversionSection(
+  conversion: NonNullable<DryRunData["conversion"]>,
+  t: AdminMessages,
+): SafeHtml {
+  const l = t.dryRun;
   const { result, checked, plan } = conversion;
   const names = new Map(plan.catalog.categories.map((category) => [category.id, category.name]));
   const usage = result.usage;
   const recipe = checked.recipe;
   return html`<section>
-      <h2>Conversion</h2>
+      <h2>${l.conversion}</h2>
       <dl>
-        <dt>Model</dt>
-        <dd>${result.provider} / ${result.model}, ${result.attempts} attempt(s)</dd>
-        <dt>Usage</dt>
+        <dt>${l.model}</dt>
+        <dd>${result.provider} / ${result.model}, ${l.attempts(result.attempts)}</dd>
+        <dt>${l.usage}</dt>
         <dd>
-          ${usage.inputTokens} input, ${usage.outputTokens} output
-          tokens${usage.costUsd === undefined ? "" : ` · $${usage.costUsd.toFixed(4)}`}
+          ${l.tokens(usage.inputTokens, usage.outputTokens)}${
+            usage.costUsd === undefined ? "" : ` · $${usage.costUsd.toFixed(4)}`
+          }
         </dd>
-        <dt>Title</dt>
+        <dt>${l.title}</dt>
         <dd>${recipe.title}</dd>
-        <dt>Servings</dt>
+        <dt>${l.servings}</dt>
         <dd>${recipe.servingSize.amount} ${recipe.servingSize.unit}</dd>
-        <dt>Times</dt>
+        <dt>${l.times}</dt>
+        <dd>${l.timesValue(recipe.servingSize.preparationTime, recipe.servingSize.readyInTime)}</dd>
+        <dt>${l.categories}</dt>
         <dd>
-          ${recipe.servingSize.preparationTime} min preparation, ${recipe.servingSize.readyInTime}
-          min until ready
-        </dd>
-        <dt>Categories</dt>
-        <dd>
-          ${checked.categories.ids.map((id) => `${id} ${names.get(id) ?? "?"}`).join(", ") || "none"}
+          ${checked.categories.ids.map((id) => `${id} ${names.get(id) ?? "?"}`).join(", ") || l.none}
           ${
             checked.categories.dropped.length > 0
               ? html`<span class="warn">
-                  · dropped unknown ids ${checked.categories.dropped.join(", ")}</span
+                  ${l.droppedIds(checked.categories.dropped.join(", "))}</span
                 >`
               : ""
           }
         </dd>
-        <dt>Validation</dt>
+        <dt>${l.validation}</dt>
         <dd>
           ${
             checked.validation.ok
-              ? html`<span class="ok">passed</span>`
-              : html`<span class="bad">${checked.validation.errors.length} error(s)</span>`
+              ? html`<span class="ok">${l.passed}</span>`
+              : html`<span class="bad">${l.errors(checked.validation.errors.length)}</span>`
           }
         </dd>
       </dl>
@@ -579,8 +598,8 @@ function conversionSection(conversion: NonNullable<DryRunData["conversion"]>): S
           : html`<table>
               <thead>
                 <tr>
-                  <th>Field</th>
-                  <th>Problem</th>
+                  <th>${l.field}</th>
+                  <th>${l.problem}</th>
                 </tr>
               </thead>
               <tbody>
@@ -596,10 +615,10 @@ function conversionSection(conversion: NonNullable<DryRunData["conversion"]>): S
       }
     </section>
     <section>
-      <h2>Review hints</h2>
+      <h2>${l.reviewHints}</h2>
       ${
         checked.reviewHints.length === 0
-          ? html`<p class="muted">None.</p>`
+          ? html`<p class="muted">${l.noHints}</p>`
           : html`<ul>
               ${checked.reviewHints.map((hint) => html`<li>${hint}</li>`)}
             </ul>`
@@ -607,23 +626,23 @@ function conversionSection(conversion: NonNullable<DryRunData["conversion"]>): S
       ${
         result.warnings.length === 0
           ? ""
-          : html`<h2>Converter warnings</h2>
+          : html`<h2>${l.warnings}</h2>
               <ul>
                 ${result.warnings.map((warning) => html`<li class="warn">${warning}</li>`)}
               </ul>`
       }
     </section>
     <section>
-      <h2>Steps</h2>
+      <h2>${l.steps}</h2>
       <div class="scroll">
         <table>
           <thead>
             <tr>
               <th>#</th>
-              <th>Kind</th>
-              <th>Title</th>
-              <th>Settings</th>
-              <th>Text</th>
+              <th>${l.kind}</th>
+              <th>${l.title}</th>
+              <th>${l.settings}</th>
+              <th>${l.text}</th>
             </tr>
           </thead>
           <tbody>
@@ -642,7 +661,7 @@ function conversionSection(conversion: NonNullable<DryRunData["conversion"]>): S
       </div>
     </section>
     <section>
-      <h2>Ingredient groups</h2>
+      <h2>${l.ingredientGroups}</h2>
       ${recipe.servingSize.ingredientGroups.map(
         (group) =>
           html`<h3>${group.name || "–"}</h3>
@@ -650,7 +669,8 @@ function conversionSection(conversion: NonNullable<DryRunData["conversion"]>): S
               ${group.ingredients.map(
                 (item) =>
                   html`<li>
-                    ${item.amount} ${item.unit} ${item.name}${item.isOptional ? " (optional)" : ""}
+                    ${item.amount} ${item.unit}
+                    ${item.name}${item.isOptional ? ` ${l.optional}` : ""}
                   </li>`,
               )}
             </ul>`,

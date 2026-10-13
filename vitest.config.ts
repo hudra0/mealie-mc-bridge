@@ -21,6 +21,8 @@ export default defineConfig({
         "src/pipeline/**/*.ts": { lines: 85 },
         "src/service/**/*.ts": { lines: 85 },
         "src/notify/**/*.ts": { lines: 85 },
+        "src/locale/**/*.ts": { lines: 85 },
+        "src/i18n/**/*.ts": { lines: 85 },
       },
     },
   },

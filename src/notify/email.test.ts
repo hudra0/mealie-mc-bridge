@@ -203,6 +203,33 @@ describe("createNotifier", () => {
     expect(transport.sent[0]?.from).toBe("cook@example.com");
   });
 
+  it("writes the mails in UI_LANGUAGE", async () => {
+    const transport = stub();
+    const n = createNotifier(
+      {
+        SMTP_URL: "smtp://mail.example.com:587",
+        NOTIFY_EMAIL: "cook@example.com",
+        UI_LANGUAGE: "en",
+      },
+      silentLogger(),
+      { transport, recipeUrl: () => "https://mealie.example.com/g/home/r/soup" },
+    );
+    await n.sessionExpired(status());
+    await n.sessionExpired(status({ state: "invalid", cookieSetAt: null, checkedAt: null }));
+    await n.jobFailed(job({ title: "Pumpkin soup" }), "boom");
+    await n.healthFailed("site down");
+    const [expired, invalid, failed, health] = transport.sent;
+    expect(expired?.subject).toBe("Monsieur Cuisine bridge: Session expired");
+    expect(expired?.text).toContain("What to do:");
+    expect(expired?.text).toContain("Last checked: ");
+    expect(invalid?.subject).toBe("Monsieur Cuisine bridge: Session invalid");
+    expect(invalid?.text).toContain("Last checked: never");
+    expect(failed?.subject).toBe("Monsieur Cuisine bridge: “Pumpkin soup” not sent");
+    expect(failed?.text).toContain("Recipe in Mealie: https://mealie.example.com/g/home/r/soup");
+    expect(health?.subject).toBe("Monsieur Cuisine bridge: Session check failed");
+    expect(health?.text).toContain("Error: site down");
+  });
+
   it("creates an SMTP transport from the URL without connecting", () => {
     const n = createNotifier(
       {

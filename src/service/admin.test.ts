@@ -171,6 +171,47 @@ describe("dashboard", () => {
   });
 });
 
+describe("admin pages in German", () => {
+  it("speaks UI_LANGUAGE on every page", async () => {
+    svc = testService({ config: { UI_LANGUAGE: "de" } });
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1, force: false });
+    svc.store.jobs.update(job.id, {
+      title: "Suppe",
+      ingredients: {
+        catalog: 3,
+        cache: 1,
+        search: 0,
+        unresolved: 2,
+        unresolvedNames: ["X"],
+        enabled: true,
+      },
+    });
+    const dashboard = (await get("/admin")).body;
+    expect(dashboard).toContain('<html lang="de">');
+    expect(dashboard).toContain("Monsieur-Cuisine-Sitzung");
+    expect(dashboard).toContain('<span class="badge muted">unbekannt</span>');
+    expect(dashboard).toContain("<code>Cookie</code>");
+    expect(dashboard).toContain("Letzte Aufträge");
+    expect((await get("/admin?notice=job-cancelled")).body).toContain("Auftrag abgebrochen.");
+    const detail = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(detail).toContain("Neu senden erzwingen");
+    expect(detail).toContain("3 aus dem Katalog, 1 aus dem Cache, 0 aus der Suche, 2 ohne ID");
+    expect((await get("/admin/jobs/nope")).body).toContain("Diesen Auftrag gibt es nicht.");
+    expect((await get("/admin/dry-run")).body).toContain("Probelauf");
+  });
+
+  it("refuses an unknown host name in German", async () => {
+    svc = testService({ auth: false, config: { UI_LANGUAGE: "de" } });
+    const response = await svc.app.inject({
+      method: "GET",
+      url: "/admin",
+      headers: { host: "evil.example.com" },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toContain("Unbekannter Hostname");
+  });
+});
+
 describe("session form", () => {
   it("validates and stores a pasted cookie, then redirects", async () => {
     svc = testService();

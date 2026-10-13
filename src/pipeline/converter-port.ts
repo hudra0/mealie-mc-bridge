@@ -12,10 +12,10 @@ import type { RecipeInput } from "../recipe/schema.js";
 
 export interface ConversionRequest {
   title: string;
-  // The recipe as German Markdown (renderRecipeForLlm), scaled.
+  // The recipe as Markdown in the output language (renderRecipeForLlm), scaled.
   rendered: string;
   servings: number;
-  locale: "de-DE";
+  locale: string;
   // The scaled ingredients.
   ingredients: NormalizedIngredient[];
   // The live Monsieur Cuisine categories as "<id>: <name>", the ones matching the Mealie

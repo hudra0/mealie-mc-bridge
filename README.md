@@ -10,8 +10,9 @@ Early development, not usable yet. What exists:
 - the Monsieur Cuisine client (session check, drafts, status change, categories, ingredient search, image upload)
 - the recipe format the converter will produce, its validator against the device limits in `knowledge/device-programs.json`, and the builder for the Monsieur Cuisine payload
 - `npm run mc:smoke`, a command line tool for manual checks against your own account
+- the Mealie side: the recipe action parser, the REST client, ingredient parsing and scaling, and the Markdown input for the converter
 
-The Mealie side, the LLM converter and the job queue are still missing.
+The LLM converter, the job queue and the pipeline that connects the parts are still missing.
 
 ## Planned architecture
 
@@ -88,7 +89,9 @@ npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publi
 ## Development
 
 ```sh
-npm run check           # format, lint, typecheck, tests
+npm run check           # format, lint, typecheck, tests with coverage
+npm test                # tests only
+npm run test:coverage   # tests with an 85 % line threshold for src/mc, src/recipe, src/mealie and src/ingredients
 npm run build
 npm run hooks:install   # secret scan before every commit, needs gitleaks 8.19 or newer
 ```

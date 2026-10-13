@@ -7,11 +7,13 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**/*.ts", "scripts/**/*.ts"],
       exclude: ["**/*.test.ts"],
-      reporter: ["text", "html"],
-      // The Monsieur Cuisine client and the recipe rules are the product; keep them tested.
+      reporter: ["text-summary", "text", "html"],
+      // The product modules keep a line threshold each; scripts/ is reported without one.
       thresholds: {
         "src/mc/**/*.ts": { lines: 85 },
         "src/recipe/**/*.ts": { lines: 85 },
+        "src/mealie/**/*.ts": { lines: 85 },
+        "src/ingredients/**/*.ts": { lines: 85 },
       },
     },
   },

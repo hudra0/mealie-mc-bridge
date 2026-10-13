@@ -1,0 +1,409 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "userId": "00000000-0000-4000-8000-000000000901",
+  "householdId": "00000000-0000-4000-8000-000000000902",
+  "groupId": "00000000-0000-4000-8000-000000000903",
+  "name": "Kürbis-Linsen-Suppe",
+  "slug": "kurbis-linsen-suppe",
+  "image": "Ab3x",
+  "recipeServings": 4.0,
+  "recipeYieldQuantity": 0.0,
+  "recipeYield": null,
+  "totalTime": "50 Minuten",
+  "prepTime": "15 Minuten",
+  "cookTime": null,
+  "performTime": "35 Minuten",
+  "description": "Cremige Suppe aus Hokkaido und roten Linsen.",
+  "recipeCategory": [
+    {
+      "id": "00000000-0000-4000-8000-000000000201",
+      "groupId": "00000000-0000-4000-8000-000000000903",
+      "name": "Suppe",
+      "slug": "suppe",
+      "recipeCount": 0
+    }
+  ],
+  "tags": [
+    {
+      "id": "00000000-0000-4000-8000-000000000301",
+      "groupId": "00000000-0000-4000-8000-000000000903",
+      "name": "Vegetarisch",
+      "slug": "vegetarisch",
+      "recipeCount": 0
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000302",
+      "groupId": "00000000-0000-4000-8000-000000000903",
+      "name": "Herbst",
+      "slug": "herbst",
+      "recipeCount": 0
+    }
+  ],
+  "tools": [],
+  "rating": null,
+  "orgURL": "https://example.com/recipes/kuerbis-linsen-suppe",
+  "dateAdded": "2026-10-01",
+  "dateUpdated": "2026-10-12T18:30:00.123456Z",
+  "createdAt": "2026-10-01T09:00:00Z",
+  "updatedAt": "2026-10-12T18:30:00.123456Z",
+  "lastMade": null,
+  "recipeIngredient": [
+    {
+      "quantity": 1.0,
+      "unit": null,
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000501",
+        "name": "Zwiebel",
+        "pluralName": "Zwiebeln",
+        "description": "",
+        "extras": {},
+        "labelId": null,
+        "aliases": [],
+        "substitutions": [],
+        "householdsWithIngredientFood": [],
+        "label": null,
+        "createdAt": "2026-10-01T09:00:00Z",
+        "updatedAt": "2026-10-01T09:00:00Z"
+      },
+      "referencedRecipe": null,
+      "note": "fein gewürfelt",
+      "display": "1 Zwiebel fein gewürfelt",
+      "title": "Für die Suppe",
+      "originalText": "1 Zwiebel, fein gewürfelt",
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000101"
+    },
+    {
+      "quantity": 2.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000601",
+        "name": "Zehe",
+        "pluralName": "Zehen",
+        "description": "",
+        "extras": {},
+        "fraction": true,
+        "abbreviation": "",
+        "pluralAbbreviation": "",
+        "useAbbreviation": false,
+        "aliases": [],
+        "standardQuantity": null,
+        "standardUnit": null,
+        "createdAt": "2026-10-01T09:00:00Z",
+        "updatedAt": "2026-10-01T09:00:00Z"
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000502",
+        "name": "Knoblauch",
+        "pluralName": null,
+        "substitutions": []
+      },
+      "referencedRecipe": null,
+      "note": "",
+      "display": "2 Zehen Knoblauch",
+      "title": null,
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000102"
+    },
+    {
+      "quantity": 2.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000602",
+        "name": "Esslöffel",
+        "pluralName": "Esslöffel",
+        "fraction": true,
+        "abbreviation": "EL",
+        "pluralAbbreviation": "EL",
+        "useAbbreviation": true,
+        "standardQuantity": 0.5,
+        "standardUnit": "fluid_ounce"
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000503",
+        "name": "Olivenöl",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": "",
+      "display": "2 EL Olivenöl",
+      "title": "",
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000103"
+    },
+    {
+      "quantity": 500.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000603",
+        "name": "Gramm",
+        "pluralName": "Gramm",
+        "fraction": false,
+        "abbreviation": "g",
+        "pluralAbbreviation": null,
+        "useAbbreviation": true,
+        "standardQuantity": 1.0,
+        "standardUnit": "gram"
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000504",
+        "name": "Hokkaido-Kürbis",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": "entkernt, gewürfelt",
+      "display": "500 g Hokkaido-Kürbis entkernt, gewürfelt",
+      "title": null,
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000104"
+    },
+    {
+      "quantity": 200.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000603",
+        "name": "Gramm",
+        "pluralName": "Gramm",
+        "fraction": false,
+        "abbreviation": "g",
+        "pluralAbbreviation": null,
+        "useAbbreviation": true
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000505",
+        "name": "rote Linsen",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": null,
+      "display": "200 g rote Linsen",
+      "title": null,
+      "originalText": null,
+      "substitutions": [
+        {
+          "substituteFoodId": "00000000-0000-4000-8000-000000000510",
+          "note": "",
+          "substituteFood": {
+            "id": "00000000-0000-4000-8000-000000000510",
+            "name": "gelbe Linsen",
+            "pluralName": null
+          }
+        }
+      ],
+      "referenceId": "00000000-0000-4000-8000-000000000105"
+    },
+    {
+      "quantity": 1.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000604",
+        "name": "Liter",
+        "pluralName": "Liter",
+        "fraction": true,
+        "abbreviation": "l",
+        "pluralAbbreviation": "l",
+        "useAbbreviation": true,
+        "standardQuantity": 1.0,
+        "standardUnit": "liter"
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000506",
+        "name": "Gemüsebrühe",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": "",
+      "display": "1 l Gemüsebrühe",
+      "title": null,
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000106"
+    },
+    {
+      "quantity": 0.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000605",
+        "name": "Prise",
+        "pluralName": "Prisen",
+        "fraction": true,
+        "abbreviation": "",
+        "pluralAbbreviation": null,
+        "useAbbreviation": false
+      },
+      "food": { "id": "00000000-0000-4000-8000-000000000507", "name": "Salz", "pluralName": null },
+      "referencedRecipe": null,
+      "note": "nach Geschmack",
+      "display": "Salz nach Geschmack",
+      "title": null,
+      "originalText": "Salz nach Geschmack",
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000107"
+    },
+    {
+      "quantity": 150.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000606",
+        "name": "Milliliter",
+        "pluralName": "Milliliter",
+        "fraction": false,
+        "abbreviation": "ml",
+        "pluralAbbreviation": "ml",
+        "useAbbreviation": true
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000508",
+        "name": "Kokosmilch",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": "",
+      "display": "150 ml Kokosmilch",
+      "title": "Zum Servieren",
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000108"
+    },
+    {
+      "quantity": 1.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000607",
+        "name": "Bund",
+        "pluralName": "Bund",
+        "fraction": true,
+        "abbreviation": "",
+        "pluralAbbreviation": "",
+        "useAbbreviation": false
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000509",
+        "name": "Koriander",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": "nach Belieben",
+      "display": "1 Bund Koriander nach Belieben",
+      "title": null,
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000109"
+    },
+    {
+      "quantity": 3.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000608",
+        "name": "Dekagramm",
+        "pluralName": "Dekagramm",
+        "fraction": false,
+        "abbreviation": "dag",
+        "pluralAbbreviation": "dag",
+        "useAbbreviation": true
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000511",
+        "name": "Kürbiskerne",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": "geröstet",
+      "display": "3 dag Kürbiskerne geröstet",
+      "title": null,
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000110"
+    },
+    {
+      "quantity": 1.0,
+      "unit": {
+        "id": "00000000-0000-4000-8000-000000000609",
+        "name": "Handvoll",
+        "pluralName": "Handvoll",
+        "fraction": true,
+        "abbreviation": "",
+        "pluralAbbreviation": "",
+        "useAbbreviation": false
+      },
+      "food": {
+        "id": "00000000-0000-4000-8000-000000000512",
+        "name": "Croûtons",
+        "pluralName": null
+      },
+      "referencedRecipe": null,
+      "note": "",
+      "display": "1 Handvoll Croûtons",
+      "title": null,
+      "originalText": null,
+      "substitutions": [],
+      "referenceId": "00000000-0000-4000-8000-000000000111"
+    }
+  ],
+  "recipeInstructions": [
+    {
+      "id": "00000000-0000-4000-8000-000000000701",
+      "title": "Vorbereiten",
+      "summary": "",
+      "text": "Zwiebel und Knoblauch schälen und fein hacken. Den Kürbis waschen, entkernen und würfeln.",
+      "ingredientReferences": [
+        { "referenceId": "00000000-0000-4000-8000-000000000101" },
+        { "referenceId": "00000000-0000-4000-8000-000000000102" },
+        { "referenceId": "00000000-0000-4000-8000-000000000104" }
+      ],
+      "noteReferences": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000702",
+      "title": "",
+      "summary": "Andünsten",
+      "text": "Öl in einem Topf erhitzen, Zwiebel und Knoblauch darin 3 Minuten glasig dünsten.",
+      "ingredientReferences": [{ "referenceId": "00000000-0000-4000-8000-000000000103" }],
+      "noteReferences": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000703",
+      "title": "Kochen",
+      "summary": "",
+      "text": "Kürbis, Linsen und Brühe zugeben und zugedeckt 25 Minuten köcheln lassen.\n\nAnschließend fein pürieren.",
+      "ingredientReferences": [
+        { "referenceId": "00000000-0000-4000-8000-000000000105" },
+        { "referenceId": "00000000-0000-4000-8000-000000000106" }
+      ],
+      "noteReferences": []
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000704",
+      "title": "",
+      "summary": "",
+      "text": "Mit Salz abschmecken und mit Kokosmilch, Koriander, Kürbiskernen und Croûtons servieren.",
+      "ingredientReferences": [],
+      "noteReferences": [{ "referenceId": "00000000-0000-4000-8000-000000000801" }]
+    }
+  ],
+  "nutrition": {
+    "calories": "320 kcal",
+    "carbohydrateContent": "38 g",
+    "cholesterolContent": null,
+    "fatContent": "11 g",
+    "fiberContent": "9 g",
+    "proteinContent": "14 g",
+    "saturatedFatContent": null,
+    "sodiumContent": null,
+    "sugarContent": "6 g",
+    "transFatContent": null,
+    "unsaturatedFatContent": null
+  },
+  "settings": {
+    "public": false,
+    "showNutrition": true,
+    "showAssets": false,
+    "landscapeView": false,
+    "disableComments": false,
+    "locked": false
+  },
+  "assets": [],
+  "notes": [
+    {
+      "title": "Tipp",
+      "text": "Statt Kokosmilch passt auch **Sahne**.",
+      "referenceId": "00000000-0000-4000-8000-000000000801"
+    }
+  ],
+  "extras": { "source": "family" },
+  "comments": []
+}

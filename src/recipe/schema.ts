@@ -61,7 +61,11 @@ const temperature = int("temperature")
 export const TextStepSchema = z
   .strictObject({
     kind: z.literal("text"),
-    title: stepTitle,
+    title: z
+      .string()
+      .describe(
+        "A label of a few words; the bridge replaces it with the description cut to the title length",
+      ),
     description: stepDescription.describe("Instruction shown on the device, with quantities"),
   })
   .describe("Instruction without a program");

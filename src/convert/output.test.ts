@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractJson, parseJsonOutput } from "./output.js";
+import { deriveTextStepTitles, extractJson, parseJsonOutput, textStepTitle } from "./output.js";
 
 describe("extractJson", () => {
   it("takes plain JSON, fenced JSON and JSON inside a sentence", () => {
@@ -8,6 +8,40 @@ describe("extractJson", () => {
     expect(extractJson('```\n{"a":1}\n```')).toBe('{"a":1}');
     expect(extractJson('Here it is: {"a":{"b":2}} Enjoy.')).toBe('{"a":{"b":2}}');
     expect(extractJson("no json")).toBe("no json");
+  });
+});
+
+describe("text step titles", () => {
+  it("takes the description, cut at the last space within the length", () => {
+    expect(textStepTitle("Zwiebel schälen.", 80)).toBe("Zwiebel schälen.");
+    const long = `${"Wort ".repeat(16)}Ende und noch mehr Text.`;
+    const title = textStepTitle(long, 80);
+    expect(title.length).toBeLessThanOrEqual(80);
+    expect(long.startsWith(title)).toBe(true);
+    expect(title.endsWith(" ")).toBe(false);
+    expect(textStepTitle("x".repeat(100), 80)).toBe("x".repeat(80));
+  });
+
+  it("sets the title of every text step of a parsed answer and leaves the rest", () => {
+    const answer = {
+      servingSize: {
+        steps: [
+          { kind: "text", title: "Kurz", description: "Die Zwiebel schälen und halbieren." },
+          { kind: "scale", title: "200 g Sahne", description: "Einwiegen.", grams: 200 },
+          { kind: "text", title: "Leer", description: "" },
+          "kaputt",
+        ],
+      },
+    };
+    deriveTextStepTitles(answer, 80);
+    expect(answer.servingSize.steps.map((step) => (step as { title?: string }).title)).toEqual([
+      "Die Zwiebel schälen und halbieren.",
+      "200 g Sahne",
+      "Leer",
+      undefined,
+    ]);
+    expect(() => deriveTextStepTitles(null, 80)).not.toThrow();
+    expect(() => deriveTextStepTitles({ servingSize: {} }, 80)).not.toThrow();
   });
 });
 

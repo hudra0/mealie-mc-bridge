@@ -94,6 +94,10 @@ describe("createConverter", () => {
     const { log, info, warn } = logger();
     const result = await converter(generator, { logger: log }).convert(request);
     expect(result.recipe.title).toBe("Kürbis-Linsen-Suppe");
+    // Text step titles come from the description, cut at the title length.
+    expect(result.recipe.servingSize.steps[0]?.title).toBe(
+      "Zwiebel schälen und halbieren, Knoblauch schälen und beides in den Mixbehälter",
+    );
     expect(result.attempts).toBe(1);
     expect(result.provider).toBe("fake");
     expect(result.model).toBe("gpt-5.5");

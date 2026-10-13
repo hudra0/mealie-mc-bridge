@@ -1,0 +1,524 @@
+{
+  "description": "Time formulas and mass limits for the validator and the converter. Mass numbers rely on a text heuristic for the bowl content (low to medium confidence); temperature and program defaults rely on many steps (medium to high confidence).",
+  "version": 1,
+  "source": "corpus 2026-10",
+  "constants": {
+    "heaterWatts": 1050,
+    "efficiency": 0.7,
+    "heatCapacityJoulePerKgKelvin": 4200,
+    "startTemperatureC": 20,
+    "note": "Assumptions for water-like contents, not measurements of the MC Smart."
+  },
+  "functions": {
+    "tMinSeconds": {
+      "expression": "massGrams / 1000 * 4200 * (min(temperature, 100) - 20) / (1050 * 0.7)",
+      "meaning": "Physical lower bound to bring water-like contents from 20 °C to the target (at most the boiling point).",
+      "secondsPerKgToBoil": 457,
+      "confidence": "high as a physical bound; ignores lid losses and the control loop"
+    },
+    "clamp": { "expression": "min(hi, max(lo, x))" }
+  },
+  "heatUpRules": [
+    {
+      "id": "heatup_too_short",
+      "appliesTo": "first heated manual step since the bowl was filled, temperature >= 90, bowl mass known",
+      "condition": "timeSeconds < 0.5 * tMinSeconds(massGrams, temperature)",
+      "severity": "error",
+      "evidence": "1.6 % of 568 first heatings in the corpus fall below half of tMin."
+    },
+    {
+      "id": "heatup_short",
+      "appliesTo": "same as heatup_too_short",
+      "condition": "timeSeconds < 0.87 * tMinSeconds(massGrams, temperature)",
+      "severity": "warning",
+      "evidence": "0.87 is the p10 of time/tMin over 346 official first heatings (median 2.3, median headroom 215 s above tMin)."
+    },
+    {
+      "id": "content_already_hot",
+      "appliesTo": "heated step after an earlier heated step without emptying the bowl",
+      "condition": "skip the heat-up check",
+      "evidence": "43.6 % of such steps are shorter than tMin, as expected for hot contents."
+    },
+    {
+      "id": "mass_unknown",
+      "appliesTo": "bowl mass unknown because ingredients are given in pieces or spoons",
+      "condition": "convert pieces to grams with units.json pieceWeights first; skip the check when that fails and add a review hint"
+    },
+    {
+      "id": "roasting_not_water",
+      "appliesTo": "roasting program",
+      "condition": "do not apply the water model; roasting time is fixed by temperature",
+      "evidence": "Roasting first heatings: 9.9 % below the water tMin, ratio median 2.81."
+    }
+  ],
+  "manualCooking": {
+    "note": "The cooking goal (simmer a sauce, cook pasta, reduce) sets the time, not the mass. Use the defaults per temperature or per technique (techniques.json) and the mass only for the lower bound.",
+    "defaultsByTemperature": {
+      "90": { "typical": 360, "range": [120, 1800], "steps": 190 },
+      "95": { "typical": 720, "range": [120, 2700], "steps": 123 },
+      "100": { "typical": 480, "range": [120, 1200], "steps": 1020 },
+      "105": { "typical": 750, "range": [180, 1800], "steps": 21 },
+      "110": { "typical": 420, "range": [120, 1200], "steps": 85 },
+      "120": { "typical": 300, "range": [120, 1200], "steps": 274 },
+      "125": { "typical": 180, "range": [171, 870], "steps": 8 },
+      "130": { "typical": 300, "range": [60, 1272], "steps": 57 }
+    },
+    "fitsByBand": {
+      "100": {
+        "all": {
+          "expression": "421 + 0.252 * massGrams",
+          "a": 421,
+          "b": 0.252,
+          "r2": 0.074,
+          "n": 971,
+          "residualSeconds": { "p10": -526, "median": -167, "p90": 623 }
+        },
+        "firstHeating": {
+          "expression": "361 + 0.486 * massGrams",
+          "a": 361,
+          "b": 0.486,
+          "r2": 0.206,
+          "n": 321,
+          "residualSeconds": { "p10": -441, "median": -151, "p90": 474 }
+        },
+        "official": {
+          "expression": "427 + 0.191 * massGrams",
+          "a": 427,
+          "b": 0.191,
+          "r2": 0.049,
+          "n": 560,
+          "residualSeconds": { "p10": -463, "median": -166, "p90": 564 }
+        }
+      },
+      "105-115": {
+        "all": {
+          "expression": "260 + 0.391 * massGrams",
+          "a": 260,
+          "b": 0.3906,
+          "r2": 0.177,
+          "n": 101,
+          "residualSeconds": { "p10": -517, "median": -119, "p90": 740 }
+        },
+        "firstHeating": {
+          "expression": "492 + 0.195 * massGrams",
+          "a": 492,
+          "b": 0.1949,
+          "r2": 0.074,
+          "n": 33,
+          "residualSeconds": { "p10": -437, "median": -209, "p90": 720 }
+        },
+        "official": {
+          "expression": "240 + 0.372 * massGrams",
+          "a": 240,
+          "b": 0.3724,
+          "r2": 0.132,
+          "n": 59,
+          "residualSeconds": { "p10": -529, "median": -136, "p90": 613 }
+        }
+      },
+      "120-130": {
+        "all": {
+          "expression": "308 + 0.324 * massGrams",
+          "a": 308,
+          "b": 0.3241,
+          "r2": 0.108,
+          "n": 305,
+          "residualSeconds": { "p10": -518, "median": -157, "p90": 617 }
+        },
+        "firstHeating": {
+          "expression": "270 + 0.625 * massGrams",
+          "a": 270,
+          "b": 0.6253,
+          "r2": 0.259,
+          "n": 118,
+          "residualSeconds": { "p10": -455, "median": -172, "p90": 572 }
+        },
+        "official": {
+          "expression": "340 + 0.306 * massGrams",
+          "a": 340,
+          "b": 0.306,
+          "r2": 0.075,
+          "n": 206,
+          "residualSeconds": { "p10": -567, "median": -188, "p90": 614 }
+        }
+      },
+      "90-95": {
+        "all": {
+          "expression": "444 + 0.465 * massGrams",
+          "a": 444,
+          "b": 0.4648,
+          "r2": 0.094,
+          "n": 300,
+          "residualSeconds": { "p10": -925, "median": -270, "p90": 1308 }
+        },
+        "firstHeating": {
+          "expression": "229 + 1.061 * massGrams",
+          "a": 229,
+          "b": 1.0613,
+          "r2": 0.346,
+          "n": 96,
+          "residualSeconds": { "p10": -539, "median": -109, "p90": 886 }
+        },
+        "official": {
+          "expression": "516 + 0.436 * massGrams",
+          "a": 516,
+          "b": 0.4357,
+          "r2": 0.087,
+          "n": 164,
+          "residualSeconds": { "p10": -899, "median": -304, "p90": 1276 }
+        }
+      }
+    },
+    "logLogFits": {
+      "all": { "expression": "exp(3.53) * massGrams ^ 0.396", "r2": 0.153, "n": 1677 },
+      "firstHeating": { "expression": "exp(2.661) * massGrams ^ 0.579", "r2": 0.404, "n": 568 }
+    },
+    "defaultExpression": {
+      "expression": "max(tMinSeconds(massGrams, 100), 421 + 0.252 * massGrams)",
+      "appliesTo": "100 °C cooking when neither the source recipe nor a technique gives a time",
+      "confidence": "low (R² 0.07)"
+    },
+    "firstHeatingTimeByMass": [
+      { "massGrams": [0, 250], "steps": 130, "p10": 120, "median": 180, "tMinAt100": 57 },
+      { "massGrams": [250, 500], "steps": 131, "p10": 180, "median": 360, "tMinAt100": 171 },
+      { "massGrams": [500, 750], "steps": 95, "p10": 240, "median": 600, "tMinAt100": 286 },
+      { "massGrams": [750, 1000], "steps": 57, "p10": 336, "median": 720, "tMinAt100": 400 },
+      { "massGrams": [1000, 1250], "steps": 46, "p10": 300, "median": 900, "tMinAt100": 514 },
+      { "massGrams": [1250, 1500], "steps": 33, "p10": 600, "median": 900, "tMinAt100": 629 },
+      { "massGrams": [1500, 1750], "steps": 34, "p10": 600, "median": 990, "tMinAt100": 743 },
+      { "massGrams": [1750, 2000], "steps": 18, "p10": 564, "median": 1050, "tMinAt100": 857 },
+      { "massGrams": [2000, 2250], "steps": 10, "p10": 589.8, "median": 1200, "tMinAt100": 971 },
+      { "massGrams": [2250, 2500], "steps": 8, "p10": 705, "median": 1800, "tMinAt100": 1086 },
+      { "massGrams": [2750, 3000], "steps": 3, "p10": 1020, "median": 1500, "tMinAt100": 1314 }
+    ]
+  },
+  "roasting": {
+    "note": "Roasting time is set by temperature, not mass.",
+    "defaultsByTemperature": {
+      "100": { "typical": 180, "range": [90, 534], "steps": 72 },
+      "110": { "typical": 180, "range": [120, 360], "steps": 66 },
+      "120": { "typical": 180, "range": [120, 420], "steps": 151 },
+      "130": { "typical": 240, "range": [120, 420], "steps": 392 }
+    },
+    "fitAll": {
+      "expression": "225 + 0.125 * massGrams",
+      "a": 225,
+      "b": 0.125,
+      "r2": 0.089,
+      "n": 585,
+      "residualSeconds": { "p10": -161, "median": -24, "p90": 176 }
+    },
+    "fitOfficial": {
+      "expression": "214 + 0.154 * massGrams",
+      "a": 214,
+      "b": 0.1539,
+      "r2": 0.142,
+      "n": 377,
+      "residualSeconds": { "p10": -123, "median": -25, "p90": 164 }
+    },
+    "massGrams": { "median": 300, "p90": 910 }
+  },
+  "steaming": {
+    "note": "Steaming time does not depend on the food mass; pick it by load class.",
+    "timeAll": { "typical": 900, "range": [480, 2100], "steps": 309 },
+    "byLoadClass": {
+      "vegetables": { "typical": 900, "range": [372, 3600], "steps": 73 },
+      "meat_poultry": { "typical": 1200, "range": [600, 2292], "steps": 70 },
+      "potatoes": { "typical": 900, "range": [600, 1680], "steps": 65 },
+      "fish_seafood": { "typical": 900, "range": [408, 1200], "steps": 29 },
+      "other": { "typical": 1080, "range": [360, 1260], "steps": 29 },
+      "dumplings_dough": { "typical": 1200, "range": [600, 2730], "steps": 24 },
+      "dessert_in_form": { "typical": 1200, "range": [600, 3600], "steps": 16 },
+      "eggs": { "typical": 720, "range": [624, 1344], "steps": 3 }
+    },
+    "liquidWeighedBefore": {
+      "typical": 1000,
+      "range": [500, 1500],
+      "min": 125,
+      "steps": 270,
+      "shareOfSteamingSteps": 0.874
+    },
+    "shareWithFoodCookingBelow": 0.482,
+    "fitFoodMass": {
+      "expression": "877 + 0.343 * massGrams",
+      "a": 877,
+      "b": 0.3432,
+      "r2": 0.057,
+      "n": 206,
+      "residualSeconds": { "p10": -774, "median": -196, "p90": 1065 }
+    }
+  },
+  "kneading": {
+    "note": "Kneading time is a plateau: 120 s up to 1250 g flour.",
+    "byMode": {
+      "kneading": { "typical": 120, "range": [45, 120], "steps": 188, "max": 120 },
+      "kneading_soft_dough": { "typical": 120, "range": [60, 207], "steps": 162, "max": 240 },
+      "kneading_solid_dough": { "typical": 120, "range": [120, 240], "steps": 171, "max": 240 },
+      "kneading_liquid_dough": { "typical": 120, "range": [45, 135], "steps": 16, "max": 180 }
+    },
+    "expression": "min(240, max(60, round((95 + 0.091 * flourGrams) / 30) * 30))",
+    "fit": {
+      "expression": "95 + 0.091 * flourGrams",
+      "a": 95,
+      "b": 0.0909,
+      "r2": 0.104,
+      "n": 384,
+      "residualSeconds": { "p10": -58, "median": -10, "p90": 71 }
+    },
+    "timeByFlour": [
+      { "flourGrams": [0, 250], "steps": 73, "p10": 45, "median": 120, "p90": 180 },
+      { "flourGrams": [250, 500], "steps": 156, "p10": 45, "median": 120, "p90": 180 },
+      { "flourGrams": [500, 750], "steps": 141, "p10": 120, "median": 120, "p90": 240 },
+      { "flourGrams": [750, 1000], "steps": 9, "p10": 120, "median": 180, "p90": 240 },
+      { "flourGrams": [1000, 1250], "steps": 5, "p10": 120, "median": 120, "p90": 240 }
+    ],
+    "flourPerKneadStep": { "median": 400, "p90": 600, "max": 1000 },
+    "doughInBowl": { "median": 760, "max": 2150 }
+  },
+  "blending": {
+    "note": "Puree, smoothie and manual blending run 30-60 s almost regardless of mass.",
+    "puree": {
+      "typical": 30,
+      "range": [30, 60],
+      "steps": 83,
+      "fit": {
+        "expression": "33 + 0.009 * massGrams",
+        "a": 33,
+        "b": 0.0088,
+        "r2": 0.126,
+        "n": 76,
+        "residualSeconds": { "p10": -15, "median": -6, "p90": 23 }
+      },
+      "expression": "clamp(30, 120, 33 + 0.009 * massGrams)"
+    },
+    "smoothie": {
+      "typical": 60,
+      "range": [30, 86],
+      "steps": 23,
+      "fit": {
+        "expression": "68 + -0.015 * massGrams",
+        "a": 68,
+        "b": -0.0148,
+        "r2": 0.079,
+        "n": 23,
+        "residualSeconds": { "p10": -29, "median": -2, "p90": 33 }
+      }
+    },
+    "manualBlend": {
+      "definition": "customized, 0 °C, speed >= 8, at least 20 s",
+      "typical": 30,
+      "range": [20, 60],
+      "steps": 298,
+      "speed": { "typical": 10, "range": [8, 10] },
+      "fit": {
+        "expression": "27 + 0.012 * massGrams",
+        "a": 27,
+        "b": 0.0121,
+        "r2": 0.071,
+        "n": 269,
+        "residualSeconds": { "p10": -15, "median": -7, "p90": 25 }
+      }
+    }
+  },
+  "chopping": {
+    "definition": "customized, 0 °C, speed 5-10, at most 15 s",
+    "note": "Batch mass has no effect on chopping time.",
+    "timeBySpeed": {
+      "5": { "typical": 8, "range": [5, 10], "steps": 459 },
+      "6": { "typical": 8, "range": [5, 10], "steps": 536 },
+      "7": { "typical": 8, "range": [5, 15], "steps": 216 },
+      "8": { "typical": 10, "range": [5, 15], "steps": 459 },
+      "9": { "typical": 10, "range": [5, 15], "steps": 40 },
+      "10": { "typical": 10, "range": [8, 15], "steps": 168 }
+    },
+    "byIngredientClass": {
+      "onion_garlic": {
+        "speed": { "typical": 6, "range": [5, 8] },
+        "timeSeconds": { "typical": 6, "range": [5, 10] },
+        "steps": 427
+      },
+      "other": {
+        "speed": { "typical": 7, "range": [5, 9] },
+        "timeSeconds": { "typical": 10, "range": [5, 15] },
+        "steps": 337
+      },
+      "nuts_seeds": {
+        "speed": { "typical": 6, "range": [5, 10] },
+        "timeSeconds": { "typical": 8, "range": [4.1, 15] },
+        "steps": 212
+      },
+      "hard_cheese": {
+        "speed": { "typical": 8, "range": [5, 10] },
+        "timeSeconds": { "typical": 10, "range": [5, 15] },
+        "steps": 188
+      },
+      "vegetables": {
+        "speed": { "typical": 6, "range": [5, 8] },
+        "timeSeconds": { "typical": 8, "range": [4, 13] },
+        "steps": 181
+      },
+      "herbs": {
+        "speed": { "typical": 6, "range": [6, 8] },
+        "timeSeconds": { "typical": 8, "range": [6, 10] },
+        "steps": 153
+      },
+      "sugar_spices": {
+        "speed": { "typical": 8, "range": [5, 10] },
+        "timeSeconds": { "typical": 10, "range": [5, 15] },
+        "steps": 120
+      },
+      "chocolate": {
+        "speed": { "typical": 8, "range": [6, 9.5] },
+        "timeSeconds": { "typical": 10, "range": [5, 15] },
+        "steps": 86
+      },
+      "fruit": {
+        "speed": { "typical": 7, "range": [5, 10] },
+        "timeSeconds": { "typical": 10, "range": [4, 15] },
+        "steps": 77
+      },
+      "bread_biscuits": {
+        "speed": { "typical": 7, "range": [5, 10] },
+        "timeSeconds": { "typical": 10, "range": [5.2, 14.4] },
+        "steps": 43
+      },
+      "meat_fish": {
+        "speed": { "typical": 6, "range": [5, 8] },
+        "timeSeconds": { "typical": 8, "range": [5, 12] },
+        "steps": 42
+      },
+      "ice": {
+        "speed": { "typical": 7, "range": [5, 8] },
+        "timeSeconds": { "typical": 12.5, "range": [5.1, 15] },
+        "steps": 12
+      }
+    },
+    "fit": {
+      "expression": "9 + 0.001 * massGrams",
+      "a": 9,
+      "b": 0.0005,
+      "r2": 0.002,
+      "n": 1237,
+      "residualSeconds": { "p10": -4, "median": -1, "p90": 6 }
+    },
+    "turbo": { "typical": 3, "range": [2, 8], "steps": 413, "max": 20 }
+  },
+  "sequences": {
+    "note": "Chains of heated steps without emptying the bowl. Later steps in a chain start hot and run shorter.",
+    "chains": 740,
+    "chainLength": { "median": 3, "max": 8 },
+    "chainTotalSeconds": { "typical": 1380, "range": [600, 3123], "steps": 740 },
+    "temperatureChange": { "transitions": 1398, "drops": 0.376, "rises": 0.125, "same": 0.499 },
+    "topTransitions": [
+      { "pair": "cook100 > cook100", "count": 296, "firstSeconds": 600, "secondSeconds": 300 },
+      { "pair": "roast130 > cook100", "count": 119, "firstSeconds": 240, "secondSeconds": 600 },
+      { "pair": "roast130 > roast130", "count": 99, "firstSeconds": 240, "secondSeconds": 300 },
+      { "pair": "roast120 > cook100", "count": 59, "firstSeconds": 180, "secondSeconds": 900 },
+      { "pair": "cook120 > cook100", "count": 58, "firstSeconds": 180, "secondSeconds": 600 },
+      { "pair": "cook120 > cook120", "count": 58, "firstSeconds": 435, "secondSeconds": 210 },
+      { "pair": "cook100 > cook90", "count": 50, "firstSeconds": 390, "secondSeconds": 300 },
+      { "pair": "steam > cook120", "count": 49, "firstSeconds": 600, "secondSeconds": 360 },
+      { "pair": "roast120 > roast120", "count": 27, "firstSeconds": 180, "secondSeconds": 180 },
+      { "pair": "cook95 > cook95", "count": 26, "firstSeconds": 1140, "secondSeconds": 300 },
+      { "pair": "roast110 > cook100", "count": 26, "firstSeconds": 240, "secondSeconds": 600 },
+      { "pair": "cook90 > cook90", "count": 25, "firstSeconds": 600, "secondSeconds": 300 }
+    ]
+  },
+  "massLimits": [
+    {
+      "id": "bowl_max",
+      "maxGrams": 3000,
+      "appliesTo": "estimated bowl content at any step",
+      "severity": "error",
+      "source": "3 litre bowl; SmartRecipe prompt; bridge sanity rule",
+      "corpus": "Bowl estimate above 3000 g in 0.5 % of recipes (max 3490 g), above 2500 g in 1.8 %."
+    },
+    {
+      "id": "bowl_max_foaming",
+      "maxGrams": 2500,
+      "appliesTo": "contents that foam or boil up: milk, jam, pasta, rice, legumes, potatoes in water",
+      "severity": "warning",
+      "source": "bridge sanity rule",
+      "corpus": "Bowl estimate above 2500 g at heated steps in 1.4 % of recipes."
+    },
+    {
+      "id": "turbo_bowl_max",
+      "maxGrams": 2500,
+      "appliesTo": "turbo steps",
+      "severity": "error",
+      "source": "SmartRecipe prompt"
+    },
+    {
+      "id": "flour_max_per_knead",
+      "maxGrams": 1000,
+      "appliesTo": "flour in the bowl at a kneading step",
+      "severity": "error",
+      "source": "SmartRecipe prompt",
+      "corpus": "Flour per kneading step median 400 g, p90 600 g, max 1000 g."
+    },
+    {
+      "id": "steaming_liquid_min",
+      "minGrams": 500,
+      "appliesTo": "water or stock in the bowl when a steaming step starts",
+      "severity": "error",
+      "source": "SmartRecipe prompt",
+      "corpus": "Liquid weighed in before steaming: median 1000 g, p10 500 g, min 125 g."
+    },
+    {
+      "id": "steaming_time_vs_liquid",
+      "appliesTo": "long steaming",
+      "condition": "warn when steaming exceeds 1800 s with less than 1000 g of liquid; tell the user to check and refill water",
+      "severity": "warning",
+      "corpus": "Text steps that say to refill water: 31."
+    },
+    {
+      "id": "basket_food_max",
+      "maxGrams": 1200,
+      "appliesTo": "food in the cooking basket",
+      "severity": "warning",
+      "source": "SmartRecipe prompt (about 1000-1200 g); not measured in the corpus"
+    },
+    {
+      "id": "scale_step_max",
+      "maxGrams": 2500,
+      "appliesTo": "one scale step",
+      "severity": "warning",
+      "source": "device-limits.json recommended scale range (corpus maximum); the hard limit of 5000 g is in device-programs.json"
+    }
+  ],
+  "temperatureNotes": [
+    "Settings of 105-130 °C with water-based contents are normal practice and not a fault: the contents stay at their boiling point and the setting drives harder boiling and evaporation. Official recipes use them for steaming in manual mode (120 °C, speed 1, steamer fitted), for jam and for reducing with the basket on the lid.",
+    "Starch thickens only at 95 °C or more for at least 120 s; yeast at most 37 °C; egg yolk at most 80 °C; milk at most 95 °C (bridge and SmartRecipe rules)."
+  ],
+  "massEstimation": {
+    "method": "Scale steps add their weight unless the text says the weighing happens on a plate on the lid, in the steamer or outside the machine; text steps add listed grams when they name an ingredient with an adding verb; transfer or rinsing empties the bowl. Pieces and spoons count 0 g unless converted.",
+    "warning": "The normalizer's cumulativeGramsBefore never decreases and overstates the bowl (median 1460 g at heated steps against 825 g with resets). Do not use it for limits.",
+    "bowlAtHeatedSteps": { "median": 825, "p90": 1950 }
+  },
+  "durations": {
+    "totalMinutes": {
+      "expression": "14.1 + 0.94 * machineMinutes + 0.63 * passiveMinutes + 1.32 * textSteps + 1.96 * scaleSteps",
+      "r2": 0.46,
+      "n": 2210,
+      "note": "passiveMinutes = oven, proofing, chilling or resting time named in text steps (52 % of recipes have some)."
+    },
+    "prepMinutes": {
+      "expression": "3.8 + 0.99 * textSteps + 0.73 * scaleSteps",
+      "r2": 0.28,
+      "n": 2191,
+      "note": "fitted on recipes declaring 1-120 min prep; declared prep median 15 min"
+    },
+    "minutesPerTextStep": { "median": 1.5, "p25": 0.9, "p75": 2.8 },
+    "totalOverMachineByCategory": {
+      "Suppen & Eintöpfe": 1.35,
+      "One-Pot / All-in-One": 1.55,
+      "Marmelade & Gelee": 1.5,
+      "Hauptgerichte": 1.74,
+      "Abendessen": 1.96,
+      "Getränke": 3,
+      "Desserts": 10,
+      "Backen": 18
+    },
+    "rule": "The declared total time is never below the summed machine time (38 of 2221 corpus recipes break this; the timing analysis counts 2.4 % with its own machine-time sum)."
+  }
+}

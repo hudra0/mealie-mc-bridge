@@ -1,0 +1,1841 @@
+{
+  "description": "Cooking techniques for the converter, derived from the de-DE MC Smart corpus. Numbers and generic phrases only, in our own words; no recipe text.",
+  "version": 1,
+  "source": "corpus 2026-10",
+  "corpus": {
+    "recipes": 2221,
+    "official": 1094,
+    "member": 1127,
+    "steps": 42322,
+    "machineSteps": 20999,
+    "language": "de-DE",
+    "device": "MC3.0"
+  },
+  "fields": {
+    "device.mode": "Recommended mode for an uploaded draft. Official practice that differs is listed under alternatives and notes.",
+    "device.temperature": "°C; typical = median, range = [p10, p90] of the basis group in the recommended mode (nearest rank, so every value is one the device used).",
+    "device.timeSeconds": "Seconds; typical = median, range = [p10, p90]. formula, when present, is an expression in massGrams (bowl content), flourGrams or temperature, using tMinSeconds() from timing-model.json; clamp(lo, hi, x) limits x to [lo, hi].",
+    "device.speed": "typical = median, max = p90 of the basis group, capped by the rules in device-limits.json (3 when heated or in reverse, 4 with the whisk). null for program modes, which store no speed.",
+    "device.reverse": "true, false, or a condition the converter decides per recipe.",
+    "device.accessory.measuringCup": "in, out, either (the recipe decides) or n/a.",
+    "device.accessory.attachment": "null, whisk (Rühraufsatz), cooking_basket (Kocheinsatz in the bowl), cooking_basket_on_lid (Kocheinsatz as splash guard), steamer (Dampfgaraufsatz), food_processor.",
+    "alternatives": "Other modes the corpus uses for the same technique, with their own quantiles; included when they cover at least 10 % of the technique's steps or carry a note.",
+    "evidence.statsMode": "Mode whose steps supplied the device numbers. It differs from device.mode when official recipes use a mode that the member editor does not offer (kneading); recommendedModeObserved then shows the numbers of the recommended mode.",
+    "evidence.basis": "official when the recommended mode has at least 20 official steps for this technique, otherwise all recipes.",
+    "evidence.selection": "How steps were assigned to the technique. Technique labels come from a rule-based classifier that was about 85-90 % correct on a manual spot check of about 100 steps.",
+    "ingredientClasses": "vegetables, onion_garlic, herbs, nuts_seeds, hard_cheese, chocolate, fruit, meat, fish, dairy, egg, flour_dough, sugar_spices, bread_biscuits, rice_grain, pasta, potatoes, liquid, ice"
+  },
+  "techniques": [
+    {
+      "id": "weigh_ingredient",
+      "label": "Weigh an ingredient into the bowl with the built-in scale",
+      "aliases": {
+        "de": ["abwiegen", "einwiegen", "in den Mixbehälter geben", "zugeben", "dazugeben"],
+        "en": ["weigh", "add", "put in the bowl"]
+      },
+      "ingredientClasses": ["any"],
+      "device": {
+        "mode": "scale",
+        "weightGrams": { "typical": 150, "range": [25, 600], "max": 2500 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "n/a", "attachment": null }
+      },
+      "structure": [
+        "One scale step per ingredient added by weight; the title starts with amount and name, for example \"200 g Wasser\" (78.7 % of official scale titles start with \"<N> g\").",
+        "74.3 % of scale steps weigh exactly the gram amount of the one ingredient they name; split an ingredient across two scale steps only when it goes in at two points of the recipe.",
+        "The text step right before a scale step names the same ingredient in only 3.2 % of cases: it prepares something else (cutting, fitting an accessory).",
+        "Amounts below 5 g never go on the scale; write them in a text step in Tl, Prise or Msp."
+      ],
+      "notes": [
+        "Scale steps carry text on the device, like turbo steps; all other program steps show only their title."
+      ],
+      "evidence": {
+        "steps": 11945,
+        "recipes": 2190,
+        "officialSteps": 7026,
+        "officialRecipes": 1093,
+        "modes": { "scale": 11945 },
+        "basis": "official",
+        "basisSteps": 7026,
+        "statsMode": "scale",
+        "reverseShare": 0,
+        "selection": "scale mode",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "chop_onion_garlic",
+      "label": "Chop onions, shallots, garlic or ginger",
+      "aliases": {
+        "de": ["hacken", "fein hacken", "würfeln", "klein schneiden", "zerkleinern"],
+        "en": ["chop", "dice", "mince", "finely chop"]
+      },
+      "ingredientClasses": ["onion_garlic"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 6, "range": [5, 10] },
+        "speed": { "typical": 6, "max": 8 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "turbo",
+          "note": "Turbo for 2-3 s chops onions coarsely (229 turbo steps work on onion or garlic)."
+        }
+      ],
+      "structure": [
+        "Text step before: peel and halve the onions (peeling is named in 35 % of the text before official chopping steps, halving in 20 %); garlic cloves go in whole.",
+        "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237).",
+        "Text step after the step: \"mit dem Spatel nach unten schieben\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo).",
+        "Usually followed by fat in a scale step and the sauté or roasting step."
+      ],
+      "evidence": {
+        "steps": 427,
+        "recipes": 399,
+        "officialSteps": 247,
+        "officialRecipes": 229,
+        "modes": { "customized": 427 },
+        "basis": "official",
+        "basisSteps": 247,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names onion, shallot, garlic or ginger",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "chop_vegetables",
+      "label": "Chop vegetables coarse or fine",
+      "aliases": {
+        "de": ["zerkleinern", "grob hacken", "klein schneiden", "würfeln", "raspeln"],
+        "en": ["chop", "dice", "cut into small pieces", "shred"]
+      },
+      "ingredientClasses": ["vegetables"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 6, "range": [4, 10] },
+        "speed": { "typical": 6, "max": 7 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: peel and cut into pieces (pieces are named in 18 %, quartering in 14 % of the text before official chopping steps).",
+        "Speed 5 chops coarse, 6-8 fine; for a finer result run a second short step instead of a longer one.",
+        "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237).",
+        "Text step after the step: \"mit dem Spatel nach unten schieben\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo)."
+      ],
+      "evidence": {
+        "steps": 181,
+        "recipes": 149,
+        "officialSteps": 113,
+        "officialRecipes": 89,
+        "modes": { "customized": 181 },
+        "basis": "official",
+        "basisSteps": 113,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names a vegetable",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "chop_herbs",
+      "label": "Chop fresh herbs",
+      "aliases": {
+        "de": ["Kräuter hacken", "fein hacken", "zupfen und hacken"],
+        "en": ["chop herbs", "mince herbs"]
+      },
+      "ingredientClasses": ["herbs"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 8, "range": [6, 10] },
+        "speed": { "typical": 6, "max": 8 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: pick the leaves from the stems; the ingredient list counts herbs as Stück of stems (Petersilienstiele, Thymianstiele).",
+        "Chop herbs while the bowl is still dry, then transfer and set them aside when they are used at the end."
+      ],
+      "evidence": {
+        "steps": 153,
+        "recipes": 144,
+        "officialSteps": 144,
+        "officialRecipes": 135,
+        "modes": { "customized": 153 },
+        "basis": "official",
+        "basisSteps": 144,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names a herb",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "chop_nuts_seeds",
+      "label": "Chop nuts or seeds",
+      "aliases": {
+        "de": ["Nüsse hacken", "grob hacken", "hacken"],
+        "en": ["chop nuts", "roughly chop"]
+      },
+      "ingredientClasses": ["nuts_seeds"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 8, "range": [4, 15] },
+        "speed": { "typical": 6, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "For ground nuts use grind_fine (speed 8-10, 10-20 s) instead.",
+        "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237)."
+      ],
+      "evidence": {
+        "steps": 212,
+        "recipes": 200,
+        "officialSteps": 149,
+        "officialRecipes": 140,
+        "modes": { "customized": 212 },
+        "basis": "official",
+        "basisSteps": 149,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names nuts, almonds or seeds",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "grate_hard_cheese",
+      "label": "Grate hard cheese",
+      "aliases": {
+        "de": ["reiben", "Parmesan reiben", "fein reiben"],
+        "en": ["grate", "grate cheese"]
+      },
+      "ingredientClasses": ["hard_cheese"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 10, "range": [6, 15] },
+        "speed": { "typical": 8, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: cut the cheese into pieces; grate it first in the dry bowl and set it aside when the recipe needs it later.",
+        "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237)."
+      ],
+      "evidence": {
+        "steps": 188,
+        "recipes": 138,
+        "officialSteps": 136,
+        "officialRecipes": 99,
+        "modes": { "customized": 188 },
+        "basis": "official",
+        "basisSteps": 136,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names cheese",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "chop_chocolate",
+      "label": "Chop chocolate or couverture",
+      "aliases": {
+        "de": ["Schokolade hacken", "grob hacken", "zerkleinern"],
+        "en": ["chop chocolate"]
+      },
+      "ingredientClasses": ["chocolate"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 10, "range": [5, 15] },
+        "speed": { "typical": 8, "max": 8 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: break the chocolate into pieces.",
+        "Chop before melting; the melt step follows in the same bowl at about 50 °C."
+      ],
+      "evidence": {
+        "steps": 86,
+        "recipes": 74,
+        "officialSteps": 50,
+        "officialRecipes": 43,
+        "modes": { "customized": 86 },
+        "basis": "official",
+        "basisSteps": 50,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names chocolate or couverture",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "chop_fruit",
+      "label": "Chop fruit",
+      "aliases": {
+        "de": ["Obst zerkleinern", "würfeln", "klein schneiden"],
+        "en": ["chop fruit", "dice fruit"]
+      },
+      "ingredientClasses": ["fruit"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 10, "range": [5, 15] },
+        "speed": { "typical": 7, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: peel, core and cut into pieces.",
+        "Measuring cup in the lid (state at cold manual steps: inserted 724, removed 237)."
+      ],
+      "evidence": {
+        "steps": 77,
+        "recipes": 61,
+        "officialSteps": 32,
+        "officialRecipes": 28,
+        "modes": { "customized": 77 },
+        "basis": "official",
+        "basisSteps": 32,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names a fruit",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "chop_meat_fish",
+      "label": "Chop or mince meat, ham or fish",
+      "aliases": {
+        "de": ["hacken", "zerkleinern", "fein hacken", "faschieren"],
+        "en": ["chop", "mince", "grind meat"]
+      },
+      "ingredientClasses": ["meat", "fish"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 8, "range": [5, 12] },
+        "speed": { "typical": 6, "max": 8 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: cut into pieces of about 3 cm; the meat should be well chilled."
+      ],
+      "evidence": {
+        "steps": 42,
+        "recipes": 37,
+        "officialSteps": 30,
+        "officialRecipes": 29,
+        "modes": { "customized": 42 },
+        "basis": "official",
+        "basisSteps": 30,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names meat, ham, bacon or fish",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "make_crumbs",
+      "label": "Make crumbs from bread, rolls or biscuits",
+      "aliases": {
+        "de": ["Brösel herstellen", "zerbröseln", "fein mahlen"],
+        "en": ["make breadcrumbs", "crush biscuits"]
+      },
+      "ingredientClasses": ["bread_biscuits"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 10, "range": [5, 12] },
+        "speed": { "typical": 7, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": ["Text step before: break into pieces; bread from the day before."],
+      "evidence": {
+        "steps": 43,
+        "recipes": 37,
+        "officialSteps": 36,
+        "officialRecipes": 31,
+        "modes": { "customized": 43 },
+        "basis": "official",
+        "basisSteps": 36,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "manual mode, 0 °C, speed 5-10, at most 15 s, text since the previous machine step names bread, rolls, rusks or biscuits",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "turbo_pulse",
+      "label": "Turbo pulse for coarse chopping",
+      "aliases": { "de": ["Turbo", "kurz zerkleinern", "grob hacken"], "en": ["pulse", "turbo"] },
+      "ingredientClasses": ["onion_garlic", "vegetables", "nuts_seeds", "hard_cheese"],
+      "device": {
+        "mode": "turbo",
+        "temperature": { "typical": 0, "range": [0, 0], "note": "no heating" },
+        "timeSeconds": { "typical": 2, "range": [1, 5] },
+        "speed": null,
+        "reverse": false,
+        "turbo": true,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Turbo is its own step; its title names the seconds (\"Turbo-Taste für 2 Sekunden\"); the number matches the programmed time in 99.6 % of 262 such titles.",
+        "Turbo steps sit early in the recipe (68 % in the first third) and are often followed by roasting (83 times).",
+        "Never with the whisk fitted; never on hot contents (SmartRecipe rule: at most 60 °C) and at most 2500 g in the bowl.",
+        "Text step after the step: \"mit dem Spatel nach unten schieben\" when the next step works on the same contents (75.7 % of these phrases follow cold chopping, 18.6 % turbo)."
+      ],
+      "notes": [
+        "Official recipes use 2 s most (125 of 244 steps); all sources together have median 3 s."
+      ],
+      "evidence": {
+        "steps": 413,
+        "recipes": 335,
+        "officialSteps": 244,
+        "officialRecipes": 198,
+        "modes": { "turbo": 413 },
+        "basis": "official",
+        "basisSteps": 244,
+        "statsMode": "turbo",
+        "reverseShare": 0,
+        "selection": "turbo mode",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "grind_fine",
+      "label": "Grind fine: sugar to icing sugar, grains, spices, ground nuts",
+      "aliases": {
+        "de": ["mahlen", "fein mahlen", "pulverisieren", "Puderzucker herstellen"],
+        "en": ["grind", "mill", "powder"]
+      },
+      "ingredientClasses": ["sugar_spices", "rice_grain", "nuts_seeds"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 20, "range": [10, 60] },
+        "speed": { "typical": 8, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "turbo",
+          "steps": 19,
+          "officialSteps": 0,
+          "timeSeconds": { "typical": 9, "range": [4, 20] }
+        }
+      ],
+      "structure": [
+        "The bowl must be completely dry.",
+        "Measuring cup in; let the dust settle before opening the lid."
+      ],
+      "evidence": {
+        "steps": 185,
+        "recipes": 138,
+        "officialSteps": 120,
+        "officialRecipes": 81,
+        "modes": { "customized": 166, "turbo": 19 },
+        "basis": "official",
+        "basisSteps": 120,
+        "statsMode": "customized",
+        "reverseShare": 0.008,
+        "selection": "technique \"fein_mahlen\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "crush_ice_frozen",
+      "label": "Crush ice or blend frozen fruit (sorbet, ice cream)",
+      "aliases": {
+        "de": ["Eis crushen", "zerkleinern", "Sorbet mixen"],
+        "en": ["crush ice", "blend frozen fruit"]
+      },
+      "ingredientClasses": ["ice", "fruit"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 20, "range": [6, 45] },
+        "speed": { "typical": 8, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Frozen fruit straight from the freezer; push down with the spatula and repeat a short step if lumps remain."
+      ],
+      "evidence": {
+        "steps": 151,
+        "recipes": 86,
+        "officialSteps": 112,
+        "officialRecipes": 59,
+        "modes": { "customized": 138, "ramp": 3, "smoothie": 7, "puree": 2, "turbo": 1 },
+        "basis": "official",
+        "basisSteps": 108,
+        "statsMode": "customized",
+        "reverseShare": 0.065,
+        "selection": "technique \"eis_gefrorenes\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "stir_cold",
+      "label": "Stir or mix cold ingredients",
+      "aliases": {
+        "de": ["verrühren", "vermischen", "vermengen", "unterrühren", "mischen"],
+        "en": ["stir", "mix", "combine"]
+      },
+      "ingredientClasses": ["dairy", "vegetables", "flour_dough", "egg"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 15, "range": [5, 60] },
+        "speed": { "typical": 4, "max": 7 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: name everything that goes in (\"zugeben\", \"in den Mixbehälter geben\").",
+        "Speed 4 is the mixing speed (median 30 s at speed 4); speed 2-3 for short stirs."
+      ],
+      "evidence": {
+        "steps": 1101,
+        "recipes": 750,
+        "officialSteps": 586,
+        "officialRecipes": 405,
+        "modes": {
+          "customized": 1030,
+          "kneading": 12,
+          "kneading_soft_dough": 48,
+          "kneading_liquid_dough": 9,
+          "kneading_solid_dough": 2
+        },
+        "basis": "official",
+        "basisSteps": 574,
+        "statsMode": "customized",
+        "reverseShare": 0,
+        "selection": "technique \"ruehren_kalt\", forward rotation",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "fold_in_reverse",
+      "label": "Fold in or stir gently so pieces stay whole (reverse rotation)",
+      "aliases": {
+        "de": ["unterheben", "vorsichtig unterrühren", "im Linkslauf rühren"],
+        "en": ["fold in", "stir gently"]
+      },
+      "ingredientClasses": ["vegetables", "meat", "dairy", "pasta"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 20, "range": [10, 45] },
+        "speed": { "typical": 2, "max": 3 },
+        "reverse": true,
+        "turbo": false,
+        "accessory": { "measuringCup": "either", "attachment": null }
+      },
+      "structure": [
+        "Reverse rotation makes the blade stir instead of cut (official guide); use it whenever solid pieces must stay whole.",
+        "Speed with reverse never above 3."
+      ],
+      "evidence": {
+        "steps": 344,
+        "recipes": 269,
+        "officialSteps": 161,
+        "officialRecipes": 134,
+        "modes": { "customized": 344 },
+        "basis": "official",
+        "basisSteps": 161,
+        "statsMode": "customized",
+        "reverseShare": 1,
+        "selection": "technique \"ruehren_kalt\", reverse rotation",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "blend_smooth_cold",
+      "label": "Blend smooth (cold purée, pesto, dip, dressing)",
+      "aliases": {
+        "de": ["pürieren", "fein pürieren", "mixen", "cremig mixen"],
+        "en": ["purée", "blend", "blend until smooth"]
+      },
+      "ingredientClasses": ["vegetables", "fruit", "nuts_seeds", "liquid"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 30, "range": [20, 60] },
+        "speed": { "typical": 10, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "puree",
+          "note": "The puree program (30-60 s) does the same job; member recipes use it, official recipes almost never (3 steps)."
+        }
+      ],
+      "structure": [
+        "Text step before: name what goes in; liquids first for a smoother result.",
+        "Push down with the spatula and repeat a short step instead of one long one."
+      ],
+      "evidence": {
+        "steps": 298,
+        "recipes": 233,
+        "officialSteps": 189,
+        "officialRecipes": 136,
+        "modes": { "customized": 298 },
+        "basis": "official",
+        "basisSteps": 189,
+        "statsMode": "customized",
+        "reverseShare": 0.005,
+        "selection": "manual mode, 0 °C, speed 8-10, at least 20 s (how official recipes purée cold contents)",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "puree_hot_soup",
+      "label": "Purée a hot soup or sauce after cooking",
+      "aliases": {
+        "de": ["pürieren", "Suppe pürieren", "fein mixen"],
+        "en": ["purée soup", "blend soup"]
+      },
+      "ingredientClasses": ["vegetables", "liquid"],
+      "device": {
+        "mode": "puree",
+        "temperature": { "typical": 0, "range": [0, 0], "note": "no heating" },
+        "timeSeconds": {
+          "typical": 35,
+          "range": [30, 90],
+          "formula": "clamp(30, 120, 33 + 0.009 * massGrams)",
+          "formulaNote": "puree program time vs bowl mass, R² 0.13 (n 76): the time is nearly fixed at 30-60 s"
+        },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "customized",
+          "steps": 76,
+          "officialSteps": 16,
+          "timeSeconds": { "typical": 20, "range": [6, 90] },
+          "speed": { "typical": 6, "max": 9 },
+          "reverseShare": 0
+        },
+        {
+          "mode": "ramp",
+          "steps": 35,
+          "officialSteps": 35,
+          "timeSeconds": { "typical": 40, "range": [15, 80] }
+        }
+      ],
+      "structure": [
+        "Measuring cup in before puréeing hot contents (at ramp steps the cup was inserted 30 times, never removed).",
+        "Never start hot contents at a high speed. Without the puree program, use manual steps at 0 °C with rising speed, starting at speed 4 or lower, for example 10 s each at speed 4, 6 and 8 (official ramps run 4>5>6>7>8 at about 10 s per phase).",
+        "Purée is the last machine step of a soup (63 % of ramp steps sit in the last third of the recipe)."
+      ],
+      "notes": [
+        "Official recipes purée hot soup with the ramp mode (35 of 52 official steps); member recipes use the puree program. The member editor offers the puree program but not ramp on MC3.0; the server stores ramp from a member account, but whether the device plays it is untested."
+      ],
+      "pendingVerification": "ramp mode for private drafts",
+      "evidence": {
+        "steps": 163,
+        "recipes": 161,
+        "officialSteps": 52,
+        "officialRecipes": 51,
+        "modes": { "ramp": 35, "customized": 76, "puree": 48, "turbo": 4 },
+        "basis": "all",
+        "basisSteps": 48,
+        "statsMode": "puree",
+        "reverseShare": 0,
+        "selection": "technique \"suppe_puerieren_heiss\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "blend_drink_smoothie",
+      "label": "Blend a drink or smoothie",
+      "aliases": { "de": ["mixen", "aufmixen", "Smoothie mixen"], "en": ["blend", "mix a drink"] },
+      "ingredientClasses": ["fruit", "vegetables", "dairy", "liquid"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 20, "range": [7, 60] },
+        "speed": { "typical": 6, "max": 10 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "smoothie",
+          "steps": 15,
+          "officialSteps": 3,
+          "timeSeconds": { "typical": 60, "range": [30, 120] },
+          "note": "smoothie program, typically 60 s (member recipes)."
+        }
+      ],
+      "structure": [
+        "Text step before: solids first, liquid on top; with turbo at most 2500 g in the bowl (SmartRecipe rule)."
+      ],
+      "evidence": {
+        "steps": 205,
+        "recipes": 131,
+        "officialSteps": 59,
+        "officialRecipes": 35,
+        "modes": { "customized": 177, "ramp": 1, "smoothie": 15, "puree": 3, "turbo": 9 },
+        "basis": "official",
+        "basisSteps": 55,
+        "statsMode": "customized",
+        "reverseShare": 0.073,
+        "selection": "technique \"mixen_smoothie\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "whip",
+      "label": "Whip cream, egg whites or eggs with sugar (whisk attachment)",
+      "aliases": {
+        "de": ["steif schlagen", "aufschlagen", "schaumig schlagen", "Sahne schlagen", "Eischnee"],
+        "en": ["whip", "whisk", "beat until stiff"]
+      },
+      "ingredientClasses": ["egg", "dairy"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 90, "range": [15, 300] },
+        "speed": { "typical": 4, "max": 4 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": "whisk" }
+      },
+      "structure": [
+        "Own text step to fit the whisk attachment (\"Rühraufsatz einsetzen\", 230 text steps) and one to remove it afterwards (125).",
+        "With the whisk fitted the speed is at most 4 (official guide; 92 % of steps with the whisk run at speed 4 or lower).",
+        "Bowl and whisk must be free of fat for egg whites; cream should be cold.",
+        "Whipping time depends on fat content and temperature, so the text step after says to check the stiffness."
+      ],
+      "evidence": {
+        "steps": 262,
+        "recipes": 161,
+        "officialSteps": 179,
+        "officialRecipes": 97,
+        "modes": { "customized": 262 },
+        "basis": "official",
+        "basisSteps": 179,
+        "statsMode": "customized",
+        "reverseShare": 0.034,
+        "selection": "technique \"schlagen\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "emulsify",
+      "label": "Emulsify: mayonnaise, aioli, creamy dressings",
+      "aliases": {
+        "de": ["emulgieren", "Mayonnaise herstellen", "Öl einlaufen lassen", "aufschlagen"],
+        "en": ["emulsify", "make mayonnaise", "drizzle in oil"]
+      },
+      "ingredientClasses": ["egg", "liquid"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 10, "range": [8, 240] },
+        "speed": { "typical": 4, "max": 4 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": null }
+      },
+      "structure": [
+        "The oil goes in slowly through the lid opening while the blade runs (\"durch die Deckelöffnung\", 98 text steps; the next step is the working step in 94 %).",
+        "Two-step pattern: a short step (about 10 s) mixes the base, then a long step at speed 4 (top setting 240 s) runs while the oil is poured onto the lid."
+      ],
+      "evidence": {
+        "steps": 43,
+        "recipes": 23,
+        "officialSteps": 38,
+        "officialRecipes": 21,
+        "modes": { "customized": 43 },
+        "basis": "official",
+        "basisSteps": 38,
+        "statsMode": "customized",
+        "reverseShare": 0.105,
+        "selection": "technique \"emulgieren\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "batter_sponge",
+      "label": "Mix a cake batter or sponge mixture",
+      "aliases": {
+        "de": ["Teig rühren", "Rührteig", "verrühren", "glatt rühren"],
+        "en": ["mix batter", "beat batter"]
+      },
+      "ingredientClasses": ["flour_dough", "egg", "dairy"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 0, "range": [0, 0] },
+        "timeSeconds": { "typical": 30, "range": [10, 60] },
+        "speed": { "typical": 4, "max": 6 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "kneading_soft_dough",
+          "steps": 31,
+          "officialSteps": 0,
+          "timeSeconds": { "typical": 120, "range": [90, 180] }
+        },
+        {
+          "mode": "kneading_liquid_dough",
+          "steps": 7,
+          "officialSteps": 0,
+          "timeSeconds": { "typical": 120, "range": [45, 180] },
+          "note": "liquid-dough kneading program (member recipes)."
+        }
+      ],
+      "structure": [
+        "Soft butter, eggs at room temperature; add the flour last and mix only until combined.",
+        "Push down with the spatula between two short mixing steps."
+      ],
+      "evidence": {
+        "steps": 261,
+        "recipes": 193,
+        "officialSteps": 145,
+        "officialRecipes": 105,
+        "modes": {
+          "customized": 189,
+          "kneading": 18,
+          "kneading_soft_dough": 31,
+          "kneading_solid_dough": 16,
+          "kneading_liquid_dough": 7
+        },
+        "basis": "official",
+        "basisSteps": 127,
+        "statsMode": "customized",
+        "reverseShare": 0.079,
+        "selection": "technique \"ruehrteig_biskuit\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "activate_yeast",
+      "label": "Dissolve yeast in lukewarm liquid",
+      "aliases": {
+        "de": ["Hefe auflösen", "Hefe anrühren", "lauwarm erwärmen"],
+        "en": ["dissolve yeast", "proof yeast", "warm milk"]
+      },
+      "ingredientClasses": ["liquid", "dairy", "flour_dough"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 37, "range": [37, 37] },
+        "timeSeconds": { "typical": 180, "range": [120, 180] },
+        "speed": { "typical": 1, "max": 2 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Text step before: crumble the fresh yeast into the liquid with a little sugar.",
+        "Yeast never above 37 °C (SmartRecipe rule); 37 °C for 180 s at speed 1 is the standard setting (53 of 84 official steps).",
+        "Followed directly by the flour and the kneading step (83 transitions from warm/dissolve to knead)."
+      ],
+      "evidence": {
+        "steps": 178,
+        "recipes": 172,
+        "officialSteps": 84,
+        "officialRecipes": 81,
+        "modes": { "customized": 178 },
+        "basis": "official",
+        "basisSteps": 84,
+        "statsMode": "customized",
+        "reverseShare": 0.012,
+        "selection": "technique \"hefe_aktivieren\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "knead_yeast_dough",
+      "label": "Knead a yeast dough",
+      "aliases": {
+        "de": ["kneten", "Hefeteig kneten", "zu einem Teig verkneten"],
+        "en": ["knead", "knead the dough"]
+      },
+      "ingredientClasses": ["flour_dough"],
+      "device": {
+        "mode": "kneading_solid_dough",
+        "temperature": { "typical": 0, "range": [0, 0], "note": "no heating" },
+        "timeSeconds": {
+          "typical": 120,
+          "range": [45, 120],
+          "formula": "min(240, max(60, round((95 + 0.091 * flourGrams) / 30) * 30))",
+          "formulaNote": "kneading time vs flour in the bowl, R² 0.10: the time is a plateau at 120 s up to 1250 g flour"
+        },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "recommendedModeObserved": {
+        "mode": "kneading_solid_dough",
+        "steps": 110,
+        "basis": "all",
+        "timeSeconds": { "typical": 150, "range": [120, 240] },
+        "note": "device numbers above come from the kneading mode; this is what recipes using kneading_solid_dough programmed"
+      },
+      "alternatives": [
+        {
+          "mode": "kneading",
+          "steps": 99,
+          "officialSteps": 99,
+          "timeSeconds": { "typical": 120, "range": [45, 120] }
+        },
+        {
+          "mode": "kneading_soft_dough",
+          "steps": 39,
+          "officialSteps": 0,
+          "timeSeconds": { "typical": 120, "range": [120, 240] }
+        }
+      ],
+      "structure": [
+        "At most 1000 g flour per kneading step (corpus maximum 1000 g, p90 600 g; SmartRecipe rule 1000 g).",
+        "Text step after: let the dough rise covered outside the machine and name the time (52 % of recipes name passive time in text)."
+      ],
+      "notes": [
+        "Official recipes use the kneading program (120 s in 79 of 115 official yeast-dough steps); member recipes use kneading_solid_dough. The member editor offers only the kneading_*_dough variants on MC3.0; the server stores kneading from a member account, but whether the device plays it is untested."
+      ],
+      "pendingVerification": "kneading mode (official) for private drafts",
+      "evidence": {
+        "steps": 269,
+        "recipes": 232,
+        "officialSteps": 115,
+        "officialRecipes": 98,
+        "modes": {
+          "kneading": 99,
+          "customized": 21,
+          "kneading_solid_dough": 110,
+          "kneading_soft_dough": 39
+        },
+        "basis": "official",
+        "basisSteps": 99,
+        "statsMode": "kneading",
+        "reverseShare": 0,
+        "selection": "technique \"hefeteig_kneten\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "knead_short_dough",
+      "label": "Mix a short crust or another firm dough without yeast",
+      "aliases": {
+        "de": ["Mürbteig kneten", "verkneten", "zu einem Teig verarbeiten"],
+        "en": ["make shortcrust", "knead briefly"]
+      },
+      "ingredientClasses": ["flour_dough", "dairy", "egg"],
+      "device": {
+        "mode": "kneading_solid_dough",
+        "temperature": { "typical": 0, "range": [0, 0], "note": "no heating" },
+        "timeSeconds": { "typical": 120, "range": [45, 120] },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "recommendedModeObserved": {
+        "mode": "kneading_solid_dough",
+        "steps": 43,
+        "basis": "all",
+        "timeSeconds": { "typical": 120, "range": [60, 180] },
+        "note": "device numbers above come from the kneading mode; this is what recipes using kneading_solid_dough programmed"
+      },
+      "alternatives": [
+        {
+          "mode": "kneading",
+          "steps": 59,
+          "officialSteps": 59,
+          "timeSeconds": { "typical": 120, "range": [45, 120] }
+        },
+        {
+          "mode": "customized",
+          "steps": 51,
+          "officialSteps": 38,
+          "timeSeconds": { "typical": 20, "range": [10, 60] },
+          "speed": { "typical": 4, "max": 6 },
+          "reverseShare": 0.026
+        },
+        {
+          "mode": "kneading_soft_dough",
+          "steps": 44,
+          "officialSteps": 0,
+          "timeSeconds": { "typical": 120, "range": [60, 120] }
+        }
+      ],
+      "structure": [
+        "Cold butter in pieces; knead briefly so the dough stays short (official: kneading program for 45 s or 120 s, or 20 s at speed 4-6)."
+      ],
+      "notes": [
+        "Official recipes use the kneading program or a short manual step; member recipes use kneading_solid_dough or kneading_soft_dough."
+      ],
+      "pendingVerification": "kneading mode (official) for private drafts",
+      "evidence": {
+        "steps": 197,
+        "recipes": 168,
+        "officialSteps": 97,
+        "officialRecipes": 83,
+        "modes": {
+          "kneading": 59,
+          "customized": 51,
+          "kneading_solid_dough": 43,
+          "kneading_soft_dough": 44
+        },
+        "basis": "official",
+        "basisSteps": 59,
+        "statsMode": "kneading",
+        "reverseShare": 0,
+        "selection": "technique \"muerbteig_kneten\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "melt",
+      "label": "Melt chocolate or butter",
+      "aliases": {
+        "de": ["schmelzen", "zerlassen", "Schokolade schmelzen", "Butter zerlassen"],
+        "en": ["melt"]
+      },
+      "ingredientClasses": ["chocolate", "dairy"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 70, "range": [50, 100] },
+        "timeSeconds": { "typical": 180, "range": [75, 360] },
+        "speed": { "typical": 1, "max": 2 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "either", "attachment": null }
+      },
+      "structure": [
+        "Text step before: break the chocolate or cut the butter into pieces (pieces are named in 38 % of the text before official melting steps).",
+        "Chocolate at 50 °C (top setting 50 °C for 90 s at speed 1); butter tolerates up to 100 °C."
+      ],
+      "evidence": {
+        "steps": 218,
+        "recipes": 179,
+        "officialSteps": 130,
+        "officialRecipes": 107,
+        "modes": { "customized": 216, "roasting": 2 },
+        "basis": "official",
+        "basisSteps": 130,
+        "statsMode": "customized",
+        "reverseShare": 0.038,
+        "selection": "technique \"schmelzen\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "warm_heat",
+      "label": "Warm or heat a liquid or a finished dish",
+      "aliases": {
+        "de": ["erwärmen", "erhitzen", "warm machen", "temperieren"],
+        "en": ["warm", "heat", "reheat"]
+      },
+      "ingredientClasses": ["liquid", "dairy", "vegetables"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 85, "range": [50, 100] },
+        "timeSeconds": { "typical": 180, "range": [60, 600] },
+        "speed": { "typical": 2, "max": 3 },
+        "reverse": "true when the dish contains pieces that must stay whole",
+        "turbo": false,
+        "accessory": { "measuringCup": "either", "attachment": null }
+      },
+      "structure": [
+        "Milk at most 95 °C (SmartRecipe rule) so it does not boil over; stir at speed 1-2."
+      ],
+      "notes": [
+        "Mostly a member-recipe label (23 official steps); official recipes fold warming into simmer steps."
+      ],
+      "evidence": {
+        "steps": 157,
+        "recipes": 121,
+        "officialSteps": 23,
+        "officialRecipes": 18,
+        "modes": { "customized": 150, "roasting": 7 },
+        "basis": "all",
+        "basisSteps": 150,
+        "statsMode": "customized",
+        "reverseShare": 0.327,
+        "selection": "technique \"erwaermen_temperieren\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "saute_onions",
+      "label": "Sauté onions, garlic or vegetables in fat without browning (anschwitzen, dünsten)",
+      "aliases": {
+        "de": ["anschwitzen", "andünsten", "dünsten", "glasig dünsten"],
+        "en": ["sauté", "sweat", "soften"]
+      },
+      "ingredientClasses": ["onion_garlic", "vegetables"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [80, 120] },
+        "timeSeconds": { "typical": 300, "range": [120, 900] },
+        "speed": { "typical": 1, "max": 2 },
+        "reverse": "true when diced vegetables must keep their shape (52.6 % of official manual sauté steps)",
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "roasting",
+          "steps": 158,
+          "officialSteps": 51,
+          "temperature": { "typical": 120, "range": [100, 130] },
+          "timeSeconds": { "typical": 180, "range": [120, 300] },
+          "note": "The roasting program at 120-130 °C for 180 s does the same job (official top setting roasting 130 °C, 180 s)."
+        }
+      ],
+      "structure": [
+        "Text step before: add the fat (oil is named in 37 %) and push the chopped onions down with the spatula (the spatula is named in 50 % of the text before official sauté steps).",
+        "Measuring cup out so the steam escapes (state at manual steps of 105-130 °C: removed 148, inserted 67).",
+        "Spices bloom at the end of this step; deglaze afterwards with liquid in a scale step."
+      ],
+      "evidence": {
+        "steps": 336,
+        "recipes": 275,
+        "officialSteps": 148,
+        "officialRecipes": 129,
+        "modes": { "customized": 178, "roasting": 158 },
+        "basis": "official",
+        "basisSteps": 97,
+        "statsMode": "customized",
+        "reverseShare": 0.526,
+        "selection": "technique \"anschwitzen\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "sear_roast",
+      "label": "Sear or brown with the roasting program (anbraten)",
+      "aliases": {
+        "de": ["anbraten", "braten", "scharf anbraten", "anrösten"],
+        "en": ["sear", "brown", "fry"]
+      },
+      "ingredientClasses": ["vegetables", "meat", "onion_garlic"],
+      "device": {
+        "mode": "roasting",
+        "temperature": { "typical": 130, "range": [110, 130] },
+        "timeSeconds": { "typical": 240, "range": [120, 420] },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "customized",
+          "steps": 75,
+          "officialSteps": 35,
+          "temperature": { "typical": 100, "range": [80, 100] },
+          "timeSeconds": { "typical": 480, "range": [120, 1200] },
+          "speed": { "typical": 1, "max": 2 },
+          "reverseShare": 0.743
+        }
+      ],
+      "structure": [
+        "Measuring cup out before roasting (state at roasting steps: removed 493, inserted 15).",
+        "Text step before: add the fat (oil is named in 47 %) and push down with the spatula (52 %).",
+        "Roasting time does not scale with mass (fit 225 + 0.125 * grams, R² 0.09); 130 °C for 240 s is the median, 420 s the top setting.",
+        "Followed by deglazing and simmering at 100 °C with reverse (66 transitions from roasting to a reverse simmer)."
+      ],
+      "notes": ["The roasting program stores no speed; the device stirs on its own."],
+      "evidence": {
+        "steps": 594,
+        "recipes": 391,
+        "officialSteps": 373,
+        "officialRecipes": 248,
+        "modes": { "roasting": 519, "customized": 75 },
+        "basis": "official",
+        "basisSteps": 338,
+        "statsMode": "roasting",
+        "reverseShare": 0,
+        "selection": "technique \"anbraten\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "toast_dry",
+      "label": "Toast nuts, seeds, spices or flour without fat",
+      "aliases": { "de": ["rösten", "anrösten", "ohne Fett rösten"], "en": ["toast", "dry-roast"] },
+      "ingredientClasses": ["nuts_seeds", "sugar_spices", "flour_dough"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 120, "range": [80, 130] },
+        "timeSeconds": { "typical": 300, "range": [120, 1500] },
+        "speed": { "typical": 1, "max": 2 },
+        "reverse": "true when whole nuts or seeds must stay whole",
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": null }
+      },
+      "alternatives": [
+        {
+          "mode": "roasting",
+          "steps": 9,
+          "officialSteps": 2,
+          "temperature": { "typical": 120, "range": [110, 130] },
+          "timeSeconds": { "typical": 240, "range": [120, 840] },
+          "note": "roasting program at 110-130 °C."
+        }
+      ],
+      "structure": [
+        "Measuring cup out; transfer right afterwards so nothing burns in the hot bowl."
+      ],
+      "evidence": {
+        "steps": 21,
+        "recipes": 19,
+        "officialSteps": 7,
+        "officialRecipes": 5,
+        "modes": { "roasting": 9, "customized": 12 },
+        "basis": "all",
+        "basisSteps": 12,
+        "statsMode": "customized",
+        "reverseShare": 0.417,
+        "selection": "technique \"roesten\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "bring_to_boil",
+      "label": "Bring a liquid to the boil",
+      "aliases": {
+        "de": ["aufkochen", "zum Kochen bringen", "aufwallen lassen"],
+        "en": ["bring to the boil", "boil"]
+      },
+      "ingredientClasses": ["liquid", "vegetables"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [80, 120] },
+        "timeSeconds": {
+          "typical": 420,
+          "range": [150, 780],
+          "formula": "max(tMinSeconds(massGrams, 100), 300)",
+          "formulaNote": "the step must at least cover the physical heat-up time; see timing-model.json"
+        },
+        "speed": { "typical": 1, "max": 3 },
+        "reverse": "true when the liquid contains pieces that must stay whole",
+        "turbo": false,
+        "accessory": { "measuringCup": "either", "attachment": null }
+      },
+      "structure": [
+        "Official recipes never title a step this way (0 official steps); they program a 100 °C simmer step long enough to reach the boil."
+      ],
+      "evidence": {
+        "steps": 45,
+        "recipes": 38,
+        "officialSteps": 0,
+        "officialRecipes": 0,
+        "modes": { "customized": 45 },
+        "basis": "all",
+        "basisSteps": 45,
+        "statsMode": "customized",
+        "reverseShare": 0.489,
+        "selection": "technique \"aufkochen\" (member recipes only)",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "simmer_cook",
+      "label": "Simmer or cook in liquid (soups, stews, sauces, vegetables)",
+      "aliases": {
+        "de": ["köcheln", "kochen", "garen", "weich kochen", "köcheln lassen"],
+        "en": ["simmer", "cook", "boil gently", "stew"]
+      },
+      "ingredientClasses": ["vegetables", "liquid", "meat", "dairy"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [70, 110] },
+        "timeSeconds": {
+          "typical": 420,
+          "range": [120, 1200],
+          "formula": "max(tMinSeconds(massGrams, temperature), 421 + 0.252 * massGrams)",
+          "formulaNote": "100 °C fit over all steps (R² 0.07, residual p10/p90 -526/+623 s); the cooking goal sets the time, the mass only the lower bound"
+        },
+        "speed": { "typical": 1, "max": 3 },
+        "reverse": "true when pieces must stay whole (vegetable chunks, meat, legumes); false for liquids that are puréed afterwards",
+        "turbo": false,
+        "accessory": { "measuringCup": "either", "attachment": null }
+      },
+      "structure": [
+        "Text step before: the liquid goes in by a scale step (stock, water); name what cooks.",
+        "The first heated step after filling must at least cover the heat-up time (official headroom: time/tMin median 2.30, p10 0.87).",
+        "Long simmering is often split into two steps at the same temperature: 600 s then 300 s at 100 °C (296 transitions)."
+      ],
+      "evidence": {
+        "steps": 808,
+        "recipes": 611,
+        "officialSteps": 443,
+        "officialRecipes": 338,
+        "modes": { "customized": 803, "roasting": 5 },
+        "basis": "official",
+        "basisSteps": 440,
+        "statsMode": "customized",
+        "reverseShare": 0.275,
+        "selection": "technique \"koecheln_garen\" without the basket as splash guard",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "reduce_open",
+      "label": "Reduce or cook hard with the cooking basket on the lid as splash guard",
+      "aliases": {
+        "de": ["einkochen", "reduzieren", "sämig einkochen", "offen köcheln"],
+        "en": ["reduce", "cook down", "simmer uncovered"]
+      },
+      "ingredientClasses": ["liquid", "vegetables", "fruit"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [95, 120] },
+        "timeSeconds": { "typical": 720, "range": [300, 2700] },
+        "speed": { "typical": 1, "max": 2 },
+        "reverse": "true when pieces must stay whole",
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": "cooking_basket_on_lid" }
+      },
+      "structure": [
+        "Text step before: remove the measuring cup and set the cooking basket on the lid as a splash guard (98 such text steps; the next step is the working step in 91 %).",
+        "This is not steaming: the basket only stops splashes while water evaporates.",
+        "For a reduction keep the measuring cup out and extend the simmering time by the seconds given here; do not estimate the evaporation loss. Do not reduce soups."
+      ],
+      "evidence": {
+        "steps": 96,
+        "recipes": 84,
+        "officialSteps": 73,
+        "officialRecipes": 64,
+        "modes": { "customized": 94, "roasting": 2 },
+        "basis": "official",
+        "basisSteps": 73,
+        "statsMode": "customized",
+        "reverseShare": 0.493,
+        "selection": "text before the step places the cooking basket on the lid (\"Kocheinsatz als Spritzschutz\")",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "thicken_bind",
+      "label": "Thicken or bind: roux, béchamel, custard, starch-bound sauces",
+      "aliases": {
+        "de": ["binden", "andicken", "eindicken", "Mehlschwitze", "Béchamel kochen"],
+        "en": ["thicken", "bind", "make a roux", "make béchamel"]
+      },
+      "ingredientClasses": ["flour_dough", "dairy", "liquid"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [95, 120] },
+        "timeSeconds": { "typical": 240, "range": [120, 720] },
+        "speed": { "typical": 1, "max": 3 },
+        "reverse": "false for smooth sauces; true when the sauce already holds pieces",
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Starch thickens only at 95 °C or more for at least 2 minutes (bridge sanity rule).",
+        "Add thickeners in the last 2-3 minutes (SmartRecipe rule) or stir them cold into the liquid first.",
+        "Egg yolk at most 80 °C, dairy at most 95 °C (SmartRecipe rules); custard runs at 80-90 °C, speed 2-3."
+      ],
+      "notes": [
+        "The temperature range starts at 95 °C because starch binds only near the boil; the corpus p10 is 90 °C."
+      ],
+      "evidence": {
+        "steps": 132,
+        "recipes": 115,
+        "officialSteps": 101,
+        "officialRecipes": 89,
+        "modes": { "customized": 131, "roasting": 1 },
+        "basis": "official",
+        "basisSteps": 101,
+        "statsMode": "customized",
+        "reverseShare": 0.317,
+        "selection": "technique \"eindicken_binden\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "cook_risotto",
+      "label": "Cook risotto or another rice dish in the bowl",
+      "aliases": {
+        "de": ["Risotto kochen", "Reis garen", "Reis köcheln"],
+        "en": ["cook risotto", "cook rice in the bowl"]
+      },
+      "ingredientClasses": ["rice_grain", "liquid"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [95, 100] },
+        "timeSeconds": { "typical": 300, "range": [120, 1200] },
+        "speed": { "typical": 1, "max": 1 },
+        "reverse": true,
+        "turbo": false,
+        "accessory": { "measuringCup": "either", "attachment": null }
+      },
+      "structure": [
+        "Always reverse rotation at speed 1 so the grains stay whole (reverse in 90.6 % of official steps).",
+        "Sauté the rice briefly first, then add the liquid in a scale step.",
+        "For plain rice the cooking basket in the bowl is the usual route, see cook_in_basket."
+      ],
+      "evidence": {
+        "steps": 96,
+        "recipes": 56,
+        "officialSteps": 32,
+        "officialRecipes": 16,
+        "modes": { "customized": 92, "roasting": 4 },
+        "basis": "official",
+        "basisSteps": 32,
+        "statsMode": "customized",
+        "reverseShare": 0.906,
+        "selection": "technique \"risotto_reis\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "cook_pasta",
+      "label": "Cook pasta in the bowl (one-pot)",
+      "aliases": {
+        "de": ["Nudeln kochen", "Pasta garen", "Nudeln garen"],
+        "en": ["cook pasta", "boil noodles"]
+      },
+      "ingredientClasses": ["pasta", "liquid"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [95, 100] },
+        "timeSeconds": { "typical": 480, "range": [120, 1200] },
+        "speed": { "typical": 1, "max": 1 },
+        "reverse": true,
+        "turbo": false,
+        "accessory": { "measuringCup": "either", "attachment": null }
+      },
+      "structure": [
+        "Reverse rotation at speed 1 (reverse in 92.3 % of official steps); the time follows the package cooking time plus about 2 minutes for the heat-up.",
+        "Pasta cooks in the sauce or with enough liquid to cover it; keep the total below 3000 g."
+      ],
+      "evidence": {
+        "steps": 75,
+        "recipes": 60,
+        "officialSteps": 39,
+        "officialRecipes": 31,
+        "modes": { "customized": 75 },
+        "basis": "official",
+        "basisSteps": 39,
+        "statsMode": "customized",
+        "reverseShare": 0.923,
+        "selection": "technique \"nudeln_garen\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "cook_milk_rice_pudding",
+      "label": "Cook milk rice, pudding or porridge",
+      "aliases": {
+        "de": ["Milchreis kochen", "Pudding kochen", "Brei kochen", "Grießbrei"],
+        "en": ["cook rice pudding", "cook pudding", "cook porridge"]
+      },
+      "ingredientClasses": ["dairy", "rice_grain", "egg"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 90, "range": [80, 100] },
+        "timeSeconds": { "typical": 480, "range": [240, 1800] },
+        "speed": { "typical": 2, "max": 3 },
+        "reverse": "true for milk rice so the grains stay whole; false for smooth pudding",
+        "turbo": false,
+        "accessory": { "measuringCup": "in", "attachment": null }
+      },
+      "structure": [
+        "Milk at most 95 °C (SmartRecipe rule); long milk rice steps run at 90-100 °C with reverse."
+      ],
+      "evidence": {
+        "steps": 61,
+        "recipes": 58,
+        "officialSteps": 34,
+        "officialRecipes": 31,
+        "modes": { "customized": 61 },
+        "basis": "official",
+        "basisSteps": 34,
+        "statsMode": "customized",
+        "reverseShare": 0.265,
+        "selection": "technique \"milchreis_pudding_brei\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "cook_jam",
+      "label": "Cook jam, jelly or compote",
+      "aliases": {
+        "de": ["Marmelade kochen", "einkochen", "Gelee kochen", "Kompott kochen"],
+        "en": ["make jam", "cook jam", "cook compote"]
+      },
+      "ingredientClasses": ["fruit"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [95, 120] },
+        "timeSeconds": { "typical": 600, "range": [180, 1500] },
+        "speed": { "typical": 2, "max": 2 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": "cooking_basket_on_lid" }
+      },
+      "structure": [
+        "Measuring cup out and the cooking basket on the lid as splash guard (the basket is named before 20 % of official jam steps).",
+        "Jam boils hard: at most 2500 g in the bowl (fill rule for foaming contents).",
+        "Add a gelling test as a text step after the cooking step."
+      ],
+      "evidence": {
+        "steps": 83,
+        "recipes": 50,
+        "officialSteps": 50,
+        "officialRecipes": 27,
+        "modes": { "customized": 82, "roasting": 1 },
+        "basis": "official",
+        "basisSteps": 50,
+        "statsMode": "customized",
+        "reverseShare": 0.16,
+        "selection": "technique \"marmelade_einkochen\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "cook_in_basket",
+      "label": "Cook potatoes, rice or eggs in the cooking basket",
+      "aliases": {
+        "de": ["im Kocheinsatz garen", "Kartoffeln garen", "Reis im Garkorb kochen"],
+        "en": ["cook in the basket", "boil potatoes", "cook rice in the basket"]
+      },
+      "ingredientClasses": ["potatoes", "rice_grain", "egg", "vegetables"],
+      "device": {
+        "mode": "customized",
+        "temperature": { "typical": 100, "range": [65, 120] },
+        "timeSeconds": { "typical": 900, "range": [300, 1800] },
+        "speed": { "typical": 1, "max": 1 },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": "cooking_basket" }
+      },
+      "alternatives": [
+        {
+          "mode": "steaming",
+          "steps": 52,
+          "officialSteps": 33,
+          "timeSeconds": { "typical": 900, "range": [600, 1200] },
+          "note": "steaming program for 900 s when the basket only steams above the water."
+        }
+      ],
+      "structure": [
+        "Text step before: insert the cooking basket and fill it (\"Kocheinsatz einsetzen\", named before 90 % of these steps); water or stock goes into the bowl in a scale step.",
+        "The basket holds about 1000-1200 g of food (SmartRecipe rule).",
+        "Often combined with the steamer on top: the basket cooks a side while the steamer cooks the main item."
+      ],
+      "evidence": {
+        "steps": 109,
+        "recipes": 91,
+        "officialSteps": 87,
+        "officialRecipes": 71,
+        "modes": { "customized": 57, "steaming": 52 },
+        "basis": "official",
+        "basisSteps": 54,
+        "statsMode": "customized",
+        "reverseShare": 0.056,
+        "selection": "technique \"daempfen_gareinsatz\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "steam_in_steamer",
+      "label": "Steam in the steamer attachment (vegetables, fish, meat, dumplings)",
+      "aliases": { "de": ["dämpfen", "dampfgaren", "im Dampfgaraufsatz garen"], "en": ["steam"] },
+      "ingredientClasses": ["vegetables", "fish", "meat", "potatoes", "flour_dough"],
+      "device": {
+        "mode": "steaming",
+        "temperature": {
+          "typical": 0,
+          "range": [0, 0],
+          "note": "device-controlled; the API stores 0"
+        },
+        "timeSeconds": { "typical": 900, "range": [480, 2100] },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "out", "attachment": "steamer" }
+      },
+      "alternatives": [
+        {
+          "mode": "customized",
+          "steps": 144,
+          "officialSteps": 129,
+          "temperature": { "typical": 120, "range": [100, 120] },
+          "timeSeconds": { "typical": 600, "range": [180, 1500] },
+          "speed": { "typical": 1, "max": 1 },
+          "reverseShare": 0.341
+        }
+      ],
+      "timeByLoadClass": {
+        "vegetables": { "typical": 900, "range": [372, 3600], "steps": 73 },
+        "meat_poultry": { "typical": 1200, "range": [600, 2292], "steps": 70 },
+        "potatoes": { "typical": 900, "range": [600, 1680], "steps": 65 },
+        "fish_seafood": { "typical": 900, "range": [408, 1200], "steps": 29 },
+        "other": { "typical": 1080, "range": [360, 1260], "steps": 29 },
+        "dumplings_dough": { "typical": 1200, "range": [600, 2730], "steps": 24 },
+        "dessert_in_form": { "typical": 1200, "range": [600, 3600], "steps": 16 }
+      },
+      "structure": [
+        "Scale step before: water or stock into the bowl, typically 1000 g, never below 500 g (p10 500 g over 270 steaming steps).",
+        "Text steps before: spread the food in the steamer (\"im Dampfgaraufsatz verteilen\", 376 text steps) and set it on (\"Dampfgaraufsatz aufsetzen\", 342); name the level (deep bowl or flat insert) before 78.3 % of steaming steps.",
+        "Steaming time does not scale with food mass (fit 877 + 0.343 * grams, R² 0.06); pick it by load class (timeByLoadClass).",
+        "In 48 % of steaming steps something else cooks in the bowl below; count its mass toward the bowl limit."
+      ],
+      "notes": [
+        "Official recipes also steam in manual mode at 120 °C, speed 1, with the steamer fitted (official top settings 120 °C for 180 s or 300 s).",
+        "timeSeconds follows timing-model.json (steaming.timeAll over all 309 steaming-program steps). The 207 official steaming steps assigned to this technique give 1080 s (480-3300 s); the difference comes from the sample, not from the device."
+      ],
+      "evidence": {
+        "steps": 401,
+        "recipes": 279,
+        "officialSteps": 336,
+        "officialRecipes": 224,
+        "modes": { "steaming": 257, "customized": 144 },
+        "basis": "official",
+        "basisSteps": 207,
+        "statsMode": "steaming",
+        "reverseShare": 0,
+        "selection": "techniques \"daempfen_dampfgaraufsatz\" and \"daempfen_unbestimmt\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "sous_vide",
+      "label": "Cook sous-vide in the bowl",
+      "aliases": { "de": ["sous-vide garen", "vakuumgaren"], "en": ["sous-vide"] },
+      "ingredientClasses": ["meat", "fish", "egg"],
+      "device": {
+        "mode": "sous_vide",
+        "temperature": { "typical": 55, "range": [50, 85] },
+        "timeSeconds": { "typical": 3600, "range": [1500, 5400] },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "n/a", "attachment": null }
+      },
+      "structure": [
+        "Text step before: vacuum-sealed food into the basket, water into the bowl to cover it; refill water during long programs (31 text steps say so)."
+      ],
+      "notes": ["Only 7 steps in the corpus; the device limits come from SmartRecipe."],
+      "evidence": {
+        "steps": 7,
+        "recipes": 6,
+        "officialSteps": 6,
+        "officialRecipes": 5,
+        "modes": { "sous_vide": 7 },
+        "basis": "all",
+        "basisSteps": 7,
+        "statsMode": "sous_vide",
+        "reverseShare": 0,
+        "selection": "technique \"sous_vide\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "slow_cook",
+      "label": "Slow cook a stew or braise",
+      "aliases": {
+        "de": ["schmoren", "langsam garen", "Slow Cook"],
+        "en": ["slow cook", "braise"]
+      },
+      "ingredientClasses": ["meat", "vegetables"],
+      "device": {
+        "mode": "slow_cooking",
+        "temperature": { "typical": 90, "range": [70, 95] },
+        "timeSeconds": { "typical": 7200, "range": [1800, 14400] },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "n/a", "attachment": null }
+      },
+      "structure": [
+        "Sear in a roasting step first, then deglaze, then slow cook (official: 90 °C for 3-4 h)."
+      ],
+      "notes": ["Only 8 steps in the corpus."],
+      "evidence": {
+        "steps": 8,
+        "recipes": 8,
+        "officialSteps": 4,
+        "officialRecipes": 4,
+        "modes": { "slow_cooking": 8 },
+        "basis": "all",
+        "basisSteps": 8,
+        "statsMode": "slow_cooking",
+        "reverseShare": 0,
+        "selection": "technique \"slow_cooking\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "ferment",
+      "label": "Ferment or proof (yogurt, dough rising in the bowl)",
+      "aliases": {
+        "de": ["fermentieren", "gehen lassen", "Joghurt herstellen"],
+        "en": ["ferment", "proof", "make yogurt"]
+      },
+      "ingredientClasses": ["dairy", "flour_dough"],
+      "device": {
+        "mode": "fermentation",
+        "temperature": { "typical": 37, "range": [37, 40] },
+        "timeSeconds": { "typical": 14400, "range": [2700, 43200] },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "n/a", "attachment": null }
+      },
+      "structure": [
+        "Official recipes ferment at 40 °C for 1-12 h, member recipes at 37 °C. Yeast doughs usually rise outside the machine instead."
+      ],
+      "notes": ["Only 10 steps in the corpus."],
+      "evidence": {
+        "steps": 10,
+        "recipes": 10,
+        "officialSteps": 5,
+        "officialRecipes": 5,
+        "modes": { "fermentation": 10 },
+        "basis": "all",
+        "basisSteps": 10,
+        "statsMode": "fermentation",
+        "reverseShare": 0,
+        "selection": "technique \"fermentieren\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "cook_eggs",
+      "label": "Cook eggs with the egg program",
+      "aliases": { "de": ["Eier kochen"], "en": ["boil eggs"] },
+      "ingredientClasses": ["egg"],
+      "device": {
+        "mode": "cooking_eggs",
+        "modeSetting": {
+          "size": { "typical": "medium", "observed": { "medium": 3 } },
+          "texture": { "observed": { "hard": 2, "soft": 1 } }
+        },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "n/a", "attachment": null }
+      },
+      "structure": [
+        "The eggs go into the cooking basket; the program sets time and temperature from size and texture."
+      ],
+      "notes": ["Only 3 steps in the corpus, all size medium."],
+      "evidence": {
+        "steps": 3,
+        "recipes": 3,
+        "officialSteps": 1,
+        "officialRecipes": 1,
+        "modes": { "cooking_eggs": 3 },
+        "basis": "all",
+        "basisSteps": 3,
+        "statsMode": "cooking_eggs",
+        "reverseShare": 0,
+        "selection": "technique \"eier_kochen\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "food_processor_slice",
+      "label": "Slice or grate with the food processor attachment",
+      "aliases": {
+        "de": ["hobeln", "in Scheiben schneiden", "raspeln"],
+        "en": ["slice", "grate", "shred"]
+      },
+      "ingredientClasses": ["vegetables", "potatoes"],
+      "device": {
+        "mode": "food_processor",
+        "temperature": { "typical": 0, "range": [0, 0], "note": "no heating" },
+        "timeSeconds": { "typical": 120, "range": [15, 300] },
+        "speed": null,
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "n/a", "attachment": "food_processor" }
+      },
+      "structure": [
+        "Needs the optional food processor attachment; use it only when the installation says the user owns one (SmartRecipe flag MC_HAS_FOOD_PROCESSOR)."
+      ],
+      "evidence": {
+        "steps": 28,
+        "recipes": 24,
+        "officialSteps": 13,
+        "officialRecipes": 12,
+        "modes": { "food_processor": 28 },
+        "basis": "all",
+        "basisSteps": 28,
+        "statsMode": "food_processor",
+        "reverseShare": 0,
+        "selection": "technique \"food_processor\"",
+        "source": "corpus 2026-10"
+      }
+    },
+    {
+      "id": "preclean",
+      "label": "Pre-clean the bowl between stages",
+      "aliases": {
+        "de": ["vorreinigen", "Mixbehälter reinigen"],
+        "en": ["pre-clean", "rinse the bowl"]
+      },
+      "ingredientClasses": [],
+      "device": {
+        "mode": "precleaning",
+        "modeSetting": {
+          "duration": { "typical": "short", "observed": { "short": 14, "long": 3 } }
+        },
+        "reverse": false,
+        "turbo": false,
+        "accessory": { "measuringCup": "n/a", "attachment": null }
+      },
+      "structure": [
+        "Official recipes write a text step instead (\"Mixbehälter ausspülen\", 731 text steps); prefer the text step."
+      ],
+      "evidence": {
+        "steps": 17,
+        "recipes": 13,
+        "officialSteps": 0,
+        "officialRecipes": 0,
+        "modes": { "precleaning": 17 },
+        "basis": "all",
+        "basisSteps": 17,
+        "statsMode": "precleaning",
+        "reverseShare": 0,
+        "selection": "technique \"vorreinigen\" (member recipes only)",
+        "source": "corpus 2026-10"
+      }
+    }
+  ]
+}

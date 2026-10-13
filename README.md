@@ -64,6 +64,23 @@ npm run hooks:install   # secret scan before every commit, needs gitleaks 8.19 o
 
 See `CONTRIBUTING.md` for the pull request format and the secrets policy. The architecture is described in `docs/ARCHITECTURE.md`.
 
+## Knowledge base
+
+`knowledge/` holds the data the converter and the validator will use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers and rules written in our own words.
+
+To rebuild it from your own crawl:
+
+```sh
+npm run corpus:crawl            # public recipe API, 1 request/s, resumable, writes local/corpus/
+npm run corpus:normalize        # flat JSON lines under local/corpus/derived/
+npm run corpus:analyze          # normalizes again and runs the five analyzers
+npm run corpus:build-knowledge  # writes the JSON files in knowledge/
+```
+
+`corpus:crawl` takes `CORPUS_DIR`, `DEVICE` (default `MC3.0`) and `LOCALE` (default `de-DE`) from the environment. `corpus:build-knowledge -- --check` compares instead of writing; a rebuild from the same crawl reproduces the committed files byte for byte. It stops with exit code 1 and names the file when an analyzer output is missing.
+
+The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md` and `step-patterns.md` are written by hand from the analyzer reports.
+
 ## Disclaimer
 
 Not affiliated with Lidl, Monsieur Cuisine, Silvercrest or Mealie.

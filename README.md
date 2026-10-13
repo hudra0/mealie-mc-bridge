@@ -26,6 +26,8 @@ A recipe that has not changed since it was last sent is not sent again; the time
 
 `MC_RECIPE_STATUS` controls the last step of step 3. The default, `private-publish`, is what makes the recipe show up on the machine. `draft` stops after creating the draft; a draft is visible in the web editor only and does not show up on the device, so use it for debugging.
 
+`MC_RESOLVE_INGREDIENTS` controls the ingredient ids. Every published Monsieur Cuisine recipe links each ingredient to an id from the site's ingredient database; the app uses it for the shopping list and the ingredient filters. With the default, `exact`, the bridge looks each ingredient name up in a catalog built from published recipes (`knowledge/ingredient-catalog.json`), then in a local cache, then in the site's ingredient search, and takes an id only when the name is exactly the same apart from case and spacing. It never guesses: "Zwiebel" does not match "Zwiebeln", and the search's first hit is never used on its own. Names it cannot match go out without an id; the job page lists them. The device shows no ingredient icons either way, and a recipe without ids cooks the same. Searches are limited to one per second, and a name the search does not know is not searched again for seven days. `off` sends every ingredient without an id and makes no searches.
+
 ## Requirements
 
 - Docker with Compose
@@ -196,7 +198,7 @@ See `CONTRIBUTING.md` for the pull request format and the secrets policy. The ar
 
 ## Knowledge base
 
-`knowledge/` holds the data the converter and the validator use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers and rules written in our own words.
+`knowledge/` holds the data the converter and the validator use: hard device limits per program (`device-programs.json`), recommended ranges (`device-limits.json`), cooking techniques (`techniques.json`), timing rules (`timing-model.json`), units (`units.json`), step patterns and prompt rules (`step-patterns.md`, `prompt-rules.md`) and the ingredient catalog (`ingredient-catalog.json`: each ingredient name published recipes use, the id they link it to most, other ids seen for the same name, recipe counts and the ingredient category). It is distilled from an analysis of published Monsieur Cuisine recipes. The raw recipes are not included; the files contain only numbers, ingredient names and rules written in our own words.
 
 To rebuild it from your own crawl:
 
@@ -207,7 +209,7 @@ npm run corpus:analyze          # normalizes again and runs the five analyzers
 npm run corpus:build-knowledge  # writes the JSON files in knowledge/
 ```
 
-`corpus:crawl` takes `CORPUS_DIR`, `DEVICE` (default `MC3.0`) and `LOCALE` (default `de-DE`) from the environment. `corpus:build-knowledge -- --check` compares instead of writing; a rebuild from the same crawl reproduces the committed files byte for byte. It stops with exit code 1 and names the file when an analyzer output is missing.
+`corpus:crawl` takes `CORPUS_DIR`, `DEVICE` (default `MC3.0`) and `LOCALE` (default `de-DE`) from the environment. `corpus:build-knowledge -- --check` compares instead of writing; a rebuild from the same crawl reproduces the committed files byte for byte. It stops with exit code 1 and names the file when an analyzer output is missing. The ingredient catalog reads `derived/recipes.jsonl`, or the raw `details/` files when the normalizer has not run; the categories always come from `details/`, so a rebuild without them writes `null` categories. The build prints the number of catalog entries.
 
 The crawl needs no account. The editor and server layers of `device-programs.json` came from a logged-in capture of the website's recipe editor and from probes with a member account; they are transcribed by hand in `scripts/corpus/build-device-programs.ts`, so the build runs without that capture, but updating them needs your own. `prompt-rules.md` and `step-patterns.md` are written by hand from the analyzer reports.
 

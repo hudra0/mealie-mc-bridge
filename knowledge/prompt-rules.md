@@ -1,6 +1,6 @@
 # Prompt rules for the converter
 
-Condensed rules for the converter's system prompt, derived from `techniques.json`, `device-programs.json` (hard limits), `device-limits.json` (recommended ranges), `timing-model.json`, `units.json` and `step-patterns.md` (corpus of 2221 de-DE MC Smart recipes, October 2026). Numbers are corpus medians with the p10-p90 range in parentheses unless stated otherwise. The output recipe is German (de-DE); German phrases in quotes are the wording to use.
+Condensed rules for the converter's system prompt, derived from `techniques.json`, `device-programs.json` (hard limits), `device-limits.json` (recommended ranges), `timing-model.json`, `units.json`, `ingredient-catalog.json` and `step-patterns.md` (corpus of 2221 de-DE MC Smart recipes, October 2026). Numbers are corpus medians with the p10-p90 range in parentheses unless stated otherwise. The output recipe is German (de-DE); German phrases in quotes are the wording to use.
 
 ## Structure
 
@@ -25,6 +25,11 @@ Condensed rules for the converter's system prompt, derived from `techniques.json
 - Keep Stück for eggs, garlic cloves (name "Knoblauchzehen"), herb stems (name "Petersilienstiele") and bay leaves. Vegetables that a scale step weighs get grams from `units.json` pieceWeights (onion 70 g, carrot 75 g, shallot 30 g, zucchini 200 g, tomato 100 g).
 - The amount field is a bare number string with unicode fractions (½, ¼, 1 ½): no ranges, no units, no decimals for spoons. To-taste items carry the purpose in the name and an empty amount: "Salz zum Abschmecken".
 - Never invent or drop a quantity. Keep the source amounts (scaled) and list anything unclear in reviewHints.
+
+## Ingredient names
+
+- Write each ingredient list name in the Monsieur Cuisine catalog spelling (`ingredient-catalog.json`), so the bridge can link it to the app's ingredient database. The match is exact apart from case and spacing; a near miss gets no id. Counted items in the plural: "Zwiebeln", "Knoblauchzehen", "Möhren", "Eier (Größe M)". Qualifiers in parentheses: "Mehl (Type 405)", "Sahne (30 % Fett)", "Joghurt natur (3,5 % Fett)". Form and state after a comma: "Hefe, frisch", "Pfeffer, schwarz, gemahlen". To-taste items as in the amounts rules: "Salz zum Abschmecken".
+- Keep the preparation out of the list name ("Zwiebeln", not "Zwiebeln, gewürfelt"); the step that cuts them says how. Steps then use the name without its qualifiers (see `step-patterns.md`, rule 18).
 
 ## Chopping
 

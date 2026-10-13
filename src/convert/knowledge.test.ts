@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { NormalizedIngredient } from "../ingredients/index.js";
+import type { LocalePack } from "../locale/pack.js";
+import { dePack, enPack, packs } from "../testing/locale.js";
 import {
   ALWAYS_SELECTED,
   KNOWLEDGE_FILES,
@@ -22,6 +24,9 @@ import {
 
 const dir = fileURLToPath(new URL("../../knowledge", import.meta.url));
 const knowledge = await loadKnowledge(dir);
+
+const build = (files: KnowledgeTexts, pack: LocalePack = dePack) =>
+  buildKnowledge(files, pack, packs);
 
 async function texts(): Promise<KnowledgeTexts> {
   const read = (file: string) => readFile(join(dir, file), "utf8");
@@ -60,7 +65,15 @@ describe("loadKnowledge", () => {
       typicalFactor: 2.3,
     });
     expect(knowledge.amountTolerance).toBe(0.1);
-    expect(knowledge.volumeLiquidWords).toEqual(expect.arrayContaining(["brühe", "broth"]));
+    expect(knowledge.text.cupLiquidWords).toEqual(expect.arrayContaining(["brühe", "broth"]));
+    expect(knowledge.locale).toBe("de-DE");
+    expect(knowledge.promptRules).toContain('"Den Messbecher aus dem Deckel entfernen."');
+    expect(knowledge.promptRules).not.toContain("{{");
+    expect(knowledge.languageRules.startsWith("# German wording")).toBe(true);
+    expect(knowledge.aliases.saute_onions).toContain("andünsten");
+    expect(knowledge.selectionAliases.saute_onions).toEqual(
+      expect.arrayContaining(["andünsten", "sauté"]),
+    );
     expect(massLimit(knowledge, "bowl_max").grams).toBe(3000);
     expect(massLimit(knowledge, "steaming_liquid_min").grams).toBe(500);
     expect(ruleValue(knowledge, "speed_max_whisk")).toBe(4);
@@ -92,8 +105,8 @@ describe("loadKnowledge", () => {
 
   it("rejects invalid JSON and a wrong shape", async () => {
     const base = await texts();
-    expect(() => buildKnowledge({ ...base, units: "{" })).toThrow("units.json is not valid JSON");
-    expect(() => buildKnowledge({ ...base, timing: "{}" })).toThrow(
+    expect(() => build({ ...base, units: "{" })).toThrow("units.json is not valid JSON");
+    expect(() => build({ ...base, timing: "{}" })).toThrow(
       /timing-model\.json does not have the expected shape/,
     );
   });
@@ -106,14 +119,14 @@ describe("loadKnowledge", () => {
         ...techniques,
         techniques: techniques.techniques.filter((t) => t.id !== id),
       });
-    expect(() => buildKnowledge({ ...base, techniques: without("sear_roast") })).toThrow(
+    expect(() => build({ ...base, techniques: without("sear_roast") })).toThrow(
       "technique sear_roast is missing",
     );
     const doubled = JSON.stringify({
       ...techniques,
       techniques: [...techniques.techniques, techniques.techniques[0]],
     });
-    expect(() => buildKnowledge({ ...base, techniques: doubled })).toThrow("is listed twice");
+    expect(() => build({ ...base, techniques: doubled })).toThrow("is listed twice");
 
     const timing = JSON.parse(base.timing) as {
       massLimits: { id: string }[];
@@ -123,30 +136,79 @@ describe("loadKnowledge", () => {
       ...timing,
       massLimits: timing.massLimits.filter((limit) => limit.id !== "bowl_max"),
     };
-    expect(() => buildKnowledge({ ...base, timing: JSON.stringify(noBowl) })).toThrow(
-      "mass limit bowl_max",
-    );
+    expect(() => build({ ...base, timing: JSON.stringify(noBowl) })).toThrow("mass limit bowl_max");
     const vague = {
       ...timing,
       heatUpRules: timing.heatUpRules.map((rule) =>
         rule.id === "heatup_short" ? { ...rule, condition: "too short" } : rule,
       ),
     };
-    expect(() => buildKnowledge({ ...base, timing: JSON.stringify(vague) })).toThrow(
-      "heatup_short",
-    );
+    expect(() => build({ ...base, timing: JSON.stringify(vague) })).toThrow("heatup_short");
 
     const recommended = JSON.parse(base.recommended) as { rules: { id: string }[] };
     const noWhisk = {
       ...recommended,
       rules: recommended.rules.filter((rule) => rule.id !== "speed_max_whisk"),
     };
-    expect(() => buildKnowledge({ ...base, recommended: JSON.stringify(noWhisk) })).toThrow(
+    expect(() => build({ ...base, recommended: JSON.stringify(noWhisk) })).toThrow(
       "speed_max_whisk",
     );
 
-    expect(() => buildKnowledge({ ...base, promptRules: "no heading" })).toThrow(
+    expect(() => build({ ...base, promptRules: "no heading" })).toThrow(
       'prompt-rules.md must start with a "# " heading',
+    );
+  });
+
+  it("fills the placeholders of the neutral files from the pack of the output language", async () => {
+    const base = await texts();
+    const english = build(base, enPack);
+    expect(english.locale).toBe("en-US");
+    expect(english.promptRules).toContain('"Remove the measuring beaker from the lid."');
+    expect(english.promptRules).toContain("The output recipe is English (en-US)");
+    expect(english.promptRules).not.toContain("Mixbehälter");
+    const weigh = techniqueById(english, "weigh_ingredient");
+    expect(weigh?.structure.join(" ")).toContain('"200 g water"');
+    expect(english.aliases.saute_onions).toContain("sauté");
+    expect(english.units.vocabulary.find((entry) => entry.concept === "teaspoon")?.singular).toBe(
+      "tsp",
+    );
+    expect(english.units.densities.honey).toBe(1.4);
+  });
+
+  it("rejects a placeholder the pack cannot fill and a missing standard phrase", async () => {
+    const base = await texts();
+    expect(() =>
+      build({ ...base, promptRules: `${base.promptRules}\n- "{{phrase:nothing}}"` }),
+    ).toThrow("prompt-rules.md uses {{phrase:nothing}}, which the de-DE pack does not define");
+    const withoutPhrase: LocalePack = {
+      ...dePack,
+      phrases: {
+        ...dePack.phrases,
+        standardPhrases: Object.fromEntries(
+          Object.entries(dePack.phrases.standardPhrases).filter(([id]) => id !== "whiskOut"),
+        ),
+      },
+    };
+    expect(() => build(base, withoutPhrase)).toThrow("the standard phrase whiskOut is missing");
+  });
+
+  it("rejects technique wording for a technique techniques.json does not have", async () => {
+    const base = await texts();
+    const stray: LocalePack = {
+      ...enPack,
+      techniqueAliases: {
+        ...enPack.techniqueAliases,
+        techniques: { ...enPack.techniqueAliases.techniques, flambe: { aliases: ["flambé"] } },
+      },
+    };
+    expect(() => buildKnowledge(base, dePack, [dePack, stray])).toThrow(
+      "locales/en-US/technique-aliases.json: technique flambe is not in techniques.json",
+    );
+  });
+
+  it("names the locales that have a pack when the output locale has none", async () => {
+    await expect(loadKnowledge(dir, "fr-FR")).rejects.toThrow(
+      "there is no locale pack for fr-FR (available: de-DE, en-US)",
     );
   });
 });
@@ -161,9 +223,19 @@ describe("ingredientClassWords", () => {
 
   it("rejects a converter-rules file without the tables", async () => {
     const base = await texts();
-    expect(() => buildKnowledge({ ...base, converterRules: "{}" })).toThrow(
+    expect(() => build({ ...base, converterRules: "{}" })).toThrow(
       "converter-rules.json does not have the expected shape",
     );
+  });
+});
+
+describe("selectTechniques in any source language", () => {
+  it("finds techniques by the aliases of every pack", () => {
+    const { techniques } = selectTechniques(
+      { title: "Steamed fish", rendered: "Steam the cod over the vegetables.", ingredients: [] },
+      knowledge,
+    );
+    expect(techniques.map((t) => t.id)).toContain("steam_in_steamer");
   });
 });
 

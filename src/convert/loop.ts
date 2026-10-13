@@ -9,7 +9,7 @@ import { validateRecipeInput, type ValidationIssue } from "../recipe/validate.js
 import { DEFAULT_PRICES, estimateCost, type PriceTable } from "./cost.js";
 import { ConversionFailedError } from "./errors.js";
 import { selectTechniques, type Knowledge } from "./knowledge.js";
-import { deriveTextStepTitles, parseJsonOutput } from "./output.js";
+import { deriveTextStepTitles, parseJsonOutput, setLocale } from "./output.js";
 import { buildSystemPrompt, buildUserMessage, usableModes, type Category } from "./prompt.js";
 import { checkSanity } from "./sanity.js";
 import type {
@@ -101,7 +101,7 @@ export function createConverter(options: ConverterOptions): Converter {
   const offered: readonly Category[] =
     categories.length > 0
       ? categories
-      : defaults.map((id) => ({ id, name: "Standardkategorie (keine Kategorienliste verfügbar)" }));
+      : defaults.map((id) => ({ id, name: "Default category (no category list available)" }));
   const categoryWarning =
     categories.length > 0
       ? []
@@ -109,7 +109,7 @@ export function createConverter(options: ConverterOptions): Converter {
           `No category list was available; the recipe uses the default category ids ${defaults.join(", ")}. Check the categories in the app.`,
         ];
   const knownCategoryIds = offered.map((c) => c.id);
-  const jsonSchema = recipeInputJsonSchema(limits);
+  const jsonSchema = recipeInputJsonSchema(limits, { locale: knowledge.locale });
   const usable = usableModes(limits, attachments);
   // The same for every recipe, so the providers' prompt caches reuse it across recipes.
   const system = buildSystemPrompt(knowledge, limits, { attachments });
@@ -117,8 +117,18 @@ export function createConverter(options: ConverterOptions): Converter {
   return {
     async convert(request: ConversionRequest, opts = {}): Promise<ConversionResult> {
       const { signal } = opts;
+      if (request.locale !== knowledge.locale) {
+        throw new RangeError(
+          `This converter writes ${knowledge.locale} recipes; the request asks for ${request.locale}`,
+        );
+      }
       const { techniques } = selectTechniques(request, knowledge, options.maxTechniques, usable);
-      const user = buildUserMessage(request, offered, { techniques, usable });
+      const user = buildUserMessage(request, offered, {
+        techniques,
+        usable,
+        aliases: knowledge.aliases,
+        languageName: knowledge.pack.mc.language,
+      });
       let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
       let cost: number | undefined = 0;
       let feedback: GenerationFeedback | undefined;
@@ -162,6 +172,7 @@ export function createConverter(options: ConverterOptions): Converter {
         } else {
           lastJson = parsed.text;
           deriveTextStepTitles(parsed.value, limits.recipe.stepTitle.max);
+          setLocale(parsed.value, knowledge.locale);
           const validation = validateRecipeInput(parsed.value, limits, {
             knownCategoryIds,
             attachments,

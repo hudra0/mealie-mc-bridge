@@ -9,11 +9,13 @@ import type { ValidationIssue } from "../recipe/validate.js";
 
 export interface ConversionRequest {
   title: string;
-  // The recipe as Markdown from renderRecipeForLlm, amounts already scaled.
+  // The recipe as Markdown from renderRecipeForLlm, amounts already scaled, every source
+  // ingredient line numbered [i] in the order of ingredients.
   rendered: string;
   // The servings the amounts were scaled to.
   servings: number;
-  locale: "de-DE";
+  // The output locale; it must be the converter's (MC_LOCALE).
+  locale: string;
   // The scaled ingredients, for the plausibility checks.
   ingredients: NormalizedIngredient[];
   // Category names from Mealie, as hints for the category choice.
@@ -49,8 +51,8 @@ export interface ConversionResult {
   // Plausibility warnings of the accepted recipe, in English, uncapped: for the bridge's
   // own report (log, Mealie note), not for the recipe.
   warnings: string[];
-  // The model's review hints as the recipe carries them: German, within the recipe's
-  // limits on count and length.
+  // The model's review hints as the recipe carries them: in the output language, within the
+  // recipe's limits on count and length.
   reviewHints: string[];
   provider: string;
   model: string;

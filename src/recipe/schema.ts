@@ -15,7 +15,9 @@ import { z } from "zod";
 import type { DeviceLimits } from "./limits.js";
 import { MACHINE_STEP_KINDS } from "./modes.js";
 
-export const RECIPE_LOCALES = ["de-DE"] as const;
+// The locale must look like de-DE; whether a pack exists for it is checked against the
+// locale packs (src/locale/pack.ts) by the converter, the validator and the payload builder.
+export const RECIPE_LOCALE_PATTERN = /^[a-z]{2,3}-[A-Z]{2}$/;
 export const COMPLEXITIES = ["easy", "medium", "hard"] as const;
 export const STEP_KINDS = ["text", ...MACHINE_STEP_KINDS] as const;
 // Accessories that change what a program may do. The knowledge file caps the speed of
@@ -31,6 +33,7 @@ export const SCHEMA_LIMITS = {
   ingredientAmount: { max: 30 },
   ingredientUnit: { max: 30 },
   reviewHints: { max: 20, itemMax: 200 },
+  ingredientMapping: { max: 200 },
 } as const;
 
 const L = SCHEMA_LIMITS;
@@ -192,6 +195,23 @@ export const IngredientGroupSchema = z.strictObject({
   ingredients: z.array(IngredientSchema).min(1, "a group needs at least one ingredient"),
 });
 
+// Where an ingredient-list entry comes from: the index [i] of the source ingredient line the
+// converter was given, or null for an ingredient the source does not have. The plausibility
+// checks compare amounts and coverage through it, whatever the languages of source and
+// recipe. Not sent to Monsieur Cuisine. A missing inputIndex counts as null: providers drop
+// null fields of a structured answer (stripNulls), so the schema accepts both; the JSON schema
+// for the model still requires the field.
+export const IngredientMappingSchema = z.strictObject({
+  name: text("mapping name", L.ingredientName.min, L.ingredientName.max).describe(
+    "An ingredient name exactly as in ingredientGroups",
+  ),
+  inputIndex: int("inputIndex")
+    .min(0, "inputIndex must not be negative")
+    .nullable()
+    .optional()
+    .describe("Index [i] of the source ingredient line, or null when the source does not have it"),
+});
+
 export const NutrientSchema = z.strictObject({
   name: z.string().describe("Nutrient name, for example calories, carbohydrate, fat, protein"),
   amount: z.number().nonnegative("nutrient amount must not be negative"),
@@ -226,7 +246,7 @@ export const ServingSizeSchema = z
 export const RecipeInputSchema = z.strictObject({
   title: z.string(),
   description: z.string(),
-  locale: z.enum(RECIPE_LOCALES),
+  locale: z.string().regex(RECIPE_LOCALE_PATTERN, "locale must look like de-DE"),
   complexity: z.enum(COMPLEXITIES),
   categoryIds: z
     .array(int("category id").positive("category ids are positive"))
@@ -248,6 +268,13 @@ export const RecipeInputSchema = z.strictObject({
     )
     .max(L.reviewHints.max, `at most ${L.reviewHints.max} review hints`)
     .optional(),
+  ingredientMapping: z
+    .array(IngredientMappingSchema)
+    .max(L.ingredientMapping.max, `at most ${L.ingredientMapping.max} mapping entries`)
+    .optional()
+    .describe(
+      "One entry per ingredient-list name: the source ingredient line [i] it comes from, or null",
+    ),
 });
 
 export type RecipeInput = z.infer<typeof RecipeInputSchema>;
@@ -258,6 +285,7 @@ export type MachineStep = Exclude<RecipeStep, { kind: "text" }>;
 export type Ingredient = z.infer<typeof IngredientSchema>;
 export type IngredientGroup = z.infer<typeof IngredientGroupSchema>;
 export type Nutrient = z.infer<typeof NutrientSchema>;
+export type IngredientMapping = z.infer<typeof IngredientMappingSchema>;
 export type ServingSize = z.infer<typeof ServingSizeSchema>;
 
 type JsonNode = Record<string, unknown>;
@@ -266,11 +294,26 @@ type JsonNode = Record<string, unknown>;
 // the recipe-level bounds of the knowledge file are written into it as well, so the model
 // sees them up front. Refinements (unique ids, readyInTime >= preparationTime) and the
 // device limits per program are not expressible there; the validator still checks them.
-export function recipeInputJsonSchema(limits?: DeviceLimits): JsonNode {
+// The converter asks for ingredientMapping on every answer, so it is required here; the
+// schema keeps it optional for recipes written by hand. With a locale, the locale field
+// takes only that value.
+export function recipeInputJsonSchema(
+  limits?: DeviceLimits,
+  options: { locale?: string } = {},
+): JsonNode {
   const schema = z.toJSONSchema(RecipeInputSchema, {
     target: "draft-2020-12",
     io: "input",
   }) as JsonNode;
+  const required = Array.isArray(schema.required) ? (schema.required as string[]) : [];
+  if (!required.includes("ingredientMapping")) schema.required = [...required, "ingredientMapping"];
+  const topProps = (schema.properties ?? {}) as Record<string, JsonNode>;
+  const mappingItem = topProps.ingredientMapping?.items as JsonNode | undefined;
+  if (mappingItem) mappingItem.required = ["name", "inputIndex"];
+  if (options.locale && topProps.locale) {
+    delete topProps.locale.pattern;
+    topProps.locale.enum = [options.locale];
+  }
   if (!limits) return schema;
   const r = limits.recipe;
   const props = (node: unknown): Record<string, JsonNode> =>

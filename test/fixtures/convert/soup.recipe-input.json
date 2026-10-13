@@ -13,17 +13,72 @@
       {
         "name": "",
         "ingredients": [
-          { "name": "Zwiebeln", "amount": "1", "unit": "Stück", "isOptional": false },
-          { "name": "Knoblauchzehen", "amount": "2", "unit": "Stück", "isOptional": false },
-          { "name": "Olivenöl", "amount": "25", "unit": "g", "isOptional": false },
-          { "name": "Hokkaido-Kürbis", "amount": "500", "unit": "g", "isOptional": false },
-          { "name": "Linsen, rot", "amount": "200", "unit": "g", "isOptional": false },
-          { "name": "Gemüsebrühe", "amount": "1000", "unit": "g", "isOptional": false },
-          { "name": "Salz zum Abschmecken", "amount": "", "unit": "", "isOptional": false },
-          { "name": "Kokosmilch", "amount": "150", "unit": "g", "isOptional": false },
-          { "name": "Koriander", "amount": "1", "unit": "Bund", "isOptional": true },
-          { "name": "Kürbiskerne, geröstet", "amount": "30", "unit": "g", "isOptional": false },
-          { "name": "Croûtons zum Servieren", "amount": "", "unit": "", "isOptional": true }
+          {
+            "name": "Zwiebeln",
+            "amount": "1",
+            "unit": "Stück",
+            "isOptional": false
+          },
+          {
+            "name": "Knoblauchzehen",
+            "amount": "2",
+            "unit": "Stück",
+            "isOptional": false
+          },
+          {
+            "name": "Olivenöl",
+            "amount": "25",
+            "unit": "g",
+            "isOptional": false
+          },
+          {
+            "name": "Hokkaido-Kürbis",
+            "amount": "500",
+            "unit": "g",
+            "isOptional": false
+          },
+          {
+            "name": "Linsen, rot",
+            "amount": "200",
+            "unit": "g",
+            "isOptional": false
+          },
+          {
+            "name": "Gemüsebrühe",
+            "amount": "1000",
+            "unit": "g",
+            "isOptional": false
+          },
+          {
+            "name": "Salz zum Abschmecken",
+            "amount": "",
+            "unit": "",
+            "isOptional": false
+          },
+          {
+            "name": "Kokosmilch",
+            "amount": "150",
+            "unit": "g",
+            "isOptional": false
+          },
+          {
+            "name": "Koriander",
+            "amount": "1",
+            "unit": "Bund",
+            "isOptional": true
+          },
+          {
+            "name": "Kürbiskerne, geröstet",
+            "amount": "30",
+            "unit": "g",
+            "isOptional": false
+          },
+          {
+            "name": "Croûtons zum Servieren",
+            "amount": "",
+            "unit": "",
+            "isOptional": true
+          }
         ]
       }
     ],
@@ -87,7 +142,12 @@
         "title": "Messbecher einsetzen",
         "description": "Messbecher einsetzen."
       },
-      { "kind": "puree", "title": "Pürieren", "minutes": 1, "seconds": 0 },
+      {
+        "kind": "puree",
+        "title": "Pürieren",
+        "minutes": 1,
+        "seconds": 0
+      },
       {
         "kind": "scale",
         "title": "150 g Kokosmilch",
@@ -110,5 +170,51 @@
       }
     ]
   },
-  "reviewHints": ["Croûtons nach Belieben, Menge nicht angegeben."]
+  "reviewHints": ["Croûtons nach Belieben, Menge nicht angegeben."],
+  "ingredientMapping": [
+    {
+      "name": "Zwiebeln",
+      "inputIndex": 0
+    },
+    {
+      "name": "Knoblauchzehen",
+      "inputIndex": 1
+    },
+    {
+      "name": "Olivenöl",
+      "inputIndex": 2
+    },
+    {
+      "name": "Hokkaido-Kürbis",
+      "inputIndex": 3
+    },
+    {
+      "name": "Linsen, rot",
+      "inputIndex": 4
+    },
+    {
+      "name": "Gemüsebrühe",
+      "inputIndex": 5
+    },
+    {
+      "name": "Salz zum Abschmecken",
+      "inputIndex": 6
+    },
+    {
+      "name": "Kokosmilch",
+      "inputIndex": 7
+    },
+    {
+      "name": "Koriander",
+      "inputIndex": 8
+    },
+    {
+      "name": "Kürbiskerne, geröstet",
+      "inputIndex": 9
+    },
+    {
+      "name": "Croûtons zum Servieren",
+      "inputIndex": 10
+    }
+  ]
 }

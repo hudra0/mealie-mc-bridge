@@ -4,44 +4,48 @@
 // limit table cannot see. Errors go back to the model for a correction round, warnings
 // become review hints.
 //
+// Coverage and amounts are compared through the recipe's ingredientMapping (mapping.ts),
+// which links each ingredient-list entry to the source line it comes from, so the checks
+// work whatever the languages of source and recipe. Step texts are read in the output
+// language, with the words of its locale pack.
+//
 // Each rule is a data entry (id, what it checks) with a function. Thresholds come from
 // the knowledge base: timing-model.json massLimits and heatUpRules, device-limits.json
 // rules, techniques.json temperature ranges.
 
+import type { NormalizedIngredient } from "../ingredients/index.js";
 import type { DeviceLimits } from "../recipe/limits.js";
 import type { RecipeInput, RecipeStep } from "../recipe/schema.js";
 import type { ValidationIssue } from "../recipe/validate.js";
-import type { NormalizedIngredient } from "../ingredients/index.js";
-import { normalizeUnit } from "../ingredients/index.js";
 import {
   massLimit,
+  phrase,
   ruleValue,
   techniqueById,
   type Knowledge,
   type Technique,
 } from "./knowledge.js";
 import {
-  ADDING,
-  EMPTYING,
-  OUTSIDE_BOWL,
-  RESERVED,
+  attributeItem,
+  inputsNamedIn,
+  linkIngredients,
+  mentionedItems,
+  type IngredientLinks,
+} from "./mapping.js";
+import {
   amountMentions,
-  attributeIngredient,
   clauses,
   gramsFor,
-  indexIngredients,
-  matchScore,
-  mentionedIngredients,
-  nameKeys,
-  stem,
+  listUnit,
+  parseListAmount,
   stepTemperature,
   stepText,
   traceBowl,
-  words,
-  type IngredientIndex,
   type StepTrace,
 } from "./mass.js";
 import type { ConversionRequest } from "./types.js";
+
+export { parseListAmount } from "./mass.js";
 
 export interface SanityResult {
   errors: ValidationIssue[];
@@ -60,7 +64,7 @@ export interface SanityContext {
   knowledge: Knowledge;
   limits: DeviceLimits;
   traces: StepTrace[];
-  index: IngredientIndex;
+  links: IngredientLinks;
 }
 
 export interface SanityRule {
@@ -242,7 +246,7 @@ export const whiskRule: SanityRule = {
           findings.push(
             error(
               `${stepPath(index)}.speed`,
-              `${stepLabel(index, step)} runs at speed ${step.speed} while the butterfly whisk is fitted; the limit is ${maxSpeed}. Lower the speed, or remove the whisk in a text step ("Rühraufsatz entfernen") first`,
+              `${stepLabel(index, step)} runs at speed ${step.speed} while the butterfly whisk is fitted; the limit is ${maxSpeed}. Lower the speed, or remove the whisk in a text step ("${phrase(knowledge, "whiskOut")}") first`,
             ),
           );
         }
@@ -316,77 +320,116 @@ export const textBeforeMachineStepRule: SanityRule = {
   },
 };
 
-const nameStems = (text: string) => words(text).map(stem);
-
-// Input ingredients the ingredient list must carry: parsed, not optional, with a name.
-function listable(request: SanityContext["request"], index: IngredientIndex): number[] {
-  return request.ingredients.flatMap((ingredient, position) =>
-    ingredient.source === "unparsed" ||
-    ingredient.optional ||
-    (index.keys[position] ?? []).length === 0
+// Source ingredients the recipe must carry: parsed, not optional, with a name.
+function listable(ingredients: readonly NormalizedIngredient[]): number[] {
+  return ingredients.flatMap((ingredient, position) =>
+    ingredient.source === "unparsed" || ingredient.optional || ingredient.food.trim() === ""
       ? []
       : [position],
   );
 }
 
-export const ingredientListedRule: SanityRule = {
-  id: "ingredient_listed",
+const source = (ingredients: readonly NormalizedIngredient[], position: number) =>
+  `[${position}] "${ingredients[position]?.food ?? ""}"`;
+
+export const ingredientMappingRule: SanityRule = {
+  id: "ingredient_mapping",
   description:
-    "Every parsed, non-optional input ingredient appears in the ingredient list. When most names do not match (a translated recipe), one warning replaces the errors.",
-  check({ recipe, request, index }) {
-    const entries = recipe.servingSize.ingredientGroups.flatMap((group) =>
-      group.ingredients.map((entry) => nameStems(entry.name)),
-    );
-    const candidates = listable(request, index);
-    const missing = candidates.filter(
-      (position) => !entries.some((stems) => matchScore(index.keys[position] ?? [], stems) > 0),
-    );
-    if (missing.length === 0) return [];
-    if (missing.length * 2 > candidates.length) {
+    "Every parsed, non-optional source ingredient is linked to an ingredient-list entry by ingredientMapping, every mapping entry names a list entry and a source line that exist, and every list entry is mapped. Source lines the mapping leaves out but the list names in the same language count, with one summary warning; a recipe without a mapping is checked by name only and gets at most one summary warning.",
+  check({ request, knowledge, links }) {
+    const text = knowledge.text;
+    const inputs = request.ingredients;
+    const candidates = listable(inputs);
+    const listNames = links.items.map((item) => item.name);
+    if (!links.hasMapping) {
+      const found = inputsNamedIn(text, inputs, listNames);
+      const missing = candidates.filter((position) => !found.has(position));
+      if (missing.length === 0) return [];
       return [
         warning(
           "servingSize.ingredientGroups",
-          `${missing.length} of ${candidates.length} ingredients of the recipe are not found by name in the ingredient list; check that none was dropped`,
+          `${missing.length} of ${candidates.length} ingredients of the recipe are not found by name in the ingredient list, and the recipe has no ingredientMapping; check that none was dropped`,
         ),
       ];
     }
-    return missing.map((position) => {
-      const food = request.ingredients[position]?.food ?? "";
-      return error(
-        "servingSize.ingredientGroups",
-        `the ingredient "${food}" of the recipe is missing from the ingredient list; never drop an ingredient: list it with its amount and keep "${food}" in the name`,
+    const findings: Finding[] = [];
+    for (const problem of links.unknownNames) {
+      findings.push(
+        error(
+          `ingredientMapping[${problem.position}].name`,
+          `ingredientMapping names "${problem.name}", which is not in the ingredient list; use the list name exactly`,
+        ),
       );
-    });
+    }
+    for (const problem of links.badIndices) {
+      findings.push(
+        error(
+          `ingredientMapping[${problem.position}].inputIndex`,
+          `ingredientMapping links "${problem.name}" to [${problem.inputIndex}], but the source has ingredients [0] to [${inputs.length - 1}] only`,
+        ),
+      );
+    }
+    const unmapped = new Set(links.unmappedInputs);
+    const left = candidates.filter((position) => unmapped.has(position));
+    const byName = inputsNamedIn(text, inputs, listNames);
+    const named = left.filter((position) => byName.has(position));
+    for (const position of left.filter((p) => !byName.has(p))) {
+      findings.push(
+        error(
+          "ingredientMapping",
+          `the source ingredient ${source(inputs, position)} is not in ingredientMapping; never drop an ingredient: list it with its amount and add a mapping entry with inputIndex ${position}`,
+        ),
+      );
+    }
+    if (named.length > 0) {
+      findings.push(
+        warning(
+          "ingredientMapping",
+          `${named.length} source ingredient(s) have no ingredientMapping entry and were matched by name: ${named.map((p) => source(inputs, p)).join(", ")}; check their amounts`,
+        ),
+      );
+    }
+    if (links.unmappedItems.length > 0) {
+      const names = links.unmappedItems.map((item) => `"${links.items[item]?.name ?? ""}"`);
+      findings.push(
+        warning(
+          "ingredientMapping",
+          `the ingredient list has entries without an ingredientMapping entry (${names.join(", ")}); their amounts were not compared with the recipe`,
+        ),
+      );
+    }
+    return findings;
   },
 };
 
 export const ingredientReferencedRule: SanityRule = {
   id: "ingredient_referenced",
   description:
-    "Every input ingredient appears in at least one step. When most names do not appear (a translated recipe), one warning replaces the list.",
-  check({ recipe, request, index }) {
+    "Every ingredient-list entry is named in at least one step. When most names do not appear, one warning replaces the list.",
+  check({ recipe, knowledge, links }) {
+    const text = knowledge.text;
     const stems = recipe.servingSize.steps.flatMap((step) =>
-      words("description" in step ? `${step.title} ${step.description}` : step.title).map(stem),
+      text
+        .words("description" in step ? `${step.title} ${step.description}` : step.title)
+        .map(text.stem),
     );
-    const named = request.ingredients.filter(
-      (_, position) => (index.keys[position] ?? []).length > 0,
-    );
-    const missing = request.ingredients.filter((_, position) => {
-      const keys = index.keys[position] ?? [];
-      return keys.length > 0 && matchScore(keys, stems) === 0;
+    const named = links.items.filter((_, position) => (links.keys[position] ?? []).length > 0);
+    const missing = links.items.filter((_, position) => {
+      const keys = links.keys[position] ?? [];
+      return keys.length > 0 && text.matchScore(keys, stems) === 0;
     });
     if (missing.length > 1 && missing.length * 2 > named.length) {
       return [
         warning(
           "servingSize.steps",
-          `${missing.length} of ${named.length} ingredients of the recipe are not named in any step, as in a translated recipe; check that each is used`,
+          `${missing.length} of ${named.length} ingredients of the list are not named in any step; check that each is used`,
         ),
       ];
     }
-    return missing.map((ingredient) =>
+    return missing.map((item) =>
       warning(
         "servingSize.steps",
-        `the ingredient "${ingredient.food}" is not named in any step; check that it is used`,
+        `the ingredient "${item.name}" is not named in any step; check that it is used`,
       ),
     );
   },
@@ -415,17 +458,17 @@ interface Amount {
 function amountIn(
   value: number,
   unit: string | null,
-  food: string,
+  food: string | readonly string[],
   knowledge: Knowledge,
 ): Amount | null {
   const dim = dimension(unit);
   if (dim !== "weight") return { dimension: dim, value };
-  const grams = gramsFor(value, unit, food, knowledge.units);
+  const grams = gramsFor(knowledge.text, value, unit, food, knowledge.units);
   return grams === null ? null : { dimension: "weight", value: grams };
 }
 
-// The rounding slack an amount may grow by: one step of the gram grid of units.json, half
-// a spoon or half a piece.
+// The rounding slack an amount may grow by: one step of the gram grid of the pack's unit
+// rules, half a spoon or half a piece.
 function slack(amount: Amount, knowledge: Knowledge): number {
   if (amount.dimension === "weight") {
     const band = knowledge.units.roundingGrid.grams.find(
@@ -457,31 +500,63 @@ function required(input: Amount, knowledge: Knowledge): number {
 const VOLUME_UNITS = new Set(["cup", "Tasse"]);
 
 // A cup of a solid (grated cheese, cherry tomatoes) has a weight the bridge cannot know:
-// 240 ml times a density holds for liquids only (converter-rules.json volumeLiquids).
+// 240 ml times a density holds for liquids only (the liquid words of every pack).
 function unknownVolume(ingredient: NormalizedIngredient, knowledge: Knowledge): boolean {
   if (ingredient.unit === null || !VOLUME_UNITS.has(ingredient.unit)) return false;
-  return matchScore(nameKeys(ingredient.food), knowledge.volumeLiquidWords.map(stem)) === 0;
+  const text = knowledge.text;
+  return text.matchScore(text.nameKeys(ingredient.food), text.cupLiquidWords.map(text.stem)) === 0;
 }
 
 // "plus bis zu ½ Tasse mehr zum Verdünnen", "+ etwas zum Einfetten": the recipe allows more
 // than its amount. The parser keeps that phrase in the note, so the model reads it as the
 // source wrote it, and the amount has no upper bound.
-const MORE_ALLOWED = /(?:^|\s)(?:plus|\+)\s.*(?:mehr|more|etwas|extra)/iu;
-const openEnded = (ingredient: NormalizedIngredient) =>
-  ingredient.quantityMax === null && MORE_ALLOWED.test(ingredient.note);
+const openEnded = (ingredient: NormalizedIngredient, knowledge: Knowledge) =>
+  ingredient.quantityMax === null && knowledge.text.moreAllowed.test(ingredient.note);
 
-// The input amount of an ingredient: the upper end of a range for the upper bound, the
-// lower end for the lower bound. Null when unknown, also for a cup of a solid.
+// The source amount of an ingredient: the upper end of a range for the upper bound, the
+// lower end for the lower bound. Null when unknown, also for a cup of a solid. `alsoNamed`
+// are the list names it became, for piece weights and densities its own name lacks.
 function inputAmount(
   ingredient: NormalizedIngredient,
   knowledge: Knowledge,
   end: "max" | "min" = "max",
+  alsoNamed: readonly string[] = [],
 ): Amount | null {
   const value =
     end === "max" ? (ingredient.quantityMax ?? ingredient.quantity) : ingredient.quantity;
   if (value === null || ingredient.source === "unparsed") return null;
   if (unknownVolume(ingredient, knowledge)) return null;
-  return amountIn(value, ingredient.unit, ingredient.food, knowledge);
+  return amountIn(value, ingredient.unit, [ingredient.food, ...alsoNamed], knowledge);
+}
+
+// The source amount of a cluster: the sum over its source lines. To-taste lines without an
+// amount add nothing; an unparsed line, an unknown conversion or two dimensions make the
+// amount unknown. Null as well for a cluster without source lines.
+function clusterAmount(
+  ctx: SanityContext,
+  cluster: number,
+  end: "max" | "min",
+): { amount: Amount; openEnded: boolean } | null {
+  const { links, request, knowledge } = ctx;
+  const entry = links.clusters[cluster];
+  if (!entry || entry.inputs.length === 0) return null;
+  const names = entry.items.map((item) => links.items[item]?.name ?? "");
+  let dimension: Dimension | null = null;
+  let sum = 0;
+  let open = false;
+  for (const position of entry.inputs) {
+    const ingredient = request.ingredients[position];
+    if (!ingredient) return null;
+    if (ingredient.source === "unparsed") return null;
+    if (ingredient.quantity === null && ingredient.quantityMax === null) continue;
+    const amount = inputAmount(ingredient, knowledge, end, names);
+    if (!amount) return null;
+    if (dimension !== null && dimension !== amount.dimension) return null;
+    dimension = amount.dimension;
+    sum += amount.value;
+    if (openEnded(ingredient, knowledge)) open = true;
+  }
+  return dimension === null ? null : { amount: { dimension, value: sum }, openEnded: open };
 }
 
 // The share of the input a recipe that was scaled down on purpose (fewer servings than
@@ -497,62 +572,74 @@ const scaled = (amount: Amount, share: number): Amount => ({
   value: amount.value * share,
 });
 
-// Whether a step that is not a scale step names the ingredient without a counted addition
-// of it ("die restliche Brühe dazugeben", "mit der Brühe ablöschen"): it may add the rest.
-function mayAddRest(ctx: SanityContext, position: number, counted: readonly Addition[]): boolean {
+// Whether a step that is not a scale step names an item of the cluster without a counted
+// addition of it ("die restliche Brühe dazugeben", "mit der Brühe ablöschen"): it may add
+// the rest.
+function mayAddRest(ctx: SanityContext, cluster: number, counted: readonly Addition[]): boolean {
   const steps = new Set(counted.map((addition) => addition.stepIndex));
+  const items = new Set(ctx.links.clusters[cluster]?.items ?? []);
   return ctx.recipe.servingSize.steps.some(
     (step, stepIndex) =>
       step.kind !== "scale" &&
       !steps.has(stepIndex) &&
-      mentionedIngredients(stepText(step), ctx.index).includes(position),
+      mentionedItems(ctx.knowledge.text, stepText(step), ctx.links).some((item) => items.has(item)),
   );
 }
 
-// Setting a portion aside, collecting it or emptying the bowl: a later addition of the same
-// ingredient may be that portion going back in.
-const SET_ASIDE = new RegExp(`${EMPTYING.source}|${RESERVED.source}`, "iu");
-
-// A text clause that puts back a portion weighed or prepared earlier: "die beiseitegestellten
-// 400 g Birnen wieder dazugeben", "die abgewogenen 150 g Hirse hineingeben", "die aus 200 g
-// Sahne geschlagene Sahne unterheben". Its amount was counted when it was weighed.
-const REUSED = new RegExp(`${RESERVED.source}|abgewogen|wieder|geschlagen`, "iu");
-
-// Whether a step after `from`, up to and including `to`, sets a portion aside.
+// Whether a step after `from`, up to and including `to`, sets a portion aside or empties the
+// bowl: a later addition of the same ingredient may be that portion going back in.
 function setAsideBetween(ctx: SanityContext, from: number, to: number): boolean {
-  return ctx.recipe.servingSize.steps
-    .slice(from + 1, to + 1)
-    .some((step) => SET_ASIDE.test(stepText(step)));
+  const text = ctx.knowledge.text;
+  return ctx.recipe.servingSize.steps.slice(from + 1, to + 1).some((step) => {
+    const source = stepText(step);
+    return text.emptying.test(source) || text.reserved.test(source);
+  });
 }
 
-const show = (amount: Amount) =>
-  amount.dimension === "weight"
-    ? `${Math.round(amount.value)} g`
-    : `${Math.round(amount.value * 100) / 100}${amount.dimension === "count" ? "" : ` ${amount.dimension === "tbsp" ? "El" : amount.dimension === "tsp" ? "Tl" : amount.dimension}`}`;
+function show(amount: Amount, knowledge: Knowledge): string {
+  if (amount.dimension === "weight") return `${Math.round(amount.value)} g`;
+  const value = `${Math.round(amount.value * 100) / 100}`;
+  if (amount.dimension === "count") return value;
+  const unit =
+    amount.dimension === "tbsp"
+      ? knowledge.text.unitLabel("tablespoon")
+      : amount.dimension === "tsp"
+        ? knowledge.text.unitLabel("teaspoon")
+        : amount.dimension;
+  return `${value} ${unit}`;
+}
+
+// The names of a cluster's list items, for messages.
+const clusterNames = (ctx: SanityContext, cluster: number) =>
+  (ctx.links.clusters[cluster]?.items ?? [])
+    .map((item) => `"${ctx.links.items[item]?.name ?? ""}"`)
+    .join(" and ");
 
 export interface Addition {
-  ingredient: number;
+  // The list item the step adds.
+  item: number;
   stepIndex: number;
   amount: Amount;
   source: "scale" | "text";
 }
 
-// The amounts the steps add per input ingredient: scale steps that name exactly one input
-// ingredient, and amounts such as "2 Tl Salz" in step texts. A text amount counts only in a
-// clause with an adding verb that does not put it outside the bowl, and once per step:
-// "600 g Kartoffeln schälen", "die 3 Nelken entfernen" or "in den Dampfgaraufsatz
-// geben" add nothing, and neither does a portion that goes back in. A text amount equal to a
-// scale step of the same ingredient next to it describes the same addition.
+// The amounts the steps add per list item: scale steps that name exactly one item, and
+// amounts such as "2 Tl Salz" in step texts. A text amount counts only in a clause with an
+// adding verb that does not put it outside the bowl, and once per step: "600 g Kartoffeln
+// schälen", "die 3 Nelken entfernen" or "in den Dampfgaraufsatz geben" add nothing, and
+// neither does a portion that goes back in. A text amount equal to a scale step of the same
+// item next to it describes the same addition.
 export function collectAdditions(ctx: SanityContext): Addition[] {
-  const { recipe, index, knowledge } = ctx;
+  const { recipe, links, knowledge } = ctx;
+  const text = knowledge.text;
   const additions: Addition[] = [];
   recipe.servingSize.steps.forEach((step, stepIndex) => {
-    const text = stepText(step);
+    const source = stepText(step);
     if (step.kind === "scale") {
-      const ingredient = attributeIngredient(text, index);
-      if (ingredient !== null) {
+      const item = attributeItem(text, source, links);
+      if (item !== null) {
         additions.push({
-          ingredient,
+          item,
           stepIndex,
           amount: { dimension: "weight", value: step.grams },
           source: "scale",
@@ -562,23 +649,24 @@ export function collectAdditions(ctx: SanityContext): Addition[] {
     }
     if (step.kind !== "text") return;
     const seen = new Set<string>();
-    for (const clause of clauses(text)) {
-      if (!ADDING.test(clause) || OUTSIDE_BOWL.test(clause) || REUSED.test(clause)) continue;
-      for (const mention of amountMentions(clause)) {
-        const ingredient = attributeIngredient(mention.phrase, index);
-        const food = ingredient === null ? undefined : ctx.request.ingredients[ingredient]?.food;
-        if (ingredient === null || food === undefined) continue;
-        const amount = amountIn(mention.amount, mention.unit, food, knowledge);
+    for (const clause of clauses(source)) {
+      if (!text.adding.test(clause) || text.outsideBowl.test(clause) || text.reused.test(clause))
+        continue;
+      for (const mention of amountMentions(text, clause)) {
+        const item = attributeItem(text, mention.phrase, links);
+        const name = item === null ? undefined : links.items[item]?.name;
+        if (item === null || name === undefined) continue;
+        const amount = amountIn(mention.amount, mention.unit, name, knowledge);
         if (!amount) continue;
-        const key = `${ingredient}|${amount.dimension}|${Math.round(amount.value * 100)}`;
+        const key = `${item}|${amount.dimension}|${Math.round(amount.value * 100)}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        additions.push({ ingredient, stepIndex, amount, source: "text" });
+        additions.push({ item, stepIndex, amount, source: "text" });
       }
     }
   });
   const same = (a: Addition, b: Addition) =>
-    a.ingredient === b.ingredient &&
+    a.item === b.item &&
     a.amount.dimension === b.amount.dimension &&
     Math.abs(a.amount.value - b.amount.value) < 0.5;
   return additions.filter(
@@ -596,28 +684,32 @@ export function collectAdditions(ctx: SanityContext): Addition[] {
 export const amountBalanceRule: SanityRule = {
   id: "amount_balance",
   description:
-    'Amounts in steps (summed per ingredient) and in the ingredient list stay within the tolerance of converter-rules.json (or one rounding step) of the input amount, in both directions. Too much in the steps is an error only when scale steps alone add it with no step between them that sets a portion aside; otherwise a warning. The step sum is checked from below only when every step that names the ingredient adds a counted amount. Open-ended amounts ("plus mehr") have no upper bound; cups of solids are not checked.',
+    'Amounts in steps (summed per mapped ingredient) and in the ingredient list stay within the tolerance of converter-rules.json (or one rounding step) of the source amount, in both directions. Too much in the steps is an error only when scale steps alone add it with no step between them that sets a portion aside; otherwise a warning. The step sum is checked from below only when every step that names the ingredient adds a counted amount. Open-ended amounts ("plus mehr") have no upper bound; cups of solids are not checked. Ingredients without a mapping entry are not compared.',
   check(ctx) {
-    const { request, knowledge, recipe, index } = ctx;
+    const { knowledge, links } = ctx;
+    const text = knowledge.text;
     const findings: Finding[] = [];
     const additions = collectAdditions(ctx);
     const share = keptShare(ctx);
-    request.ingredients.forEach((ingredient, position) => {
-      const input = inputAmount(ingredient, knowledge);
+    links.clusters.forEach((cluster, index) => {
+      const input = clusterAmount(ctx, index, "max");
       if (!input) return;
-      const limit = openEnded(ingredient) ? Number.POSITIVE_INFINITY : allowed(input, knowledge);
+      const names = clusterNames(ctx, index);
+      const limit = input.openEnded ? Number.POSITIVE_INFINITY : allowed(input.amount, knowledge);
       const own = additions.filter(
         (addition) =>
-          addition.ingredient === position && addition.amount.dimension === input.dimension,
+          cluster.items.includes(addition.item) &&
+          addition.amount.dimension === input.amount.dimension,
       );
       const steps = own.map((a) => a.stepIndex + 1).join(", ");
       let total = 0;
+      let reported = false;
       for (const [k, addition] of own.entries()) {
         total += addition.amount.value;
         if (total <= limit) continue;
         const contributing = own.slice(0, k + 1);
         const firstStep = contributing[0]?.stepIndex ?? addition.stepIndex;
-        const sum = show({ dimension: input.dimension, value: total });
+        const sum = show({ dimension: input.amount.dimension, value: total }, knowledge);
         // A text amount may describe an addition counted elsewhere, and a portion set aside
         // may go back in: the bridge cannot tell, so the cook checks.
         const uncertain =
@@ -627,88 +719,77 @@ export const amountBalanceRule: SanityRule = {
           uncertain
             ? warning(
                 stepPath(addition.stepIndex),
-                `"${ingredient.food}" may be added more than once: the steps add ${sum} (step ${steps}), the recipe has ${show(input)}; check that a reserved portion is not counted twice`,
+                `${names} may be added more than once: the steps add ${sum} (step ${steps}), the recipe has ${show(input.amount, knowledge)}; check that a reserved portion is not counted twice`,
               )
             : error(
                 stepPath(addition.stepIndex),
-                `the steps add ${sum} of "${ingredient.food}" (step ${steps}), but the recipe has ${show(input)}; never add more than the recipe gives`,
+                `the steps add ${sum} of ${names} (step ${steps}), but the recipe has ${show(input.amount, knowledge)}; never add more than the recipe gives`,
               ),
         );
-        return;
+        reported = true;
+        break;
       }
-      const least = inputAmount(ingredient, knowledge, "min");
+      if (reported) return;
+      const least = clusterAmount(ctx, index, "min");
       const first = own[0];
-      if (!least || !first || mayAddRest(ctx, position, own)) return;
-      const expected = scaled(least, share);
+      if (!least || !first || mayAddRest(ctx, index, own)) return;
+      const expected = scaled(least.amount, share);
       if (total < required(expected, knowledge)) {
         findings.push(
           error(
             stepPath(first.stepIndex),
-            `the steps add only ${show({ dimension: input.dimension, value: total })} of "${ingredient.food}" (step ${steps}), but the recipe has ${show(expected)}; keep the amount from the input and add all of it`,
+            `the steps add only ${show({ dimension: input.amount.dimension, value: total }, knowledge)} of ${names} (step ${steps}), but the recipe has ${show(expected, knowledge)}; keep the amount from the input and add all of it`,
           ),
         );
       }
     });
 
-    // Ingredient-list entries per input ingredient, with their amounts in its dimension.
-    const listed = new Map<number, { path: string; amount: Amount | null }[]>();
-    recipe.servingSize.ingredientGroups.forEach((group, g) => {
-      group.ingredients.forEach((entry, k) => {
-        const position = attributeIngredient(entry.name, index);
-        const ingredient = position === null ? undefined : request.ingredients[position];
-        if (position === null || !ingredient) return;
-        const path = `servingSize.ingredientGroups[${g}].ingredients[${k}].amount`;
-        const value =
-          typeof entry.amount === "number" ? entry.amount : parseListAmount(entry.amount);
-        const unit =
-          entry.unit.trim() === "" ? null : (normalizeUnit(entry.unit)?.code ?? entry.unit);
-        const output = value === null ? null : amountIn(value, unit, ingredient.food, knowledge);
-        listed.set(position, [...(listed.get(position) ?? []), { path, amount: output }]);
-        const input = inputAmount(ingredient, knowledge);
-        if (!input || !output || output.dimension !== input.dimension) return;
-        if (!openEnded(ingredient) && output.value > allowed(input, knowledge)) {
+    // Ingredient-list entries per cluster, with their amounts in its dimension.
+    links.clusters.forEach((cluster, index) => {
+      const input = clusterAmount(ctx, index, "max");
+      const least = clusterAmount(ctx, index, "min");
+      if (!input) return;
+      const entries = cluster.items.flatMap((item) => {
+        const listed = links.items[item];
+        if (!listed) return [];
+        return listed.entries.map(({ path, entry }) => {
+          const value =
+            typeof entry.amount === "number" ? entry.amount : parseListAmount(entry.amount);
+          const unit = listUnit(text, entry.unit);
+          const amount = value === null ? null : amountIn(value, unit, entry.name, knowledge);
+          return { path: `${path}.amount`, name: entry.name, amount };
+        });
+      });
+      for (const entry of entries) {
+        const output = entry.amount;
+        if (!output || output.dimension !== input.amount.dimension) continue;
+        if (!input.openEnded && output.value > allowed(input.amount, knowledge)) {
           findings.push(
             error(
-              path,
-              `the ingredient list gives ${show(output)} of "${entry.name}", but the recipe has ${show(input)}; keep the scaled amounts from the input`,
+              entry.path,
+              `the ingredient list gives ${show(output, knowledge)} of "${entry.name}", but the recipe has ${show(input.amount, knowledge)}; keep the scaled amounts from the input`,
             ),
           );
         }
-      });
-    });
-    for (const [position, entries] of listed) {
-      const ingredient = request.ingredients[position];
-      const least = ingredient ? inputAmount(ingredient, knowledge, "min") : null;
+      }
       const first = entries[0];
-      if (!ingredient || !least || !first) continue;
+      if (!least || !first) return;
       // Entries in another unit or without a readable amount: the sum is unknown.
-      if (entries.some((entry) => entry.amount?.dimension !== least.dimension)) continue;
+      if (entries.some((entry) => entry.amount?.dimension !== least.amount.dimension)) return;
       const total = entries.reduce((sum, entry) => sum + (entry.amount?.value ?? 0), 0);
-      const expected = scaled(least, share);
+      const expected = scaled(least.amount, share);
       if (total < required(expected, knowledge)) {
         findings.push(
           error(
             first.path,
-            `the ingredient list gives only ${show({ dimension: least.dimension, value: total })} of "${ingredient.food}", but the recipe has ${show(expected)}; keep the scaled amounts from the input`,
+            `the ingredient list gives only ${show({ dimension: least.amount.dimension, value: total }, knowledge)} of ${clusterNames(ctx, index)}, but the recipe has ${show(expected, knowledge)}; keep the scaled amounts from the input`,
           ),
         );
       }
-    }
+    });
     return findings;
   },
 };
-
-const LIST_FRACTIONS: Readonly<Record<string, number>> = { "½": 0.5, "¼": 0.25, "¾": 0.75 };
-
-// An ingredient-list amount: "200", "1 ½", "½", "1,5". Ranges and words give null.
-export function parseListAmount(text: string): number | null {
-  const trimmed = text.trim();
-  if (trimmed === "") return null;
-  const mixed = /^(\d+)?\s*([½¼¾])$/u.exec(trimmed);
-  if (mixed?.[2]) return Number(mixed[1] ?? 0) + (LIST_FRACTIONS[mixed[2]] ?? 0);
-  const value = Number(trimmed.replace(",", "."));
-  return Number.isFinite(value) ? value : null;
-}
 
 export const machineStepDescriptionRule: SanityRule = {
   id: "machine_step_description",
@@ -729,9 +810,6 @@ export const machineStepDescriptionRule: SanityRule = {
   },
 };
 
-const titleMatches = (title: string, aliases: readonly string[]) =>
-  matchScore(nameKeys(title), aliases.flatMap(nameKeys)) > 0;
-
 // The temperature range of a technique's manual-mode setting: its main program, or the
 // manual alternative when the main program is another mode.
 const manualRange = (technique: Technique) =>
@@ -740,10 +818,17 @@ const manualRange = (technique: Technique) =>
     : technique.alternatives?.find((alternative) => alternative.mode === "customized")?.temperature
         ?.range;
 
+// Whether a step title is worded like the technique in the output language.
+function titleMatches(knowledge: Knowledge, title: string, technique: Technique): boolean {
+  const text = knowledge.text;
+  const aliases = knowledge.aliases[technique.id] ?? [];
+  return text.matchScore(text.nameKeys(title), aliases.flatMap(text.nameKeys)) > 0;
+}
+
 // Which steps a technique's temperature range applies to, and which range.
 export const TEMPERATURE_CONVENTIONS: readonly {
   technique: string;
-  applies: (step: RecipeStep, technique: Technique) => boolean;
+  applies: (step: RecipeStep, technique: Technique, knowledge: Knowledge) => boolean;
   range: (technique: Technique) => readonly [number, number] | undefined;
 }[] = [
   {
@@ -754,10 +839,10 @@ export const TEMPERATURE_CONVENTIONS: readonly {
   {
     // Manual sauté steps; sautéing with the roasting program falls under sear_roast.
     technique: "saute_onions",
-    applies: (step, technique) =>
+    applies: (step, technique, knowledge) =>
       step.kind === "customized" &&
       step.temperature > 0 &&
-      titleMatches(step.title, technique.aliases.de),
+      titleMatches(knowledge, step.title, technique),
     range: manualRange,
   },
 ];
@@ -773,7 +858,7 @@ export const temperatureConventionRule: SanityRule = {
       const range = technique ? convention.range(technique) : undefined;
       if (!technique || !range) continue;
       recipe.servingSize.steps.forEach((step, index) => {
-        if (!convention.applies(step, technique)) return;
+        if (!convention.applies(step, technique, knowledge)) return;
         const temperature = stepTemperature(step);
         if (temperature >= range[0] && temperature <= range[1]) return;
         findings.push(
@@ -795,8 +880,8 @@ export const duplicateAdditionRule: SanityRule = {
   check(ctx) {
     const findings: Finding[] = [];
     const additions = collectAdditions(ctx);
-    ctx.request.ingredients.forEach((ingredient, position) => {
-      const own = additions.filter((addition) => addition.ingredient === position);
+    ctx.links.clusters.forEach((cluster, index) => {
+      const own = additions.filter((addition) => cluster.items.includes(addition.item));
       for (let i = 0; i < own.length; i++) {
         const first = own[i];
         const twin = own
@@ -813,7 +898,7 @@ export const duplicateAdditionRule: SanityRule = {
           findings.push(
             warning(
               stepPath(twin.stepIndex),
-              `"${ingredient.food}" is added twice with ${show(first.amount)} (steps ${first.stepIndex + 1} and ${twin.stepIndex + 1}); check that both are meant`,
+              `${clusterNames(ctx, index)} is added twice with ${show(first.amount, ctx.knowledge)} (steps ${first.stepIndex + 1} and ${twin.stepIndex + 1}); check that both are meant`,
             ),
           );
           return;
@@ -848,7 +933,7 @@ export const SANITY_RULES: readonly SanityRule[] = [
   flourRule,
   steamingWaterRule,
   textBeforeMachineStepRule,
-  ingredientListedRule,
+  ingredientMappingRule,
   ingredientReferencedRule,
   amountBalanceRule,
   machineStepDescriptionRule,
@@ -864,13 +949,14 @@ export function checkSanity(
   limits: DeviceLimits,
   rules: readonly SanityRule[] = SANITY_RULES,
 ): SanityResult {
+  const links = linkIngredients(recipe, request.ingredients, knowledge.text);
   const ctx: SanityContext = {
     recipe,
     request,
     knowledge,
     limits,
-    traces: traceBowl(recipe, request.ingredients, knowledge),
-    index: indexIngredients(request.ingredients),
+    traces: traceBowl(recipe, request.ingredients, knowledge, links),
+    links,
   };
   const errors: ValidationIssue[] = [];
   const warnings: string[] = [];

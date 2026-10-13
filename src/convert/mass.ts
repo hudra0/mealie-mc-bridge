@@ -1,201 +1,17 @@
-// Text and mass helpers for the plausibility checks: matching ingredient names in step
-// texts, reading amounts such as "200 g Sahne" from them, estimating an ingredient's weight
-// from units.json, and following what is in the bowl from step to step.
+// Text and mass helpers for the plausibility checks: reading amounts such as "200 g Sahne"
+// from step texts, estimating an ingredient's weight from the unit rules, and following
+// what is in the bowl from step to step.
 //
-// Everything here is a heuristic over German recipe text. It errs on the side of not
-// reporting: an amount it cannot attribute or convert is left out, not guessed.
+// Everything here is a heuristic over recipe text in the output language; the words come
+// from the locale pack (src/convert/text.ts). It errs on the side of not reporting: an
+// amount it cannot attribute or convert is left out, not guessed.
 
-import { normalizeUnit, type NormalizedIngredient } from "../ingredients/index.js";
-import { UNITS, isUnitCode } from "../ingredients/units.js";
-import type { RecipeInput, RecipeStep } from "../recipe/schema.js";
+import type { NormalizedIngredient } from "../ingredients/index.js";
+import { UNITS, isUnitCode, normalizeUnit } from "../ingredients/units.js";
+import type { Ingredient, RecipeInput, RecipeStep } from "../recipe/schema.js";
 import type { Knowledge, UnitsKnowledge } from "./knowledge.js";
-
-// Words that say nothing about which ingredient is meant.
-const STOPWORDS = new Set([
-  "frisch",
-  "frische",
-  "frischer",
-  "gehackt",
-  "gehackte",
-  "gemahlen",
-  "gemahlener",
-  "getrocknet",
-  "getrocknete",
-  "gewürfelt",
-  "gerieben",
-  "geriebener",
-  "geschält",
-  "fein",
-  "grob",
-  "klein",
-  "kleine",
-  "groß",
-  "große",
-  "mittelgroß",
-  "mittelgroße",
-  "rot",
-  "rote",
-  "grün",
-  "grüne",
-  "gelb",
-  "weiß",
-  "schwarz",
-  "bio",
-  "extra",
-  "nativ",
-  "natives",
-  "etwa",
-  "ca",
-  "und",
-  "oder",
-  "mit",
-  "ohne",
-  "für",
-  "zum",
-  "zur",
-  "nach",
-  "belieben",
-  "optional",
-  "etwas",
-  "tk",
-  "tiefgekühlt",
-  "zimmerwarm",
-  "kalt",
-  "warm",
-  "weich",
-  "in",
-  "im",
-  "aus",
-  "der",
-  "die",
-  "das",
-  "dem",
-  "den",
-  "von",
-  "vom",
-  "je",
-  "typ",
-  "type",
-  "größe",
-  "abschmecken",
-  "garnieren",
-  "servieren",
-  "verarbeiten",
-  "dekoration",
-]);
-
-// Endings stripped from German words so singular and plural meet: Zwiebeln/Zwiebel,
-// Tomaten/Tomate, Eier/Ei. The same stem is computed on both sides, so it need not be a
-// real word.
-const ENDINGS = ["en", "er", "n", "e", "s"];
-
-export function stem(word: string): string {
-  const lower = word.toLowerCase();
-  for (const ending of ENDINGS) {
-    if (lower.endsWith(ending) && lower.length - ending.length >= 2) {
-      return lower.slice(0, -ending.length);
-    }
-  }
-  return lower;
-}
-
-// Austrian and regional names and the name Monsieur Cuisine recipes use for the same food.
-// The prompt asks for the Monsieur Cuisine name, so "Topfen" in the source comes back as
-// "Quark" and "Karotten" as "Möhren"; both sides are read with the Monsieur Cuisine name.
-export const REGIONAL_NAMES: Readonly<Record<string, string>> = {
-  topfen: "quark",
-  karotte: "möhre",
-  karotten: "möhren",
-  schlagobers: "sahne",
-  obers: "sahne",
-  paradeiser: "tomaten",
-  erdapfel: "kartoffel",
-  erdäpfel: "kartoffeln",
-  karfiol: "blumenkohl",
-  kren: "meerrettich",
-  faschiertes: "hackfleisch",
-  faschierte: "hackfleisch",
-  eierschwammerl: "pfifferlinge",
-  marille: "aprikose",
-  marillen: "aprikosen",
-  kohlsprossen: "rosenkohl",
-  fisolen: "bohnen",
-  melanzani: "aubergine",
-  zucchetti: "zucchini",
-  staubzucker: "puderzucker",
-  germ: "hefe",
-  dotter: "eigelb",
-  porree: "lauch",
-  paniermehl: "semmelbrösel",
-};
-
-export function words(text: string): string[] {
-  return (text.toLowerCase().match(/\p{L}+/gu) ?? []).map((word) => REGIONAL_NAMES[word] ?? word);
-}
-
-// The stems that identify an ingredient name.
-export function nameKeys(name: string): string[] {
-  return [
-    ...new Set(
-      words(name)
-        .filter((word) => !STOPWORDS.has(word))
-        .map(stem),
-    ),
-  ].filter((key) => key.length >= 2);
-}
-
-// Short last parts of compound names that still identify the ingredient: "Öl" in "Olivenöl".
-const SHORT_COMPOUND_TAILS = new Set(["öl"]);
-
-// 2 when a word of the text equals a key, 1 when they match as parts of a compound
-// (Gemüsebrühe and Brühe, Knoblauchzehe and Knoblauch), 0 otherwise.
-export function matchScore(keys: readonly string[], textStems: readonly string[]): 0 | 1 | 2 {
-  let best: 0 | 1 | 2 = 0;
-  for (const key of keys) {
-    for (const word of textStems) {
-      if (word === key) return 2;
-      const [short, long] = word.length < key.length ? [word, key] : [key, word];
-      const compound =
-        (short.length >= 4 && (long.startsWith(short) || long.endsWith(short))) ||
-        (SHORT_COMPOUND_TAILS.has(short) && long.endsWith(short));
-      if (compound) best = 1;
-    }
-  }
-  return best;
-}
-
-export interface IngredientIndex {
-  ingredients: readonly NormalizedIngredient[];
-  keys: string[][];
-}
-
-// The keys of an input ingredient name without its qualifiers in parentheses: steps use the
-// name without them, and "Auflaufform (ca. 20 x 30 cm)" or "Spaghetti (Kochzeit 9 Minuten)"
-// would otherwise match "30 cm" or "9 Minuten" in a step. A name that is only a
-// parenthesis keeps its keys.
-export function ingredientKeys(food: string): string[] {
-  const keys = nameKeys(food.replace(/\([^)]*\)/gu, " "));
-  return keys.length > 0 ? keys : nameKeys(food);
-}
-
-export function indexIngredients(ingredients: readonly NormalizedIngredient[]): IngredientIndex {
-  return { ingredients, keys: ingredients.map((ingredient) => ingredientKeys(ingredient.food)) };
-}
-
-// Positions of the input ingredients a text names, best matches only.
-export function mentionedIngredients(text: string, index: IngredientIndex): number[] {
-  const stems = words(text).map(stem);
-  const scores = index.keys.map((keys) => matchScore(keys, stems));
-  const best = Math.max(0, ...scores);
-  if (best === 0) return [];
-  return scores.flatMap((score, position) => (score === best ? [position] : []));
-}
-
-// The one input ingredient a phrase names, or null when it names none or several equally.
-export function attributeIngredient(phrase: string, index: IngredientIndex): number | null {
-  const found = mentionedIngredients(phrase, index);
-  return found.length === 1 ? (found[0] ?? null) : null;
-}
+import { attributeItem, mentionedItems, type IngredientLinks, type OutputItem } from "./mapping.js";
+import type { TextRules } from "./text.js";
 
 const FRACTIONS: Readonly<Record<string, number>> = {
   "½": 0.5,
@@ -218,6 +34,18 @@ function parseNumber(text: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+const LIST_FRACTIONS: Readonly<Record<string, number>> = { "½": 0.5, "¼": 0.25, "¾": 0.75 };
+
+// An ingredient-list amount: "200", "1 ½", "½", "1,5". Ranges and words give null.
+export function parseListAmount(text: string): number | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const mixed = /^(\d+)?\s*([½¼¾])$/u.exec(trimmed);
+  if (mixed?.[2]) return Number(mixed[1] ?? 0) + (LIST_FRACTIONS[mixed[2]] ?? 0);
+  const value = Number(trimmed.replace(",", "."));
+  return Number.isFinite(value) ? value : null;
+}
+
 export interface AmountMention {
   amount: number;
   // A unit code from src/ingredients/units.ts, or null for a bare count ("2 Eier").
@@ -226,25 +54,35 @@ export interface AmountMention {
   phrase: string;
 }
 
-const AMOUNT =
-  /(?<![\p{L}\d])(\d+\s*[½¼¾⅓⅔⅛]|\d+\/\d+|\d+(?:[.,]\d+)?|[½¼¾⅓⅔⅛])\s*(kg|g|ml|l|el|tl|prisen|prise|msp\.?|stück|stk\.?)?(?!\p{L})\s*([^,.;:!?()\d]{1,60})/giu;
+const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const amountPatterns = new WeakMap<TextRules, RegExp>();
 
-// A number followed by one of these is a size, a time or a setting, not an amount:
-// "20 x 30 cm", "9 Minuten", "auf Stufe 4", "100 °C".
-const MEASURE_WORD =
-  /^(?:x(?!\p{L})|cm|mm|min(?:\.|ute|uten)?(?!\p{L})|sek(?:\.|unde|unden)?(?!\p{L})|std\.?(?!\p{L})|stunde|°|grad|stufe|%)/iu;
+// "200 g Sahne": a number, an optional unit word of the output language, the words after.
+function amountPattern(text: TextRules): RegExp {
+  let pattern = amountPatterns.get(text);
+  if (!pattern) {
+    const units = text.unitWords.map(escapeRegex).join("|");
+    pattern = new RegExp(
+      `(?<![\\p{L}\\d])(\\d+\\s*[½¼¾⅓⅔⅛]|\\d+\\/\\d+|\\d+(?:[.,]\\d+)?|[½¼¾⅓⅔⅛])\\s*(${units || "(?!)"})?(?!\\p{L})\\s*([^,.;:!?()\\d]{1,60})`,
+      "giu",
+    );
+    amountPatterns.set(text, pattern);
+  }
+  return new RegExp(pattern.source, pattern.flags);
+}
 
-// Reads amounts such as "200 g Sahne", "2 Tl Salz" or "2 Eier" from a step text.
-export function amountMentions(text: string): AmountMention[] {
+// Reads amounts such as "200 g Sahne", "2 Tl Salz" or "2 Eier" from a step text. A number
+// followed by a measure word ("20 x 30 cm", "9 Minuten", "Stufe 4") is not an amount.
+export function amountMentions(text: TextRules, source: string): AmountMention[] {
   const mentions: AmountMention[] = [];
-  for (const match of text.matchAll(AMOUNT)) {
+  for (const match of source.matchAll(amountPattern(text))) {
     const amount = parseNumber(match[1] ?? "");
     if (amount === null) continue;
     const unitWord = match[2];
-    const unit = unitWord ? (normalizeUnit(unitWord)?.code ?? null) : null;
+    const unit = unitWord ? text.unitCode(unitWord) : null;
     if (unitWord && unit === null) continue;
     const phrase = (match[3] ?? "").trim().split(/\s+/).slice(0, 4).join(" ");
-    if (phrase === "" || (unitWord === undefined && MEASURE_WORD.test(phrase))) continue;
+    if (phrase === "" || (unitWord === undefined && text.measureWord.test(phrase))) continue;
     mentions.push({ amount, unit, phrase });
   }
   return mentions;
@@ -272,23 +110,17 @@ const NEGLIGIBLE_UNITS = new Set([
   "Blatt",
 ]);
 
-// German words for the density keys of units.json.
-export const DENSITY_WORDS: Readonly<Record<string, readonly string[]>> = {
-  water: ["wasser"],
-  milk: ["milch"],
-  stock: ["brühe", "fond"],
-  cream: ["sahne", "rahm"],
-  wine: ["wein"],
-  oil: ["öl"],
-  honey: ["honig"],
-  syrup: ["sirup"],
-};
+// Whether a text names one of the words (stems of the output language).
+export function hasAny(text: TextRules, source: string, stems: readonly string[]): boolean {
+  return text.matchScore(text.nameKeys(source), stems) > 0;
+}
 
-// Grams per millilitre for a food name; water-like when nothing matches.
-export function densityOf(food: string, units: UnitsKnowledge): number {
-  const keys = nameKeys(food);
-  for (const [key, list] of Object.entries(DENSITY_WORDS)) {
-    if (matchScore(keys, list.map(stem)) > 0) {
+// Grams per millilitre for a food name; water-like when nothing matches. The density words
+// of every pack count, so a source ingredient in another language finds its density too.
+export function densityOf(text: TextRules, food: string, units: UnitsKnowledge): number {
+  const keys = text.nameKeys(food);
+  for (const [key, list] of Object.entries(text.densityWords)) {
+    if (text.matchScore(keys, list.map(text.stem)) > 0) {
       const value = units.densities[key];
       if (typeof value === "number") return value;
     }
@@ -309,60 +141,87 @@ function mappingFor(code: string, units: UnitsKnowledge) {
   );
 }
 
-// Grams of one piece from units.json pieceWeights, matched on the name before the comma.
-export function pieceWeight(food: string, units: UnitsKnowledge): number | null {
-  const keys = nameKeys(food);
+// Grams of one piece from the pack's piece weights, matched on the name before the comma.
+export function pieceWeight(text: TextRules, food: string, units: UnitsKnowledge): number | null {
+  const keys = text.nameKeys(food);
   if (keys.length === 0) return null;
   for (const item of units.pieceWeights.items) {
     const core = item.name.split(",")[0] ?? item.name;
-    if (matchScore(keys, nameKeys(core)) === 2) return item.grams;
+    if (text.matchScore(keys, text.nameKeys(core)) === 2) return item.grams;
   }
   return null;
 }
 
-function namedValue(food: string, table: Readonly<Record<string, number>>): number | null {
-  const keys = nameKeys(food);
+function namedValue(
+  text: TextRules,
+  food: string,
+  table: Readonly<Record<string, number>>,
+): number | null {
+  const keys = text.nameKeys(food);
   for (const [name, value] of Object.entries(table)) {
-    if (matchScore(keys, nameKeys(name.split(",")[0] ?? name)) === 2) return value;
+    if (text.matchScore(keys, text.nameKeys(name.split(",")[0] ?? name)) === 2) return value;
   }
   return null;
 }
 
-// Grams for an amount in a unit, or null when units.json gives no conversion.
+// The first value a list of names gives, in order: the source name before a translation.
+function firstOf<T>(names: readonly string[], value: (name: string) => T | null): T | null {
+  for (const name of names) {
+    const found = value(name);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+// Grams for an amount in a unit, or null when the unit rules give no conversion. `food` is
+// the name, or several names tried in order (a source name and its list name).
 export function gramsFor(
+  text: TextRules,
   amount: number,
   unit: string | null,
-  food: string,
+  food: string | readonly string[],
   units: UnitsKnowledge,
 ): number | null {
+  const names = typeof food === "string" ? [food] : food;
+  const piece = () => firstOf(names, (name) => pieceWeight(text, name, units));
   if (unit !== null && NEGLIGIBLE_UNITS.has(unit)) return 0;
   if (unit === null) {
-    const piece = pieceWeight(food, units);
-    return piece === null ? null : amount * piece;
+    const grams = piece();
+    return grams === null ? null : amount * grams;
   }
   const mapping = mappingFor(unit, units);
   const perUnit = mapping?.gramsPerUnit;
   if (typeof perUnit === "number") return amount * perUnit;
   if (perUnit && typeof perUnit === "object") {
-    const value = namedValue(food, perUnit);
+    const value = firstOf(names, (name) => namedValue(text, name, perUnit));
     return value === null ? null : amount * value;
   }
   if (typeof perUnit === "string") {
     if (perUnit === "pieceWeights") {
-      const piece = pieceWeight(food, units);
-      return piece === null ? null : amount * piece;
+      const grams = piece();
+      return grams === null ? null : amount * grams;
     }
     const density = /^([\d.]+)?\s*(?:ml\s*)?\*?\s*density$/.exec(perUnit.trim());
-    if (density) return amount * Number(density[1] ?? 1) * densityOf(food, units);
+    if (density) {
+      const known = names.find((name) => densityOf(text, name, units) !== 1) ?? names[0] ?? "";
+      return amount * Number(density[1] ?? 1) * densityOf(text, known, units);
+    }
     return null;
   }
   // No usable mapping: pieces such as Stange or Knolle may still have a piece weight.
-  const piece = pieceWeight(food, units);
-  return piece === null ? null : amount * piece;
+  const grams = piece();
+  return grams === null ? null : amount * grams;
 }
 
-// Estimated grams of an input ingredient, the upper end of a range. Null when unknown.
-export function ingredientGrams(ingredient: NormalizedIngredient, units: UnitsKnowledge) {
+// Estimated grams of a source ingredient, the upper end of a range. Null when unknown.
+// `alsoNamed` are the list names it became, tried after its own name for piece weights and
+// densities.
+export function ingredientGrams(
+  text: TextRules,
+  ingredient: NormalizedIngredient,
+  units: UnitsKnowledge,
+  alsoNamed: readonly string[] = [],
+): number | null {
   if (ingredient.source === "unparsed") return null;
   const amount = ingredient.quantityMax ?? ingredient.quantity;
   // No amount: a to-taste item such as "Salz zum Abschmecken" when it has no unit either.
@@ -370,49 +229,31 @@ export function ingredientGrams(ingredient: NormalizedIngredient, units: UnitsKn
     return ingredient.unit === null || NEGLIGIBLE_UNITS.has(ingredient.unit) ? 0 : null;
   }
   if (ingredient.weightGrams !== undefined) return amount * ingredient.weightGrams;
-  return gramsFor(amount, ingredient.unit, ingredient.food, units);
+  return gramsFor(text, amount, ingredient.unit, [ingredient.food, ...alsoNamed], units);
 }
 
-// Words that mark contents which foam or boil over (timing-model.json bowl_max_foaming).
-export const FOAMING_WORDS = [
-  "milch",
-  "nudel",
-  "pasta",
-  "spaghetti",
-  "reis",
-  "linse",
-  "bohne",
-  "kichererbse",
-  "kartoffel",
-  "marmelade",
-  "konfitüre",
-  "gelierzucker",
-  "haferflock",
-  "grieß",
-];
-// Liquids that count toward the water a steaming step needs.
-export const LIQUID_WORDS = ["wasser", "brühe", "fond", "milch", "wein", "saft"];
-export const FLOUR_WORDS = ["mehl"];
+// The unit code of a list entry's unit: the pack's spelling, else the source vocabulary,
+// else the text as written. An empty unit is null.
+export function listUnit(text: TextRules, unit: string): string | null {
+  const trimmed = unit.trim();
+  if (trimmed === "") return null;
+  return text.unitCode(trimmed) ?? normalizeUnit(trimmed)?.code ?? trimmed;
+}
 
-export const ADDING =
-  /(?<!\p{L})(?:zugeben|dazugeben|hinzugeben|hineingeben|geben|zugießen|angießen|aufgießen|eingießen|dazugießen|gießen|einfüllen|einwiegen|zufügen|hinzufügen|einstreuen|unterheben|unterrühren|einrühren|untermischen|ablöschen)(?!\p{L})/iu;
-export const EMPTYING =
-  /umfüllen|ausspülen|ausleeren|entleeren|abgießen|abschütten|(?<!\p{L})leeren|reinigen|vorspülen/iu;
-// A portion that was set aside or collected earlier and goes back in, or the rest of an
-// ingredient: "die beiseitegestellte Brühe", "das aufgefangene Kochwasser", "restliche".
-export const RESERVED = /beiseite|auffangen|aufgefangen|aufbewahr|zurück|übrig|restlich/iu;
-const COOLING = /abkühlen|auskühlen/iu;
-// Places a weighed or added ingredient goes that are not the bowl. The lid is the bowl:
-// oil poured onto the lid runs in, and "durch die Deckelöffnung zugeben" adds to the bowl.
-export const OUTSIDE_BOWL =
-  /dampfgar|einlegeboden|teller|schüssel|gefäß|außerhalb|backform|auflaufform|backblech/iu;
-// Additions that are hot already ("heiße Brühe", "kochendes Wasser") count at this
-// temperature, not at room temperature, when the bowl temperature is followed.
-const HOT = /(?<!\p{L})(?:heiß\p{L}*|kochend\p{L}*|hot|boiling)(?!\p{L})/iu;
-export const HOT_ADDITION_C = 80;
-const WHISK = /rühraufsatz/iu;
-const WHISK_IN = /einsetzen|aufsetzen|einstecken|anbringen/iu;
-const WHISK_OUT = /entfernen|abnehmen|herausnehmen|entnehmen/iu;
+// Grams of one ingredient-list entry, or null when the amount or unit is unknown.
+export function entryGrams(
+  text: TextRules,
+  entry: Ingredient,
+  units: UnitsKnowledge,
+): number | null {
+  const unit = listUnit(text, entry.unit);
+  const amount = typeof entry.amount === "number" ? entry.amount : parseListAmount(entry.amount);
+  if (amount === null) {
+    const empty = typeof entry.amount === "string" && entry.amount.trim() === "";
+    return empty && (unit === null || NEGLIGIBLE_UNITS.has(unit)) ? 0 : null;
+  }
+  return gramsFor(text, amount, unit, entry.name, units);
+}
 
 export interface BowlState {
   // Known grams in the bowl; a lower bound when unknown is true.
@@ -448,10 +289,6 @@ export function stepText(step: RecipeStep): string {
   return step.description.includes(title) ? step.description : `${step.title}\n${step.description}`;
 }
 
-function hasAny(text: string, list: readonly string[]): boolean {
-  return matchScore(nameKeys(text), list.map(stem)) > 0;
-}
-
 export function stepTemperature(step: RecipeStep): number {
   if (step.kind === "steaming") return 100;
   return "temperature" in step ? step.temperature : 0;
@@ -481,20 +318,62 @@ export function mixedTemperature(
   return (Math.max(0, grams) * temperature + addedGrams * addedTemperature) / total;
 }
 
+// Additions that are hot already ("heiße Brühe", "kochendes Wasser") count at this
+// temperature, not at room temperature, when the bowl temperature is followed.
+export const HOT_ADDITION_C = 80;
+
+// Estimated grams of a list item: the source lines it comes from when it alone takes them
+// and all have a known weight (the amounts the converter was given), else its list entries.
+export function itemGrams(
+  knowledge: Knowledge,
+  links: IngredientLinks,
+  item: number,
+  inputs: readonly NormalizedIngredient[],
+): number | null {
+  const text = knowledge.text;
+  const entry = links.items[item];
+  if (!entry) return null;
+  const cluster = links.clusters[links.clusterOfItem[item] ?? -1];
+  if (cluster && cluster.items.length === 1 && cluster.inputs.length > 0) {
+    let sum = 0;
+    let known = true;
+    for (const position of cluster.inputs) {
+      const ingredient = inputs[position];
+      const grams = ingredient
+        ? ingredientGrams(text, ingredient, knowledge.units, [entry.name])
+        : null;
+      if (grams === null) {
+        known = false;
+        break;
+      }
+      sum += grams;
+    }
+    if (known) return sum;
+  }
+  let sum = 0;
+  for (const { entry: listed } of entry.entries) {
+    const grams = entryGrams(text, listed, knowledge.units);
+    if (grams === null) return null;
+    sum += grams;
+  }
+  return sum;
+}
+
 // Follows the bowl through the recipe. Scale steps add their weight unless they weigh
 // onto the steamer, a plate or into another container; text steps with an adding verb add
-// the input ingredients they name (their stated amount, else the estimated weight of the
-// whole ingredient). Transferring or rinsing empties the bowl. Every input ingredient
-// counts once. Heated steps raise the temperature of the contents; cold additions lower it
-// to the mixing temperature, so a sauté followed by a litre of stock counts as cold again.
-// Additions described as hot count at HOT_ADDITION_C.
+// the list items they name (their stated amount, else the estimated weight of the whole
+// item). Transferring or rinsing empties the bowl. Every item counts once. Heated steps
+// raise the temperature of the contents; cold additions lower it to the mixing
+// temperature, so a sauté followed by a litre of stock counts as cold again. Additions
+// described as hot count at HOT_ADDITION_C.
 export function traceBowl(
   recipe: RecipeInput,
-  ingredients: readonly NormalizedIngredient[],
+  inputs: readonly NormalizedIngredient[],
   knowledge: Knowledge,
+  links: IngredientLinks,
 ): StepTrace[] {
+  const text = knowledge.text;
   const units = knowledge.units;
-  const index = indexIngredients(ingredients);
   const counted = new Set<number>();
   const fromText = new Map<number, number>();
   const room = knowledge.timing.constants.startTemperatureC;
@@ -504,81 +383,84 @@ export function traceBowl(
   const addContents = (grams: number, label: string, temperature = room) => {
     state.temperature = mixedTemperature(state.grams, state.temperature, grams, temperature);
     state.grams += grams;
-    if (hasAny(label, FLOUR_WORDS)) state.flourGrams += grams;
-    if (hasAny(label, LIQUID_WORDS)) state.liquidGrams += grams;
-    if (hasAny(label, FOAMING_WORDS)) state.foaming = true;
+    if (hasAny(text, label, text.flourWords)) state.flourGrams += grams;
+    if (hasAny(text, label, text.liquidWords)) state.liquidGrams += grams;
+    if (hasAny(text, label, text.foamingWords)) state.foaming = true;
   };
 
   recipe.servingSize.steps.forEach((step, position) => {
     const before = { ...state };
-    const text = stepText(step);
-    const added = HOT.test(text) ? HOT_ADDITION_C : room;
+    const source = stepText(step);
+    const added = text.hot.test(source) ? HOT_ADDITION_C : room;
     if (step.kind === "text") {
-      if (EMPTYING.test(text)) {
+      if (text.emptying.test(source)) {
         state = { ...emptyBowl(room), whisk: state.whisk };
         fromText.clear();
-      } else if (COOLING.test(text)) {
+      } else if (text.cooling.test(source)) {
         state.temperature = room;
       }
-      if (WHISK.test(text)) {
-        if (WHISK_OUT.test(text)) state.whisk = false;
-        else if (WHISK_IN.test(text)) state.whisk = true;
+      if (text.whisk.accessory.test(source)) {
+        if (text.whisk.remove.test(source)) state.whisk = false;
+        else if (text.whisk.fit.test(source)) state.whisk = true;
       }
-      if (ADDING.test(text)) {
-        const outside = OUTSIDE_BOWL.test(text);
-        const mentions = amountMentions(text);
-        for (const position of mentionedIngredients(text, index)) {
-          if (counted.has(position)) continue;
-          counted.add(position);
+      if (text.adding.test(source)) {
+        const outside = text.outsideBowl.test(source);
+        const mentions = amountMentions(text, source);
+        for (const item of mentionedItems(text, source, links)) {
+          if (counted.has(item)) continue;
+          counted.add(item);
           if (outside) continue;
-          const ingredient = ingredients[position];
-          if (!ingredient) continue;
+          const entry: OutputItem | undefined = links.items[item];
+          if (!entry) continue;
           const stated = mentions.find(
-            (mention) => attributeIngredient(mention.phrase, index) === position,
+            (mention) => attributeItem(text, mention.phrase, links) === item,
           );
           const grams = stated
-            ? gramsFor(stated.amount, stated.unit, ingredient.food, units)
-            : ingredientGrams(ingredient, units);
+            ? gramsFor(text, stated.amount, stated.unit, entry.name, units)
+            : itemGrams(knowledge, links, item, inputs);
           if (grams === null) {
             state.unknown = true;
-            if (hasAny(ingredient.food, LIQUID_WORDS)) state.liquidUnknown = true;
-            if (hasAny(ingredient.food, FOAMING_WORDS)) state.foaming = true;
+            if (hasAny(text, entry.name, text.liquidWords)) state.liquidUnknown = true;
+            if (hasAny(text, entry.name, text.foamingWords)) state.foaming = true;
             continue;
           }
-          fromText.set(position, grams);
-          addContents(grams, ingredient.food, added);
+          fromText.set(item, grams);
+          addContents(grams, entry.name, added);
         }
         // Liquids the ingredient list does not have, such as water for steaming.
         if (!outside) {
           for (const mention of mentions) {
-            if (attributeIngredient(mention.phrase, index) !== null) continue;
-            if (!hasAny(mention.phrase, LIQUID_WORDS)) continue;
-            const grams = gramsFor(mention.amount, mention.unit, mention.phrase, units);
+            if (attributeItem(text, mention.phrase, links) !== null) continue;
+            if (!hasAny(text, mention.phrase, text.liquidWords)) continue;
+            const grams = gramsFor(text, mention.amount, mention.unit, mention.phrase, units);
             if (grams !== null && mention.unit !== null) addContents(grams, mention.phrase, added);
           }
-          if (hasAny(text, ["wasser"]) && !mentions.some((m) => hasAny(m.phrase, ["wasser"]))) {
+          if (
+            hasAny(text, source, text.waterWords) &&
+            !mentions.some((m) => hasAny(text, m.phrase, text.waterWords))
+          ) {
             state.liquidUnknown = true;
           }
         }
       }
     } else if (step.kind === "scale") {
-      const named = mentionedIngredients(text, index);
-      for (const position of named) counted.add(position);
-      if (!OUTSIDE_BOWL.test(text)) {
-        for (const position of named) {
-          const earlier = fromText.get(position);
+      const named = mentionedItems(text, source, links);
+      for (const item of named) counted.add(item);
+      if (!text.outsideBowl.test(source)) {
+        for (const item of named) {
+          const earlier = fromText.get(item);
           if (earlier !== undefined) {
             state.grams -= earlier;
-            fromText.delete(position);
+            fromText.delete(item);
           }
         }
-        addContents(step.grams, text, added);
+        addContents(step.grams, source, added);
       }
     } else {
       const temperature = stepTemperature(step);
       if (temperature > 0) state.temperature = Math.max(state.temperature, temperature);
     }
-    traces.push({ index: position, step, text, before, after: { ...state } });
+    traces.push({ index: position, step, text: source, before, after: { ...state } });
   });
   return traces;
 }

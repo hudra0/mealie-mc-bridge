@@ -5,12 +5,14 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { GenerationOutput, RecipeGenerator } from "../src/convert/index.js";
 import type { FetchLike } from "../src/mc/index.js";
 import { RecipeInputSchema } from "../src/recipe/schema.js";
+import { dePack, enPack } from "../src/testing/locale.js";
 import {
   EXIT,
   USAGE,
   UsageError,
   compareSteps,
   corpusRequest,
+  defaultCorpusDir,
   parseCategories,
   parseCommand,
   programSteps,
@@ -21,7 +23,14 @@ import { parseDetailFile } from "./corpus/normalize.js";
 
 const MEALIE = "test/fixtures/mealie/recipe-structured-v3.28.json";
 const CATEGORIES = "test/fixtures/mc/categories.json";
-const soupText = await readFile("test/fixtures/convert/soup.recipe-input.json", "utf8");
+// The soup fixture without its mapping: the requests here have other source ingredients.
+const soupText = JSON.stringify({
+  ...(JSON.parse(await readFile("test/fixtures/convert/soup.recipe-input.json", "utf8")) as Record<
+    string,
+    unknown
+  >),
+  ingredientMapping: undefined,
+});
 const soup = RecipeInputSchema.parse(JSON.parse(soupText));
 
 // A made-up corpus recipe in the shape of the public recipe API.
@@ -134,6 +143,24 @@ describe("parseCommand", () => {
     expect(parseCommand(["help"])).toEqual({ name: "help" });
   });
 
+  it("reads --locale and picks the corpus of that locale", () => {
+    expect(parseCommand(["eval", "--ids", "1", "--locale", "en-US"])).toEqual({
+      name: "eval",
+      corpusDir: "local/corpus/en-US",
+      ids: [1],
+      locale: "en-US",
+    });
+    expect(parseCommand(["prompt", "--mealie-json", "r.json", "--locale", "en-US"])).toMatchObject({
+      locale: "en-US",
+    });
+    expect(parseCommand(["convert", "--mealie-json", "r.json", "--locale", "de-DE"])).toMatchObject(
+      { locale: "de-DE" },
+    );
+    expect(() => parseCommand(["eval", "--ids", "1", "--locale", "english"])).toThrow(
+      "--locale must look like de-DE, not english",
+    );
+  });
+
   it("rejects wrong arguments with a usage error", () => {
     const cases: string[][] = [
       [],
@@ -181,6 +208,16 @@ describe("runConvert", () => {
     expect(out[2]).toContain("- 228: Suppen & Eintöpfe");
     expect(out[2]).toContain("# Kürbis-Linsen-Suppe");
     expect(factory).not.toHaveBeenCalled();
+  });
+
+  it("prints the prompts of another locale and refuses a locale without a pack", async () => {
+    const { run, out, err } = harness();
+    const args = ["prompt", "--mealie-json", MEALIE, "--categories", CATEGORIES];
+    expect(await run([...args, "--locale", "en-US"])).toBe(EXIT.ok);
+    expect(out[0]).toContain("Write every text of the recipe in English (en-US)");
+    expect(out[2]).toContain("## Ingredients");
+    expect(await run([...args, "--locale", "fr-FR"])).toBe(EXIT.config);
+    expect(err.join("\n")).toContain("there is no locale pack for fr-FR");
   });
 
   it("converts a recipe, prints the steps and writes the result", async () => {
@@ -309,7 +346,10 @@ describe("runConvert", () => {
 
 describe("corpus evaluation helpers", () => {
   it("builds a request from ingredients and instruction texts only", () => {
-    const { request, original } = corpusRequest(parseDetailFile(JSON.stringify(corpusRecipe)));
+    const { request, original } = corpusRequest(
+      parseDetailFile(JSON.stringify(corpusRecipe)),
+      dePack,
+    );
     expect(request.title).toBe("Testsuppe");
     expect(request.servings).toBe(4);
     expect(request.categoryHints).toEqual(["Suppen & Eintöpfe"]);
@@ -322,6 +362,14 @@ describe("corpus evaluation helpers", () => {
       "1. Zwiebel halbieren und in den Mixbehälter geben.\n2. 500 g Kürbis",
     );
     expect(request.rendered).not.toContain("Köcheln");
+    expect(request.rendered).toContain("- [0] 1 Stück Zwiebeln");
+    expect(request.locale).toBe("de-DE");
+    const english = corpusRequest(parseDetailFile(JSON.stringify(corpusRecipe)), enPack).request;
+    expect(english.locale).toBe("en-US");
+    expect(english.rendered).toContain("## Ingredients");
+    expect(english.rendered).toContain("Servings: 4 Portionen");
+    expect(defaultCorpusDir("de-DE")).toBe("local/corpus");
+    expect(defaultCorpusDir("en-US")).toBe("local/corpus/en-US");
     expect(original).toEqual([
       { mode: "customized", temperature: 0, seconds: 5 },
       { mode: "customized", temperature: 100, seconds: 1200 },

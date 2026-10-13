@@ -12,10 +12,16 @@ const knowledgeDir = fileURLToPath(new URL("../../knowledge", import.meta.url));
 const limits = await loadDeviceLimits(
   fileURLToPath(new URL("../../knowledge/device-programs.json", import.meta.url)),
 );
-const soup = readFileSync(
-  new URL("../../test/fixtures/convert/soup.recipe-input.json", import.meta.url),
-  "utf8",
-);
+// The soup fixture without its mapping: the requests here carry no source ingredients.
+const soup = JSON.stringify({
+  ...(JSON.parse(
+    readFileSync(
+      new URL("../../test/fixtures/convert/soup.recipe-input.json", import.meta.url),
+      "utf8",
+    ),
+  ) as Record<string, unknown>),
+  ingredientMapping: undefined,
+});
 const logger = { info: vi.fn(), warn: vi.fn() };
 const env = { KNOWLEDGE_DIR: knowledgeDir, LLM_PRICES_JSON: '{"m": {"input": 1, "output": 1}}' };
 
@@ -64,6 +70,20 @@ describe("createServiceConverter", () => {
     expect(calls[0]?.user).toContain("- 12: Hauptgerichte\n- 228: Suppen & Eintöpfe");
     expect(calls[0]?.user).not.toContain("# Mealie categories");
     expect(result.usage.costUsd).toBe(0.002);
+  });
+
+  it("writes recipes for MC_LOCALE and refuses requests for another locale", async () => {
+    const { generator, calls } = fakeGenerator();
+    const converter = await createServiceConverter(
+      { env: { ...env, MC_LOCALE: "en-US" }, limits, logger },
+      () => generator,
+    );
+    await expect(converter.convert(request)).rejects.toThrow(
+      "This converter writes en-US recipes; the request asks for de-DE",
+    );
+    const result = await converter.convert({ ...request, locale: "en-US" });
+    expect(result.recipe.locale).toBe("en-US");
+    expect(calls[0]?.system).toContain("Write every text of the recipe in English (en-US)");
   });
 
   it("fails the conversion, not the start, when the API key is missing", async () => {

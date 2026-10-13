@@ -4,6 +4,10 @@
 // The user message carries the category list, the servings, the full entries of the
 // techniques picked for this recipe and the recipe, and on a correction round the errors
 // and the previous answer.
+//
+// The instructions are English for every output language; the language itself, its unit
+// spellings, standard phrases and wording rules come from the locale pack in the knowledge
+// base (knowledge.pack).
 
 import { z } from "zod";
 import type {
@@ -30,6 +34,9 @@ export interface SystemPromptOptions {
 export interface UserMessageOptions {
   // Techniques picked for this recipe (selectTechniques), printed in full.
   techniques?: readonly Technique[];
+  // The technique wording of the output language (knowledge.aliases) and its name.
+  aliases?: Readonly<Record<string, readonly string[]>>;
+  languageName?: string;
   // The modes this installation can run (usableModes); alternatives in other modes are
   // left out of the technique entries.
   usable?: ModeFilter;
@@ -41,6 +48,7 @@ export const SYSTEM_SECTIONS = [
   "Role and goal",
   "Device limits",
   "Conversion rules",
+  "Wording",
   "Techniques",
   "Timing",
   "Units",
@@ -49,16 +57,18 @@ export const SYSTEM_SECTIONS = [
 
 const section = (title: (typeof SYSTEM_SECTIONS)[number], body: string) => `# ${title}\n\n${body}`;
 
-function roleSection(): string {
+function roleSection(knowledge: Knowledge): string {
+  const { language } = knowledge.pack.mc;
+  const full = `${language} (${knowledge.locale})`;
   return section(
     "Role and goal",
     [
       "You convert one recipe from the Mealie recipe manager into a guided-cooking recipe for the Monsieur Cuisine Smart kitchen machine (model MC3.0). The recipe is uploaded as a private draft and cooked from the device step by step, so every step has to work on that device exactly as written.",
       "",
       "- Target only the MC3.0. Use its programs where they fit and keep the dish the same; reordering and simplifying steps is fine.",
-      "- Write every text of the recipe in German (de-DE): title, description, ingredient names, step titles and descriptions, servingSize.instruction and reviewHints.",
+      `- Write every text of the recipe in ${full}: title, description, ingredient names, step titles and descriptions, servingSize.instruction and reviewHints.`,
       "- Never invent amounts and never drop an ingredient. The amounts in the input are already scaled to the servings in the user message; keep them and change units only as the unit rules say.",
-      "- When something is unclear or guessed (an amount, a time, a missing step, an ingredient line that could not be parsed), take the most plausible reading and add a short German review hint so the cook checks it.",
+      `- When something is unclear or guessed (an amount, a time, a missing step, an ingredient line that could not be parsed), take the most plausible reading and add a short ${language} review hint so the cook checks it.`,
       "- Never mention that the recipe was converted or adapted.",
     ].join("\n"),
   );
@@ -284,11 +294,17 @@ function rangeText(value: { typical: number; range?: [number, number] | undefine
 // pads times, so the prompt leaves it out. Physical formulas carry no R² and stay.
 export const MIN_FORMULA_R2 = 0.3;
 
-export function techniqueDetail(technique: Technique, usable: ModeFilter = anyMode): string {
+export function techniqueDetail(
+  technique: Technique,
+  usable: ModeFilter = anyMode,
+  wording: { aliases?: readonly string[]; languageName?: string } = {},
+): string {
   const d = technique.device;
   const lines = [`### ${technique.id}: ${technique.label}`, ""];
-  if (technique.aliases.de.length > 0)
-    lines.push(`- German wording: ${technique.aliases.de.join(", ")}`);
+  const aliases = wording.aliases ?? [];
+  if (aliases.length > 0) {
+    lines.push(`- ${wording.languageName ?? "Recipe"} wording: ${aliases.join(", ")}`);
+  }
   if (technique.ingredientClasses.length > 0) {
     lines.push(`- Ingredients: ${technique.ingredientClasses.join(", ")}`);
   }
@@ -464,17 +480,19 @@ function unitsSection(knowledge: Knowledge): string {
   return section("Units", lines.join("\n"));
 }
 
-function outputSection(limits: DeviceLimits): string {
+function outputSection(limits: DeviceLimits, knowledge: Knowledge): string {
   const r = limits.recipe;
+  const { language } = knowledge.pack.mc;
   return section(
     "Output contract",
     [
       "- Answer with exactly one JSON object that matches the response schema: no prose, no Markdown, no code fences.",
-      '- locale is "de-DE". complexity is easy, medium or hard.',
+      `- locale is "${knowledge.locale}". complexity is easy, medium or hard.`,
       "- servingSize.amount is the servings from the user message. Only when a device limit forces a smaller batch, scale the whole recipe down and say so in reviewHints.",
       `- categoryIds: ${r.categories.min}-${r.categories.max} ids, only from the category list in the user message; prefer categories that match the Mealie category hints.`,
-      "- servingSize.instruction (optional): the whole recipe as plain German text for reading without the device.",
-      "- reviewHints: short German notes, at most 200 characters each and 20 in total, for everything guessed, converted with uncertainty or left out. Leave the list empty when nothing is uncertain.",
+      `- servingSize.instruction (optional): the whole recipe as plain ${language} text for reading without the device.`,
+      `- reviewHints: short ${language} notes, at most 200 characters each and 20 in total, for everything guessed, converted with uncertainty or left out. Leave the list empty when nothing is uncertain.`,
+      "- ingredientMapping: one entry per ingredient-list name, written exactly as in the list, with the index [i] of the source ingredient line it comes from (the recipe in the user message numbers them), or null for an ingredient the source does not have. Every source line appears at least once.",
       '- Every step has a "kind" from the program list and only the fields of that kind. Set accessory to "butterfly_whisk" on every manual step that runs while the whisk is fitted.',
       "- Do not set a status, ids or images; the bridge sets them.",
       "- When the user message lists errors in a previous answer, fix every one of them and return the complete corrected recipe, not only the changed parts.",
@@ -491,13 +509,14 @@ export function buildSystemPrompt(
   const usable = usableModes(limits, attachments);
   return promptText(
     [
-      roleSection(),
+      roleSection(knowledge),
       limitsSection(limits, attachments),
       section("Conversion rules", documentBody(knowledge.promptRules)),
+      section("Wording", documentBody(knowledge.languageRules)),
       techniquesSection(knowledge, usable),
       timingSection(knowledge),
       unitsSection(knowledge),
-      outputSection(limits),
+      outputSection(limits, knowledge),
     ].join("\n\n"),
   );
 }
@@ -562,9 +581,49 @@ export function buildUserMessage(
       "",
       "Full entries for the techniques this recipe probably needs:",
       "",
-      techniques.map((technique) => techniqueDetail(technique, options.usable)).join("\n\n"),
+      techniques
+        .map((technique) =>
+          techniqueDetail(technique, options.usable, {
+            aliases: options.aliases?.[technique.id] ?? [],
+            ...(options.languageName ? { languageName: options.languageName } : {}),
+          }),
+        )
+        .join("\n\n"),
     );
   }
-  parts.push("", "# Recipe", "", request.rendered.trim(), "");
+  const indexed = hasIngredientIndices(request);
+  parts.push(
+    "",
+    "# Recipe",
+    "",
+    `The source ingredient lines carry their index [0] to [${Math.max(0, request.ingredients.length - 1)}]; ingredientMapping refers to them.`,
+    "",
+    request.rendered.trim(),
+    "",
+  );
+  if (!indexed && request.ingredients.length > 0) {
+    parts.push("# Source ingredient indices", "", ...ingredientIndexLines(request), "");
+  }
   return withFeedback(parts.join("\n"), options.feedback);
+}
+
+// Whether the rendered recipe numbers every source ingredient line ("- [3] 2 EL Öl"), as
+// renderRecipeForLlm does.
+export function hasIngredientIndices(request: Pick<ConversionRequest, "rendered" | "ingredients">) {
+  const found = new Set(
+    [...request.rendered.matchAll(/^- \[(\d+)\]/gm)].map((match) => Number(match[1])),
+  );
+  return request.ingredients.every((_, position) => found.has(position));
+}
+
+// One line per source ingredient with its index, for a rendered recipe without them.
+export function ingredientIndexLines(request: Pick<ConversionRequest, "ingredients">): string[] {
+  return request.ingredients.map((ingredient, position) => {
+    const text =
+      ingredient.original.trim() ||
+      [ingredient.quantity ?? "", ingredient.unit ?? "", ingredient.food]
+        .filter((part) => part !== "")
+        .join(" ");
+    return `- [${position}] ${text}`;
+  });
 }

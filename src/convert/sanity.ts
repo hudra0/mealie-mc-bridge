@@ -21,8 +21,13 @@ import {
   type Technique,
 } from "./knowledge.js";
 import {
+  ADDING,
+  EMPTYING,
+  OUTSIDE_BOWL,
+  RESERVED,
   amountMentions,
   attributeIngredient,
+  clauses,
   gramsFor,
   indexIngredients,
   matchScore,
@@ -357,21 +362,33 @@ export const ingredientListedRule: SanityRule = {
 
 export const ingredientReferencedRule: SanityRule = {
   id: "ingredient_referenced",
-  description: "Every input ingredient appears in at least one step.",
+  description:
+    "Every input ingredient appears in at least one step. When most names do not appear (a translated recipe), one warning replaces the list.",
   check({ recipe, request, index }) {
     const stems = recipe.servingSize.steps.flatMap((step) =>
       words("description" in step ? `${step.title} ${step.description}` : step.title).map(stem),
     );
-    return request.ingredients.flatMap((ingredient, position) => {
+    const named = request.ingredients.filter(
+      (_, position) => (index.keys[position] ?? []).length > 0,
+    );
+    const missing = request.ingredients.filter((_, position) => {
       const keys = index.keys[position] ?? [];
-      if (keys.length === 0 || matchScore(keys, stems) > 0) return [];
+      return keys.length > 0 && matchScore(keys, stems) === 0;
+    });
+    if (missing.length > 1 && missing.length * 2 > named.length) {
       return [
         warning(
           "servingSize.steps",
-          `the ingredient "${ingredient.food}" is not named in any step; check that it is used`,
+          `${missing.length} of ${named.length} ingredients of the recipe are not named in any step, as in a translated recipe; check that each is used`,
         ),
       ];
-    });
+    }
+    return missing.map((ingredient) =>
+      warning(
+        "servingSize.steps",
+        `the ingredient "${ingredient.food}" is not named in any step; check that it is used`,
+      ),
+    );
   },
 };
 
@@ -437,8 +454,24 @@ function required(input: Amount, knowledge: Knowledge): number {
   );
 }
 
+const VOLUME_UNITS = new Set(["cup", "Tasse"]);
+
+// A cup of a solid (grated cheese, cherry tomatoes) has a weight the bridge cannot know:
+// 240 ml times a density holds for liquids only (converter-rules.json volumeLiquids).
+function unknownVolume(ingredient: NormalizedIngredient, knowledge: Knowledge): boolean {
+  if (ingredient.unit === null || !VOLUME_UNITS.has(ingredient.unit)) return false;
+  return matchScore(nameKeys(ingredient.food), knowledge.volumeLiquidWords.map(stem)) === 0;
+}
+
+// "plus bis zu ½ Tasse mehr zum Verdünnen", "+ etwas zum Einfetten": the recipe allows more
+// than its amount. The parser keeps that phrase in the note, so the model reads it as the
+// source wrote it, and the amount has no upper bound.
+const MORE_ALLOWED = /(?:^|\s)(?:plus|\+)\s.*(?:mehr|more|etwas|extra)/iu;
+const openEnded = (ingredient: NormalizedIngredient) =>
+  ingredient.quantityMax === null && MORE_ALLOWED.test(ingredient.note);
+
 // The input amount of an ingredient: the upper end of a range for the upper bound, the
-// lower end for the lower bound.
+// lower end for the lower bound. Null when unknown, also for a cup of a solid.
 function inputAmount(
   ingredient: NormalizedIngredient,
   knowledge: Knowledge,
@@ -447,6 +480,7 @@ function inputAmount(
   const value =
     end === "max" ? (ingredient.quantityMax ?? ingredient.quantity) : ingredient.quantity;
   if (value === null || ingredient.source === "unparsed") return null;
+  if (unknownVolume(ingredient, knowledge)) return null;
   return amountIn(value, ingredient.unit, ingredient.food, knowledge);
 }
 
@@ -463,17 +497,27 @@ const scaled = (amount: Amount, share: number): Amount => ({
   value: amount.value * share,
 });
 
-// Steps that name an input ingredient without giving its amount: they may add the rest.
-function unquantifiedMentions(ctx: SanityContext, position: number): number[] {
-  return ctx.recipe.servingSize.steps.flatMap((step, stepIndex) => {
-    const text = stepText(step);
-    if (step.kind === "scale") return [];
-    if (!mentionedIngredients(text, ctx.index).includes(position)) return [];
-    const quantified = amountMentions(text).some(
-      (mention) => attributeIngredient(mention.phrase, ctx.index) === position,
-    );
-    return quantified ? [] : [stepIndex];
-  });
+// Whether a step that is not a scale step names the ingredient without a counted addition
+// of it ("die restliche Brühe dazugeben", "mit der Brühe ablöschen"): it may add the rest.
+function mayAddRest(ctx: SanityContext, position: number, counted: readonly Addition[]): boolean {
+  const steps = new Set(counted.map((addition) => addition.stepIndex));
+  return ctx.recipe.servingSize.steps.some(
+    (step, stepIndex) =>
+      step.kind !== "scale" &&
+      !steps.has(stepIndex) &&
+      mentionedIngredients(stepText(step), ctx.index).includes(position),
+  );
+}
+
+// Setting a portion aside, collecting it or emptying the bowl: a later addition of the same
+// ingredient may be that portion going back in.
+const SET_ASIDE = new RegExp(`${EMPTYING.source}|${RESERVED.source}`, "iu");
+
+// Whether a step after `from`, up to and including `to`, sets a portion aside.
+function setAsideBetween(ctx: SanityContext, from: number, to: number): boolean {
+  return ctx.recipe.servingSize.steps
+    .slice(from + 1, to + 1)
+    .some((step) => SET_ASIDE.test(stepText(step)));
 }
 
 const show = (amount: Amount) =>
@@ -489,8 +533,11 @@ export interface Addition {
 }
 
 // The amounts the steps add per input ingredient: scale steps that name exactly one input
-// ingredient, and amounts such as "2 Tl Salz" in step texts. A text amount equal to a
-// scale step of the same ingredient next to it describes the same addition.
+// ingredient, and amounts such as "2 Tl Salz" in step texts. A text amount counts only in a
+// clause with an adding verb that does not put it outside the bowl, and once per step:
+// "600 g Kartoffeln schälen", "die 3 Nelken entfernen" or "in den Dampfgaraufsatz
+// geben" add nothing. A text amount equal to a scale step of the same ingredient next to it
+// describes the same addition.
 export function collectAdditions(ctx: SanityContext): Addition[] {
   const { recipe, index, knowledge } = ctx;
   const additions: Addition[] = [];
@@ -509,12 +556,20 @@ export function collectAdditions(ctx: SanityContext): Addition[] {
       return;
     }
     if (step.kind !== "text") return;
-    for (const mention of amountMentions(text)) {
-      const ingredient = attributeIngredient(mention.phrase, index);
-      const food = ingredient === null ? undefined : ctx.request.ingredients[ingredient]?.food;
-      if (ingredient === null || food === undefined) continue;
-      const amount = amountIn(mention.amount, mention.unit, food, knowledge);
-      if (amount) additions.push({ ingredient, stepIndex, amount, source: "text" });
+    const seen = new Set<string>();
+    for (const clause of clauses(text)) {
+      if (!ADDING.test(clause) || OUTSIDE_BOWL.test(clause)) continue;
+      for (const mention of amountMentions(clause)) {
+        const ingredient = attributeIngredient(mention.phrase, index);
+        const food = ingredient === null ? undefined : ctx.request.ingredients[ingredient]?.food;
+        if (ingredient === null || food === undefined) continue;
+        const amount = amountIn(mention.amount, mention.unit, food, knowledge);
+        if (!amount) continue;
+        const key = `${ingredient}|${amount.dimension}|${Math.round(amount.value * 100)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        additions.push({ ingredient, stepIndex, amount, source: "text" });
+      }
     }
   });
   const same = (a: Addition, b: Addition) =>
@@ -536,7 +591,7 @@ export function collectAdditions(ctx: SanityContext): Addition[] {
 export const amountBalanceRule: SanityRule = {
   id: "amount_balance",
   description:
-    "Amounts in steps (summed per ingredient) and in the ingredient list stay within the tolerance of converter-rules.json (or one rounding step) of the input amount, in both directions. The step sum is checked from below only when no step names the ingredient without an amount.",
+    'Amounts in steps (summed per ingredient) and in the ingredient list stay within the tolerance of converter-rules.json (or one rounding step) of the input amount, in both directions. Too much in the steps is an error only when scale steps alone add it with no step between them that sets a portion aside; otherwise a warning. The step sum is checked from below only when every step that names the ingredient adds a counted amount. Open-ended amounts ("plus mehr") have no upper bound; cups of solids are not checked.',
   check(ctx) {
     const { request, knowledge, recipe, index } = ctx;
     const findings: Finding[] = [];
@@ -545,28 +600,40 @@ export const amountBalanceRule: SanityRule = {
     request.ingredients.forEach((ingredient, position) => {
       const input = inputAmount(ingredient, knowledge);
       if (!input) return;
-      const limit = allowed(input, knowledge);
+      const limit = openEnded(ingredient) ? Number.POSITIVE_INFINITY : allowed(input, knowledge);
       const own = additions.filter(
         (addition) =>
           addition.ingredient === position && addition.amount.dimension === input.dimension,
       );
       const steps = own.map((a) => a.stepIndex + 1).join(", ");
       let total = 0;
-      for (const addition of own) {
+      for (const [k, addition] of own.entries()) {
         total += addition.amount.value;
-        if (total > limit) {
-          findings.push(
-            error(
-              stepPath(addition.stepIndex),
-              `the steps add ${show({ dimension: input.dimension, value: total })} of "${ingredient.food}" (step ${steps}), but the recipe has ${show(input)}; never add more than the recipe gives`,
-            ),
-          );
-          return;
-        }
+        if (total <= limit) continue;
+        const contributing = own.slice(0, k + 1);
+        const firstStep = contributing[0]?.stepIndex ?? addition.stepIndex;
+        const sum = show({ dimension: input.dimension, value: total });
+        // A text amount may describe an addition counted elsewhere, and a portion set aside
+        // may go back in: the bridge cannot tell, so the cook checks.
+        const uncertain =
+          contributing.some((a) => a.source === "text") ||
+          setAsideBetween(ctx, firstStep, addition.stepIndex);
+        findings.push(
+          uncertain
+            ? warning(
+                stepPath(addition.stepIndex),
+                `"${ingredient.food}" may be added more than once: the steps add ${sum} (step ${steps}), the recipe has ${show(input)}; check that a reserved portion is not counted twice`,
+              )
+            : error(
+                stepPath(addition.stepIndex),
+                `the steps add ${sum} of "${ingredient.food}" (step ${steps}), but the recipe has ${show(input)}; never add more than the recipe gives`,
+              ),
+        );
+        return;
       }
       const least = inputAmount(ingredient, knowledge, "min");
       const first = own[0];
-      if (!least || !first || unquantifiedMentions(ctx, position).length > 0) return;
+      if (!least || !first || mayAddRest(ctx, position, own)) return;
       const expected = scaled(least, share);
       if (total < required(expected, knowledge)) {
         findings.push(
@@ -594,7 +661,7 @@ export const amountBalanceRule: SanityRule = {
         listed.set(position, [...(listed.get(position) ?? []), { path, amount: output }]);
         const input = inputAmount(ingredient, knowledge);
         if (!input || !output || output.dimension !== input.dimension) return;
-        if (output.value > allowed(input, knowledge)) {
+        if (!openEnded(ingredient) && output.value > allowed(input, knowledge)) {
           findings.push(
             error(
               path,
@@ -660,18 +727,33 @@ export const machineStepDescriptionRule: SanityRule = {
 const titleMatches = (title: string, aliases: readonly string[]) =>
   matchScore(nameKeys(title), aliases.flatMap(nameKeys)) > 0;
 
-// Which steps a technique's temperature range applies to.
+// The temperature range of a technique's manual-mode setting: its main program, or the
+// manual alternative when the main program is another mode.
+const manualRange = (technique: Technique) =>
+  technique.device.mode === "customized"
+    ? technique.device.temperature?.range
+    : technique.alternatives?.find((alternative) => alternative.mode === "customized")?.temperature
+        ?.range;
+
+// Which steps a technique's temperature range applies to, and which range.
 export const TEMPERATURE_CONVENTIONS: readonly {
   technique: string;
   applies: (step: RecipeStep, technique: Technique) => boolean;
+  range: (technique: Technique) => readonly [number, number] | undefined;
 }[] = [
-  { technique: "sear_roast", applies: (step) => step.kind === "roasting" },
   {
+    technique: "sear_roast",
+    applies: (step) => step.kind === "roasting",
+    range: (technique) => technique.device.temperature?.range,
+  },
+  {
+    // Manual sauté steps; sautéing with the roasting program falls under sear_roast.
     technique: "saute_onions",
     applies: (step, technique) =>
       step.kind === "customized" &&
       step.temperature > 0 &&
       titleMatches(step.title, technique.aliases.de),
+    range: manualRange,
   },
 ];
 
@@ -683,7 +765,7 @@ export const temperatureConventionRule: SanityRule = {
     const findings: Finding[] = [];
     for (const convention of TEMPERATURE_CONVENTIONS) {
       const technique = techniqueById(knowledge, convention.technique);
-      const range = technique?.device.temperature?.range;
+      const range = technique ? convention.range(technique) : undefined;
       if (!technique || !range) continue;
       recipe.servingSize.steps.forEach((step, index) => {
         if (!convention.applies(step, technique)) return;
@@ -703,7 +785,8 @@ export const temperatureConventionRule: SanityRule = {
 
 export const duplicateAdditionRule: SanityRule = {
   id: "duplicate_addition",
-  description: "The same ingredient is not added twice with the same amount.",
+  description:
+    "The same ingredient is not added twice with the same amount, unless a step in between sets a portion aside or empties the bowl.",
   check(ctx) {
     const findings: Finding[] = [];
     const additions = collectAdditions(ctx);
@@ -716,8 +799,10 @@ export const duplicateAdditionRule: SanityRule = {
           .find(
             (other) =>
               first !== undefined &&
+              other.stepIndex !== first.stepIndex &&
               other.amount.dimension === first.amount.dimension &&
-              Math.abs(other.amount.value - first.amount.value) < 0.5,
+              Math.abs(other.amount.value - first.amount.value) < 0.5 &&
+              !setAsideBetween(ctx, first.stepIndex, other.stepIndex),
           );
         if (first && twin) {
           findings.push(

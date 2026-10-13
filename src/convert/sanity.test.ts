@@ -292,6 +292,20 @@ describe("text_before_machine_step", () => {
   });
 });
 
+describe("ingredient_referenced (translated recipe)", () => {
+  it("gives one warning when most ingredients are not named in any step", () => {
+    const english = [
+      ingredient("pasta", 230, "g"),
+      ingredient("red onion", 1, null),
+      ingredient("cucumber", 1, null),
+    ];
+    const { warnings } = run(ingredientReferencedRule, [text("Nudeln kochen.")], english);
+    expect(warnings).toEqual([
+      "3 of 3 ingredients of the recipe are not named in any step, as in a translated recipe; check that each is used",
+    ]);
+  });
+});
+
 describe("ingredient_referenced", () => {
   it("warns about input ingredients no step names", () => {
     const ingredients = [ingredient("Olivenöl", 2, "EL"), ingredient("Muskatnuss", 1, "Prise")];
@@ -313,9 +327,87 @@ describe("amount_balance", () => {
 
   it("sums repeated additions in the ingredient's own unit", () => {
     const salt = [ingredient("Salz", 2, "TL")];
+    // A text amount may describe an addition counted elsewhere: the cook checks it.
     const twice = [text("2 Tl Salz zugeben."), text("Nochmals 2 Tl Salz zugeben.")];
-    expect(run(amountBalanceRule, twice, salt).errors).toHaveLength(1);
-    expect(run(amountBalanceRule, [text("2 Tl Salz zugeben.")], salt).errors).toEqual([]);
+    const { errors, warnings } = run(amountBalanceRule, twice, salt);
+    expect(errors).toEqual([]);
+    expect(warnings[0]).toContain('"Salz" may be added more than once');
+    expect(run(amountBalanceRule, [text("2 Tl Salz zugeben.")], salt)).toEqual({
+      errors: [],
+      warnings: [],
+    });
+  });
+
+  it("reads a text step's description, not its title as well", () => {
+    const eggs = [ingredient("Eier", 4, null)];
+    const step: RecipeStep = {
+      kind: "text",
+      title: "4 Eier zugeben",
+      description: "4 Eier aufschlagen und in den Mixbehälter geben.",
+    };
+    expect(run(amountBalanceRule, [step], eggs)).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("counts text amounts only in a clause that adds them to the bowl", () => {
+    const ingredients = [
+      ingredient("Kartoffeln", 600, "g"),
+      ingredient("Nelken", 3, null),
+      ingredient("Milch", 30, "g"),
+    ];
+    const steps = [
+      text("600 g Kartoffeln schälen und würfeln."),
+      text("Die Zwiebel halbieren."),
+      scale(600, "Kartoffeln"),
+      text("Die 3 Nelken in den Mixbehälter geben."),
+      text("Die 3 Nelken entfernen; 2 Eier hart kochen."),
+      scale(30, "Milch"),
+      text("Die Brötchen mit den 30 g Milch einpinseln."),
+    ];
+    expect(run(amountBalanceRule, steps, ingredients)).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("does not count text amounts that go into the steamer", () => {
+    const broccoli = [ingredient("Brokkoli", 200, "g")];
+    const steps = [
+      scale(200, "Brokkoli", "in einer Schüssel auf dem Mixbehälter abwiegen"),
+      text("Die Zwiebel halbieren."),
+      text("200 g Brokkoli in den Dampfgaraufsatz geben."),
+    ];
+    expect(run(amountBalanceRule, steps, broccoli)).toEqual({ errors: [], warnings: [] });
+  });
+
+  it("only warns when a portion set aside goes back in", () => {
+    const broth = [ingredient("Gemüsebrühe", 1000, "g")];
+    const reused = [
+      scale(1000, "Gemüsebrühe"),
+      text("Die Brühe durch ein Sieb abgießen und 250 g davon auffangen."),
+      scale(250, "Gemüsebrühe", "zurück in den Mixbehälter geben"),
+    ];
+    const { errors, warnings } = run(amountBalanceRule, reused, broth);
+    expect(errors).toEqual([]);
+    expect(warnings[0]).toContain("check that a reserved portion is not counted twice");
+    const doubled = [scale(1000, "Gemüsebrühe"), text("Rühren."), scale(300, "Gemüsebrühe")];
+    expect(run(amountBalanceRule, doubled, broth).errors).toHaveLength(1);
+  });
+
+  it("has no upper bound when the recipe allows more", () => {
+    const broth = [
+      ingredient("Gemüsebrühe", 360, "g", { note: "plus bis zu ½ Tasse mehr zum Verdünnen" }),
+    ];
+    const steps = [scale(360, "Gemüsebrühe"), text("Rühren."), scale(120, "Gemüsebrühe")];
+    expect(run(amountBalanceRule, steps, broth)).toEqual({ errors: [], warnings: [] });
+    const fixed = [ingredient("Gemüsebrühe", 360, "g")];
+    expect(run(amountBalanceRule, steps, fixed).errors).toHaveLength(1);
+  });
+
+  it("skips cups of solids and checks cups of liquids", () => {
+    const cheese = [ingredient("vegan parmesan", 1 / 3, "cup")];
+    expect(run(amountBalanceRule, [scale(30, "vegan parmesan")], cheese)).toEqual({
+      errors: [],
+      warnings: [],
+    });
+    const broth = [ingredient("vegetable broth", 1, "cup")];
+    expect(run(amountBalanceRule, [scale(500, "vegetable broth")], broth).errors).toHaveLength(1);
   });
 
   it("allows rounding to the gram grid and skips amounts in other units", () => {
@@ -464,8 +556,12 @@ describe("temperature_convention", () => {
     expect(run(temperatureConventionRule, [roast]).warnings[0]).toContain("110-130 °C");
     const good: RecipeStep = { ...roast, temperature: 120 };
     expect(run(temperatureConventionRule, [good]).warnings).toEqual([]);
+    // A manual sauté is checked against the manual alternative of saute_onions.
     const saute = manual(130, 300, 1, { title: "Andünsten" });
-    expect(run(temperatureConventionRule, [saute]).warnings).toHaveLength(1);
+    expect(run(temperatureConventionRule, [saute]).warnings[0]).toContain("80-120 °C");
+    expect(
+      run(temperatureConventionRule, [manual(100, 300, 1, { title: "Andünsten" })]).warnings,
+    ).toEqual([]);
     expect(
       run(temperatureConventionRule, [manual(130, 300, 1, { title: "Reduzieren" })]).warnings,
     ).toEqual([]);
@@ -484,6 +580,19 @@ describe("duplicate_addition", () => {
         [ingredient("Sahne", 300, "g")],
       ).warnings,
     ).toEqual([]);
+  });
+
+  it("skips one step that names an amount twice and a portion set aside in between", () => {
+    const salt = [ingredient("Salz", 2, "TL")];
+    const once = [text("1 Tl Salz zugeben und 1 Tl Salz über die Zwiebeln streuen.")];
+    expect(run(duplicateAdditionRule, once, salt).warnings).toEqual([]);
+    const parsley = [ingredient("Petersilie", 60, "g")];
+    const setAside = [
+      scale(30, "Petersilie"),
+      text("Umfüllen und beiseitestellen."),
+      scale(30, "Petersilie"),
+    ];
+    expect(run(duplicateAdditionRule, setAside, parsley).warnings).toEqual([]);
   });
 });
 

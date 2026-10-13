@@ -185,7 +185,10 @@ const converterRulesFileSchema = z.looseObject({
   ingredientClassWords: z.looseObject({
     classes: z.record(z.string(), z.array(z.string().min(1)).min(1)),
   }),
-  amountBalance: z.looseObject({ tolerance: z.number().min(0).max(1) }),
+  amountBalance: z.looseObject({
+    tolerance: z.number().min(0).max(1),
+    volumeLiquids: z.looseObject({ words: z.array(z.string().min(1)).min(1) }),
+  }),
 });
 
 export type Technique = z.infer<typeof techniqueSchema>;
@@ -219,6 +222,9 @@ export interface Knowledge {
   ingredientClassWords: Readonly<Record<string, readonly string[]>>;
   // Share by which an amount may exceed or fall short of the input (converter-rules.json).
   amountTolerance: number;
+  // Words for liquids, German and English: a cup of anything else is a volume of a solid,
+  // which the amount check skips (converter-rules.json).
+  volumeLiquidWords: readonly string[];
 }
 
 // Techniques every prompt carries: the scale step, chopping, sautéing and simmering cover
@@ -363,6 +369,7 @@ export function buildKnowledge(files: KnowledgeTexts): Knowledge {
     massLimits,
     ingredientClassWords: converterRules.ingredientClassWords.classes,
     amountTolerance: converterRules.amountBalance.tolerance,
+    volumeLiquidWords: converterRules.amountBalance.volumeLiquids.words,
   };
 }
 

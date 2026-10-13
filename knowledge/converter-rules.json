@@ -1,5 +1,5 @@
 {
-  "description": "Hand-written tables for the converter: German words that point to the ingredient classes of techniques.json (technique selection) and the tolerance of the amount balance check.",
+  "description": "Hand-written tables for the converter: German words that point to the ingredient classes of techniques.json (technique selection), and the tolerance and the liquid words of the amount balance check.",
   "version": 1,
   "ingredientClassWords": {
     "note": "A word matches the start of a word in the recipe, so \"zwiebel\" also finds \"Zwiebeln\" and \"Zwiebelwürfel\".",
@@ -124,6 +124,34 @@
   },
   "amountBalance": {
     "note": "An amount in the steps or the ingredient list may differ from the input by this share, or by one rounding step (gram grid, half a spoon, half a piece), whichever is larger.",
-    "tolerance": 0.1
+    "tolerance": 0.1,
+    "volumeLiquids": {
+      "note": "A cup (Tasse) converts to 240 ml times the density, which holds for liquids only. A cup of a food that none of these words names is a volume of a solid, such as grated cheese or cherry tomatoes, and its amount is not checked. Words match like the ingredient class words, in German and English, because Mealie recipes with cups are often English.",
+      "words": [
+        "wasser",
+        "brühe",
+        "fond",
+        "milch",
+        "sahne",
+        "rahm",
+        "wein",
+        "saft",
+        "öl",
+        "essig",
+        "sirup",
+        "honig",
+        "water",
+        "broth",
+        "stock",
+        "milk",
+        "cream",
+        "wine",
+        "juice",
+        "oil",
+        "vinegar",
+        "syrup",
+        "honey"
+      ]
+    }
   }
 }

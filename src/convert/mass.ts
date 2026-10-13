@@ -139,8 +139,17 @@ export interface IngredientIndex {
   keys: string[][];
 }
 
+// The keys of an input ingredient name without its qualifiers in parentheses: steps use the
+// name without them, and "Auflaufform (ca. 20 x 30 cm)" or "Spaghetti (Kochzeit 9 Minuten)"
+// would otherwise match "30 cm" or "9 Minuten" in a step. A name that is only a
+// parenthesis keeps its keys.
+export function ingredientKeys(food: string): string[] {
+  const keys = nameKeys(food.replace(/\([^)]*\)/gu, " "));
+  return keys.length > 0 ? keys : nameKeys(food);
+}
+
 export function indexIngredients(ingredients: readonly NormalizedIngredient[]): IngredientIndex {
-  return { ingredients, keys: ingredients.map((ingredient) => nameKeys(ingredient.food)) };
+  return { ingredients, keys: ingredients.map((ingredient) => ingredientKeys(ingredient.food)) };
 }
 
 // Positions of the input ingredients a text names, best matches only.
@@ -190,6 +199,11 @@ export interface AmountMention {
 const AMOUNT =
   /(?<![\p{L}\d])(\d+\s*[½¼¾⅓⅔⅛]|\d+\/\d+|\d+(?:[.,]\d+)?|[½¼¾⅓⅔⅛])\s*(kg|g|ml|l|el|tl|prisen|prise|msp\.?|stück|stk\.?)?(?!\p{L})\s*([^,.;:!?()\d]{1,60})/giu;
 
+// A number followed by one of these is a size, a time or a setting, not an amount:
+// "20 x 30 cm", "9 Minuten", "auf Stufe 4", "100 °C".
+const MEASURE_WORD =
+  /^(?:x(?!\p{L})|cm|mm|min(?:\.|ute|uten)?(?!\p{L})|sek(?:\.|unde|unden)?(?!\p{L})|std\.?(?!\p{L})|stunde|°|grad|stufe|%)/iu;
+
 // Reads amounts such as "200 g Sahne", "2 Tl Salz" or "2 Eier" from a step text.
 export function amountMentions(text: string): AmountMention[] {
   const mentions: AmountMention[] = [];
@@ -200,10 +214,19 @@ export function amountMentions(text: string): AmountMention[] {
     const unit = unitWord ? (normalizeUnit(unitWord)?.code ?? null) : null;
     if (unitWord && unit === null) continue;
     const phrase = (match[3] ?? "").trim().split(/\s+/).slice(0, 4).join(" ");
-    if (phrase === "") continue;
+    if (phrase === "" || (unitWord === undefined && MEASURE_WORD.test(phrase))) continue;
     mentions.push({ amount, unit, phrase });
   }
   return mentions;
+}
+
+// The clauses of a step text: sentences and semicolon parts. A full stop after a word of at
+// most three letters ("ca.", "Msp.", "Pck.") is an abbreviation, not a sentence end.
+export function clauses(text: string): string[] {
+  return text
+    .split(/[;!?\n]|(?<!(?<!\p{L})\p{L}{1,3})\.(?=\s+\p{Lu}|\s*$)/u)
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
 }
 
 // Units whose amounts are too small to matter for the bowl.
@@ -341,15 +364,22 @@ export const FOAMING_WORDS = [
 export const LIQUID_WORDS = ["wasser", "brühe", "fond", "milch", "wein", "saft"];
 export const FLOUR_WORDS = ["mehl"];
 
-const ADDING =
-  /(?<!\p{L})(?:zugeben|dazugeben|hinzugeben|hineingeben|geben|zugießen|angießen|aufgießen|eingießen|dazugießen|einfüllen|einwiegen|zufügen|hinzufügen|einstreuen|unterheben|unterrühren|einrühren|untermischen|ablöschen)(?!\p{L})/iu;
-const EMPTYING =
+export const ADDING =
+  /(?<!\p{L})(?:zugeben|dazugeben|hinzugeben|hineingeben|geben|zugießen|angießen|aufgießen|eingießen|dazugießen|gießen|einfüllen|einwiegen|zufügen|hinzufügen|einstreuen|unterheben|unterrühren|einrühren|untermischen|ablöschen)(?!\p{L})/iu;
+export const EMPTYING =
   /umfüllen|ausspülen|ausleeren|entleeren|abgießen|abschütten|(?<!\p{L})leeren|reinigen|vorspülen/iu;
+// A portion that was set aside or collected earlier and goes back in, or the rest of an
+// ingredient: "die beiseitegestellte Brühe", "das aufgefangene Kochwasser", "restliche".
+export const RESERVED = /beiseite|auffangen|aufgefangen|aufbewahr|zurück|übrig|restlich/iu;
 const COOLING = /abkühlen|auskühlen/iu;
-// Places a weighed or added ingredient goes that are not the bowl. The lid opening is the
-// bowl: "durch die Deckelöffnung zugeben".
-const OUTSIDE_BOWL =
-  /dampfgar|einlegeboden|deckel(?!öffnung)|teller|schüssel|außerhalb|backform|auflaufform/iu;
+// Places a weighed or added ingredient goes that are not the bowl. The lid is the bowl:
+// oil poured onto the lid runs in, and "durch die Deckelöffnung zugeben" adds to the bowl.
+export const OUTSIDE_BOWL =
+  /dampfgar|einlegeboden|teller|schüssel|gefäß|außerhalb|backform|auflaufform|backblech/iu;
+// Additions that are hot already ("heiße Brühe", "kochendes Wasser") count at this
+// temperature, not at room temperature, when the bowl temperature is followed.
+const HOT = /(?<!\p{L})(?:heiß\p{L}*|kochend\p{L}*|hot|boiling)(?!\p{L})/iu;
+export const HOT_ADDITION_C = 80;
 const WHISK = /rühraufsatz/iu;
 const WHISK_IN = /einsetzen|aufsetzen|einstecken|anbringen/iu;
 const WHISK_OUT = /entfernen|abnehmen|herausnehmen|entnehmen/iu;
@@ -377,10 +407,13 @@ export interface StepTrace {
   after: BowlState;
 }
 
-// The text of a step for the checks. Official text steps repeat the description as the
-// title (cut at 80 characters), so the title only counts when it says something else.
+// The text of a step for the checks. A text or turbo step's title only summarizes its
+// description (the bridge derives text step titles from the description), so only the
+// description counts. A scale step's title ("200 g Sahne") counts when the description does
+// not repeat it.
 export function stepText(step: RecipeStep): string {
   if (!("description" in step)) return step.title;
+  if (step.kind !== "scale") return step.description;
   const title = step.title.replace(/…$/, "").trim();
   return step.description.includes(title) ? step.description : `${step.title}\n${step.description}`;
 }
@@ -405,24 +438,26 @@ const emptyBowl = (temperature: number): BowlState => ({
   whisk: false,
 });
 
-// The temperature after adding grams at room temperature to the contents.
+// The temperature after adding grams at addedTemperature (room temperature, or
+// HOT_ADDITION_C for a hot addition) to the contents.
 export function mixedTemperature(
   grams: number,
   temperature: number,
   addedGrams: number,
-  roomTemperature: number,
+  addedTemperature: number,
 ): number {
   const total = grams + addedGrams;
-  if (addedGrams <= 0 || total <= 0) return addedGrams > 0 ? roomTemperature : temperature;
-  return (Math.max(0, grams) * temperature + addedGrams * roomTemperature) / total;
+  if (addedGrams <= 0 || total <= 0) return addedGrams > 0 ? addedTemperature : temperature;
+  return (Math.max(0, grams) * temperature + addedGrams * addedTemperature) / total;
 }
 
 // Follows the bowl through the recipe. Scale steps add their weight unless they weigh
-// onto the steamer, a plate or the lid; text steps with an adding verb add the input
-// ingredients they name (their stated amount, else the estimated weight of the whole
-// ingredient). Transferring or rinsing empties the bowl. Every input ingredient counts once.
-// Heated steps raise the temperature of the contents; cold additions lower it to the
-// mixing temperature, so a sauté followed by a litre of stock counts as cold again.
+// onto the steamer, a plate or into another container; text steps with an adding verb add
+// the input ingredients they name (their stated amount, else the estimated weight of the
+// whole ingredient). Transferring or rinsing empties the bowl. Every input ingredient
+// counts once. Heated steps raise the temperature of the contents; cold additions lower it
+// to the mixing temperature, so a sauté followed by a litre of stock counts as cold again.
+// Additions described as hot count at HOT_ADDITION_C.
 export function traceBowl(
   recipe: RecipeInput,
   ingredients: readonly NormalizedIngredient[],
@@ -436,8 +471,8 @@ export function traceBowl(
   let state: BowlState = emptyBowl(room);
   const traces: StepTrace[] = [];
 
-  const addContents = (grams: number, label: string) => {
-    state.temperature = mixedTemperature(state.grams, state.temperature, grams, room);
+  const addContents = (grams: number, label: string, temperature = room) => {
+    state.temperature = mixedTemperature(state.grams, state.temperature, grams, temperature);
     state.grams += grams;
     if (hasAny(label, FLOUR_WORDS)) state.flourGrams += grams;
     if (hasAny(label, LIQUID_WORDS)) state.liquidGrams += grams;
@@ -447,6 +482,7 @@ export function traceBowl(
   recipe.servingSize.steps.forEach((step, position) => {
     const before = { ...state };
     const text = stepText(step);
+    const added = HOT.test(text) ? HOT_ADDITION_C : room;
     if (step.kind === "text") {
       if (EMPTYING.test(text)) {
         state = { ...emptyBowl(room), whisk: state.whisk };
@@ -480,7 +516,7 @@ export function traceBowl(
             continue;
           }
           fromText.set(position, grams);
-          addContents(grams, ingredient.food);
+          addContents(grams, ingredient.food, added);
         }
         // Liquids the ingredient list does not have, such as water for steaming.
         if (!outside) {
@@ -488,7 +524,7 @@ export function traceBowl(
             if (attributeIngredient(mention.phrase, index) !== null) continue;
             if (!hasAny(mention.phrase, LIQUID_WORDS)) continue;
             const grams = gramsFor(mention.amount, mention.unit, mention.phrase, units);
-            if (grams !== null && mention.unit !== null) addContents(grams, mention.phrase);
+            if (grams !== null && mention.unit !== null) addContents(grams, mention.phrase, added);
           }
           if (hasAny(text, ["wasser"]) && !mentions.some((m) => hasAny(m.phrase, ["wasser"]))) {
             state.liquidUnknown = true;
@@ -506,7 +542,7 @@ export function traceBowl(
             fromText.delete(position);
           }
         }
-        addContents(step.grams, text);
+        addContents(step.grams, text, added);
       }
     } else {
       const temperature = stepTemperature(step);

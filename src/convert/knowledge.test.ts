@@ -60,6 +60,7 @@ describe("loadKnowledge", () => {
       typicalFactor: 2.3,
     });
     expect(knowledge.amountTolerance).toBe(0.1);
+    expect(knowledge.volumeLiquidWords).toEqual(expect.arrayContaining(["brühe", "broth"]));
     expect(massLimit(knowledge, "bowl_max").grams).toBe(3000);
     expect(massLimit(knowledge, "steaming_liquid_min").grams).toBe(500);
     expect(ruleValue(knowledge, "speed_max_whisk")).toBe(4);

@@ -1,4 +1,4 @@
-import { type LoggerOptions } from "pino";
+import { stdSerializers, type LoggerOptions } from "pino";
 import type { Config } from "./config.js";
 
 const censor = "[redacted]";
@@ -11,12 +11,17 @@ const sensitiveKey =
 
 const maxDepth = 8;
 
-// Returns a copy with sensitive values masked. Only plain objects and arrays are walked,
-// so errors, buffers and other class instances pass through to their own serializers.
+// Returns a copy with sensitive values masked. Plain objects and arrays are walked.
+// Errors are serialized first, because HTTP client errors often carry the request
+// config with its headers. Other class instances pass through to their own serializers.
+// Past the depth limit the subtree is dropped, so a deep secret cannot slip through.
 export function maskSecrets(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
-  if (typeof value !== "object" || value === null || depth > maxDepth) return value;
+  if (typeof value !== "object" || value === null) return value;
+  if (depth > maxDepth) return "[depth limit]";
   if (seen.has(value)) return "[circular]";
   seen.add(value);
+  // The spread gives a plain object, which the walk below can enter.
+  if (value instanceof Error) return maskSecrets({ ...stdSerializers.err(value) }, depth, seen);
   if (Array.isArray(value)) return value.map((item) => maskSecrets(item, depth + 1, seen));
   const proto: unknown = Object.getPrototypeOf(value);
   if (proto !== Object.prototype && proto !== null) return value;
@@ -65,6 +70,8 @@ export function loggerOptions(level: Config["LOG_LEVEL"]): LoggerOptions {
   return {
     level,
     redact: { paths: redactPaths, censor },
+    // maskSecrets already serialized any Error, so pino's own err serializer must not run again.
+    serializers: { err: (value: unknown) => value },
     formatters: {
       log: (object) => maskSecrets(object) as Record<string, unknown>,
     },

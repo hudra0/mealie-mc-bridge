@@ -21,6 +21,12 @@ cookies*.json
 .playwright/
 browser-profile/
 
+# Personal deployment files copied from the examples
+compose.yml
+compose.override.yml
+docker-compose.yml
+docker-compose.override.yml
+
 # Local data and private working files
 data/
 local/

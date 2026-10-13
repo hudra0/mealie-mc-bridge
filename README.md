@@ -50,7 +50,7 @@ docker compose up -d --build
 curl http://127.0.0.1:3000/health
 ```
 
-Prebuilt images are published to `ghcr.io/hudra0/mealie-mc-bridge` by the CI workflow after the first release. A newly pushed GHCR package is private until the maintainer makes it public in the package settings. The example compose file keeps its state in a named volume. If you switch `/data` to a bind mount, run `mkdir -p data && sudo chown 1000:1000 data` first, because the container runs as uid 1000.
+CI publishes `ghcr.io/hudra0/mealie-mc-bridge` on every push to `main` (tags `latest` and `sha-<commit>`) and for `v*` tags (semver tags). The example compose file keeps its state in a named volume. If you switch `/data` to a bind mount, run `mkdir -p data && sudo chown 1000:1000 data` first, because the container runs as uid 1000.
 
 ## Development
 

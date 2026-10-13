@@ -4,7 +4,7 @@
 
 - Branch from `main`.
 - Commit subjects are short and imperative ("Add ingredient parser"). The body explains why the change is needed, not what the diff already shows.
-- Before pushing, run `npm run check`, `npm run build` and `gitleaks detect`.
+- Before pushing, run `npm run check`, `npm run build` and `gitleaks git` (scans the history).
 
 ## Pull requests
 
@@ -41,6 +41,7 @@ Rules:
 - Put every setting in `.env.example` with an empty or harmless value. Real values live in your own `.env`, which git ignores.
 - Install the pre-commit hook with `npm run hooks:install`. It runs gitleaks on staged changes and refuses to commit when gitleaks is missing. `SKIP_GITLEAKS=1` skips the scan once.
 - CI runs gitleaks on every push and pull request, and rescans the full history weekly.
+- Maintainer only: a newly pushed GHCR package is private until its visibility is set to public in the package settings.
 - Browser sessions, HAR files and cookie dumps belong under `local/`, which git ignores.
 
 ## Fixtures

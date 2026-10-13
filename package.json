@@ -36,7 +36,8 @@
     "format:check": "tsx scripts/format.ts --check",
     "format": "tsx scripts/format.ts --write",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test:coverage",
-    "hooks:install": "git config core.hooksPath .githooks"
+    "hooks:install": "git config core.hooksPath .githooks",
+    "docs:config": "tsx scripts/config-reference.ts --write"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

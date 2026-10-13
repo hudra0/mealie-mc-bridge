@@ -20,13 +20,12 @@ import { DEFAULT_DEVICE_PROGRAMS_PATH } from "./recipe/limits.js";
 export const LLM_PROVIDERS = ["openai", "anthropic"] as const;
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
-// More settings (Mealie, the job queue) arrive with later features.
 const httpUrl = z.url({ protocol: /^https?$/, error: "must be an http or https URL" });
 
 // Every setting the bridge reads. Settings the service cannot run without are optional
 // here, so tools that need only a few of them (scripts/mc-smoke.ts) can share the schema;
 // loadServiceConfig enforces them for the service.
-const settingsSchema = z.object({
+export const settingsSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   HOST: z.string().min(1).default("0.0.0.0"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),

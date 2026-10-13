@@ -6,7 +6,8 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts", "scripts/**/*.ts"],
-      exclude: ["**/*.test.ts"],
+      // src/testing holds fakes for the tests and is not part of the build.
+      exclude: ["**/*.test.ts", "src/testing/**"],
       reporter: ["text-summary", "text", "html"],
       // The product modules keep a line threshold each; scripts/ is reported without one.
       thresholds: {
@@ -14,6 +15,11 @@ export default defineConfig({
         "src/recipe/**/*.ts": { lines: 85 },
         "src/mealie/**/*.ts": { lines: 85 },
         "src/ingredients/**/*.ts": { lines: 85 },
+        "src/store/**/*.ts": { lines: 85 },
+        "src/session/**/*.ts": { lines: 85 },
+        "src/pipeline/**/*.ts": { lines: 85 },
+        "src/service/**/*.ts": { lines: 85 },
+        "src/notify/**/*.ts": { lines: 85 },
       },
     },
   },

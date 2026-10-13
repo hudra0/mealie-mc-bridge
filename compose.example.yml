@@ -1,3 +1,10 @@
+# Copy to compose.yml next to a filled-in .env. Mealie posts to the bridge and the bridge
+# calls Mealie, so both must share a Docker network. Two ways:
+# - Paste the mc-bridge service into Mealie's compose file. Keep .env and data/ next to that
+#   file. The networks lines below stay commented out.
+# - Keep this as its own compose project and join Mealie's network: uncomment both networks
+#   blocks and set the name to Mealie's network (`docker network ls`; usually
+#   <mealie project directory>_default).
 services:
   mc-bridge:
     image: ghcr.io/hudra0/mealie-mc-bridge:latest
@@ -5,13 +12,21 @@ services:
     # build: .
     restart: unless-stopped
     env_file: .env
+    # The admin pages listen here. Mealie reaches the webhook over the Docker network, so
+    # the host port only needs to be open for you. Keep it on localhost or a LAN address.
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      # A named volume inherits the ownership of /data from the image, so the
-      # non-root user can write to it. For a bind mount (./data:/data) run
-      # `mkdir -p data && sudo chown 1000:1000 data` first.
-      - bridge-data:/data
+      # bridge.db lives here. The container runs as uid 1000, so create the directory
+      # first: mkdir -p data && sudo chown 1000:1000 data
+      - ./data:/data
+    # Give a running job time to finish a Monsieur Cuisine request (up to 30 s) or hand
+    # itself back to the queue on shutdown.
+    stop_grace_period: 45s
+    # networks:
+    #   - mealie
 
-volumes:
-  bridge-data:
+# networks:
+#   mealie:
+#     external: true
+#     name: mealie_default

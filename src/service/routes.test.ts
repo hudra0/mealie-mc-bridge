@@ -261,7 +261,7 @@ describe("end to end with fake clients", () => {
     const resolveAll = vi.fn(() =>
       Promise.resolve({
         ids: new Map<string, number | null>([["kürbis", 9001]]),
-        stats: { catalog: 1, cache: 0, search: 0, unresolved: 1 },
+        stats: { catalog: 1, catalogRelaxed: 0, cache: 0, search: 0, unresolved: 1 },
         unresolvedNames: ["Rote Linsen"],
         enabled: true,
       }),

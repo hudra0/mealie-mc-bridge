@@ -109,7 +109,9 @@ describe("message catalogs", () => {
       expect(admin.jobDetail.tokens(100, 20, 50)).toContain("20");
       expect(admin.jobDetail.tokens(100, null, 50)).not.toContain("(");
       expect(admin.jobDetail.resolutionOff(3)).toContain("3");
-      expect(admin.jobDetail.resolution(7, 2, 1, 2)).toContain("7");
+      expect(admin.jobDetail.resolution(7, 0, 2, 1, 2)).toContain("7");
+      expect(admin.jobDetail.resolution(7, 3, 2, 1, 2)).toContain("3");
+      expect(admin.jobDetail.resolution(7, 0, 2, 1, 2)).not.toContain("(");
       expect(admin.dryRun.sentAt("t")).toContain("t");
       expect(admin.dryRun.attempts(1)).toContain("1");
       expect(admin.dryRun.attempts(2)).toContain("2");

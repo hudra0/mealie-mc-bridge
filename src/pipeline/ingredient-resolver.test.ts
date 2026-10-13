@@ -5,8 +5,10 @@ import type { CachedIngredient, IngredientCacheSource } from "../store/ingredien
 import { silentLogger } from "../testing/fakes.js";
 import {
   IngredientResolver,
+  CACHE_KEY_VERSION,
   NEGATIVE_TTL_MS,
   TokenBucket,
+  cacheKey,
   describeResolution,
   type IngredientResolverOptions,
 } from "./ingredient-resolver.js";
@@ -84,7 +86,13 @@ describe("IngredientResolver", () => {
     const t = resolver();
     const result = await t.resolver.resolveAll(["Testzutat A", "  testzutat  a "]);
     expect(result.ids).toEqual(new Map([["testzutat a", 9001]]));
-    expect(result.stats).toEqual({ catalog: 1, cache: 0, search: 0, unresolved: 0 });
+    expect(result.stats).toEqual({
+      catalog: 1,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 0,
+      unresolved: 0,
+    });
     expect(result.enabled).toBe(true);
     expect(t.cache.get).not.toHaveBeenCalled();
     expect(t.search.searchIngredients).not.toHaveBeenCalled();
@@ -93,7 +101,7 @@ describe("IngredientResolver", () => {
   it("takes an id from the cache", async () => {
     const cache = fakeCache([
       {
-        nameNorm: "testzutat b",
+        nameNorm: cacheKey("testzutat b"),
         systemIngredientId: 9002,
         source: "search",
         resolvedAt: "2020-01-01T00:00:00.000Z",
@@ -102,7 +110,13 @@ describe("IngredientResolver", () => {
     const t = resolver({ cache });
     const result = await t.resolver.resolveAll(["Testzutat B"]);
     expect(result.ids.get("testzutat b")).toBe(9002);
-    expect(result.stats).toEqual({ catalog: 0, cache: 1, search: 0, unresolved: 0 });
+    expect(result.stats).toEqual({
+      catalog: 0,
+      catalogRelaxed: 0,
+      cache: 1,
+      search: 0,
+      unresolved: 0,
+    });
     expect(t.search.searchIngredients).not.toHaveBeenCalled();
   });
 
@@ -116,8 +130,14 @@ describe("IngredientResolver", () => {
     const result = await t.resolver.resolveAll(["Testzutat B"]);
     expect(search.searchIngredients).toHaveBeenCalledWith("Testzutat B");
     expect(result.ids.get("testzutat b")).toBe(9002);
-    expect(result.stats).toEqual({ catalog: 0, cache: 0, search: 1, unresolved: 0 });
-    expect(t.cache.rows.get("testzutat b")).toMatchObject({
+    expect(result.stats).toEqual({
+      catalog: 0,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 1,
+      unresolved: 0,
+    });
+    expect(t.cache.rows.get(cacheKey("testzutat b"))).toMatchObject({
       systemIngredientId: 9002,
       source: "search",
     });
@@ -133,8 +153,17 @@ describe("IngredientResolver", () => {
     const result = await t.resolver.resolveAll(["Wasser"]);
     expect(result.ids.get("wasser")).toBeNull();
     expect(result.unresolvedNames).toEqual(["Wasser"]);
-    expect(result.stats).toEqual({ catalog: 0, cache: 0, search: 0, unresolved: 1 });
-    expect(t.cache.rows.get("wasser")).toMatchObject({ systemIngredientId: null, source: "none" });
+    expect(result.stats).toEqual({
+      catalog: 0,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 0,
+      unresolved: 1,
+    });
+    expect(t.cache.rows.get(cacheKey("wasser"))).toMatchObject({
+      systemIngredientId: null,
+      source: "none",
+    });
 
     // The cached miss keeps the next job from searching again.
     const again = await t.resolver.resolveAll(["Wasser"]);
@@ -146,18 +175,23 @@ describe("IngredientResolver", () => {
     const at = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
     const cache = fakeCache([
       {
-        nameNorm: "fresh",
+        nameNorm: cacheKey("fresh"),
         systemIngredientId: null,
         source: "none",
         resolvedAt: at(NEGATIVE_TTL_MS - 1000),
       },
       {
-        nameNorm: "stale",
+        nameNorm: cacheKey("stale"),
         systemIngredientId: null,
         source: "none",
         resolvedAt: at(NEGATIVE_TTL_MS),
       },
-      { nameNorm: "broken", systemIngredientId: null, source: "none", resolvedAt: "not a date" },
+      {
+        nameNorm: cacheKey("broken"),
+        systemIngredientId: null,
+        source: "none",
+        resolvedAt: "not a date",
+      },
     ]);
     const search = fakeSearch((q) =>
       q === "stale" ? [{ name: "Stale", systemIngredientId: 77 }] : [],
@@ -172,7 +206,13 @@ describe("IngredientResolver", () => {
         ["broken", null],
       ]),
     );
-    expect(result.stats).toEqual({ catalog: 0, cache: 0, search: 1, unresolved: 2 });
+    expect(result.stats).toEqual({
+      catalog: 0,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 1,
+      unresolved: 2,
+    });
   });
 
   it("draws every search from the rate limiter", async () => {
@@ -215,7 +255,13 @@ describe("IngredientResolver", () => {
         ["testzutat a", 9001],
       ]),
     );
-    expect(result.stats).toEqual({ catalog: 1, cache: 0, search: 0, unresolved: 1 });
+    expect(result.stats).toEqual({
+      catalog: 1,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 0,
+      unresolved: 1,
+    });
     expect(t.cache.put).not.toHaveBeenCalled();
     expect(t.warn).toHaveBeenCalledWith(
       expect.objectContaining({ ingredient: "Testzutat B" }),
@@ -231,7 +277,13 @@ describe("IngredientResolver", () => {
       signal: controller.signal,
     });
     expect(t.search.searchIngredients).not.toHaveBeenCalled();
-    expect(result.stats).toEqual({ catalog: 1, cache: 0, search: 0, unresolved: 1 });
+    expect(result.stats).toEqual({
+      catalog: 1,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 0,
+      unresolved: 1,
+    });
   });
 
   it("sends no request when the signal is aborted during the rate-limit wait", async () => {
@@ -270,7 +322,13 @@ describe("IngredientResolver", () => {
         ["testzutat b", null],
       ]),
     );
-    expect(result.stats).toEqual({ catalog: 0, cache: 0, search: 0, unresolved: 2 });
+    expect(result.stats).toEqual({
+      catalog: 0,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 0,
+      unresolved: 2,
+    });
     expect(t.cache.get).not.toHaveBeenCalled();
     expect(t.search.searchIngredients).not.toHaveBeenCalled();
   });
@@ -316,17 +374,151 @@ describe("TokenBucket", () => {
 
 describe("describeResolution", () => {
   it("writes one line for the job log", () => {
-    const stats = { catalog: 5, cache: 1, search: 2, unresolved: 3 };
+    const stats = { catalog: 5, catalogRelaxed: 0, cache: 1, search: 2, unresolved: 3 };
     expect(describeResolution({ ids: new Map(), stats, unresolvedNames: [], enabled: true })).toBe(
       "Ingredients resolved: 5 catalog, 1 cache, 2 search, 3 without id",
     );
     expect(
       describeResolution({
         ids: new Map(),
-        stats: { catalog: 0, cache: 0, search: 0, unresolved: 4 },
+        stats: { catalog: 0, catalogRelaxed: 0, cache: 0, search: 0, unresolved: 4 },
         unresolvedNames: [],
         enabled: false,
       }),
     ).toBe("Ingredient ids not resolved (MC_RESOLVE_INGREDIENTS=off): 4 without id");
+  });
+});
+
+describe("IngredientResolver relaxed catalog lookup and suggestions", () => {
+  const rules = {
+    stopwords: ["frisch", "rot", "zum", "aus", "der"],
+    stemEndings: ["en", "er", "n", "e", "s"],
+    qualifierSuffixes: ["zum Garnieren", "frisch", "aus der Dose/Glas", "(optional)"],
+  };
+  const entry = (name: string, systemIngredientId: number) => ({
+    name,
+    systemIngredientId,
+    officialRecipes: 10,
+    memberRecipes: 0,
+    category: null,
+    alternatives: [],
+  });
+  const relaxedCatalog = createIngredientCatalog({
+    generatedFrom: "test",
+    entries: [
+      entry("Kokosmilch", 46979),
+      entry("Zwiebeln", 54731),
+      entry("Zwiebeln, rot", 1149548),
+      entry("Knoblauchknolle", 288314),
+      entry("Ingwer", 1560),
+      entry("Butternutkürbis", 1645058),
+      entry("Butter", 17436),
+    ],
+  });
+
+  it("finds a name with qualifiers by its relaxed form and counts it as a catalog hit", async () => {
+    const t = resolver({ catalog: relaxedCatalog, rules });
+    const result = await t.resolver.resolveAll([
+      "Kokosmilch aus der Dose/Glas",
+      "Zwiebeln (rot)",
+      "Knoblauchknollen",
+      "Ingwer, frisch",
+      "Kokosmilch zum Garnieren",
+    ]);
+    expect(result.ids).toEqual(
+      new Map([
+        ["kokosmilch aus der dose/glas", 46979],
+        ["zwiebeln (rot)", 1149548],
+        ["knoblauchknollen", 288314],
+        ["ingwer, frisch", 1560],
+        ["kokosmilch zum garnieren", 46979],
+      ]),
+    );
+    expect(result.stats).toEqual({
+      catalog: 5,
+      catalogRelaxed: 5,
+      cache: 0,
+      search: 0,
+      unresolved: 0,
+    });
+    expect(t.cache.get).not.toHaveBeenCalled();
+    expect(t.search.searchIngredients).not.toHaveBeenCalled();
+  });
+
+  it("takes no spelling variant or short word as an id, and searches those names exactly", async () => {
+    const search = fakeSearch([{ name: "Butternutkürbis", systemIngredientId: 1645058 }]);
+    const t = resolver({ catalog: relaxedCatalog, rules, search });
+    const result = await t.resolver.resolveAll(["Butternusskürbis", "Butt"]);
+    expect(result.ids).toEqual(
+      new Map([
+        ["butternusskürbis", null],
+        ["butt", null],
+      ]),
+    );
+    expect(search.searchIngredients.mock.calls.map(([q]) => q)).toEqual([
+      "Butternusskürbis",
+      "Butt",
+    ]);
+    expect(result.stats).toEqual({
+      catalog: 0,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 0,
+      unresolved: 2,
+    });
+  });
+
+  it("keeps to exact names without the pack rules", async () => {
+    const t = resolver({ catalog: relaxedCatalog });
+    const result = await t.resolver.resolveAll(["Ingwer, frisch"]);
+    expect(result.ids.get("ingwer, frisch")).toBeNull();
+    expect(t.resolver.suggest(["Ingwer, frisch"])).toEqual([[]]);
+  });
+
+  it("forgets misses cached under an older key version but keeps found ids", async () => {
+    expect(cacheKey("wasser")).toBe(`v${CACHE_KEY_VERSION}|wasser`);
+    const recent = NOW.toISOString();
+    const cache = fakeCache([
+      { nameNorm: "wasser", systemIngredientId: null, source: "none", resolvedAt: recent },
+      { nameNorm: "testzutat b", systemIngredientId: 9002, source: "search", resolvedAt: recent },
+    ]);
+    const search = fakeSearch([{ name: "Wasser", systemIngredientId: 4711 }]);
+    const t = resolver({ cache, search });
+    const result = await t.resolver.resolveAll(["Wasser", "Testzutat B"]);
+    expect(result.ids).toEqual(
+      new Map([
+        ["wasser", 4711],
+        ["testzutat b", 9002],
+      ]),
+    );
+    expect(search.searchIngredients).toHaveBeenCalledTimes(1);
+    expect(cache.rows.get(cacheKey("wasser"))).toMatchObject({ systemIngredientId: 4711 });
+  });
+
+  it("suggests catalog names per source name, in input order", () => {
+    const t = resolver({ catalog: relaxedCatalog, rules });
+    const suggestions = t.resolver.suggest([
+      "Butternusskürbis",
+      "Zwiebeln (rot)",
+      "Kokosmilch aus der Dose/Glas",
+      "Salz",
+    ]);
+    expect(suggestions[0]).toEqual(["Butternutkürbis"]);
+    expect(suggestions[1]?.[0]).toBe("Zwiebeln, rot");
+    expect(suggestions[2]).toEqual(["Kokosmilch"]);
+    expect(suggestions[3]).toEqual([]);
+    expect(t.resolver.suggest(["Zwiebeln (rot)"], 1)).toEqual([["Zwiebeln, rot"]]);
+  });
+
+  it("suggests nothing when switched off", () => {
+    const t = resolver({ mode: "off", catalog: relaxedCatalog, rules });
+    expect(t.resolver.suggest(["Butternusskürbis"])).toEqual([[]]);
+  });
+
+  it("names the relaxed hits in the job log line", () => {
+    const stats = { catalog: 5, catalogRelaxed: 2, cache: 0, search: 0, unresolved: 1 };
+    expect(describeResolution({ ids: new Map(), stats, unresolvedNames: [], enabled: true })).toBe(
+      "Ingredients resolved: 5 catalog (2 relaxed), 0 cache, 0 search, 1 without id",
+    );
   });
 });

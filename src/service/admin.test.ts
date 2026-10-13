@@ -464,6 +464,19 @@ describe("dry run", () => {
     expect(body).toContain("800 g Kürbis");
   });
 
+  it("offers the converter catalog names in the dry run as the job does", async () => {
+    const converter = fakeConverter();
+    svc = testService({
+      converter,
+      ingredients: {
+        resolveAll: () => Promise.reject(new Error("not used in a dry run")),
+        suggest: (names) => names.map((_, index) => (index === 0 ? ["Kürbis"] : [])),
+      },
+    });
+    await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${FORM_TOKEN}`);
+    expect(converter.requests[0]?.catalogNames).toEqual([{ index: 0, names: ["Kürbis"] }]);
+  });
+
   it("lists validation errors of a broken conversion", async () => {
     const broken = convertedRecipe({ categoryIds: [9999] });
     broken.servingSize.steps.push({

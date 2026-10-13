@@ -20,6 +20,16 @@ export interface ConversionRequest {
   ingredients: NormalizedIngredient[];
   // Category names from Mealie, as hints for the category choice.
   categoryHints?: string[];
+  // Catalog names close to source ingredients, offered to the model so it writes names
+  // the Monsieur Cuisine catalog knows.
+  catalogNames?: CatalogNameHint[];
+}
+
+export interface CatalogNameHint {
+  // The index of the source ingredient in ingredients.
+  index: number;
+  // Catalog names, best first.
+  names: string[];
 }
 
 export interface TokenUsage {

@@ -247,6 +247,23 @@
       "paniermehl": "semmelbrösel"
     }
   },
+  "qualifierSuffixes": [
+    "zum Garnieren",
+    "zum Servieren",
+    "zum Verdünnen",
+    "zum Bestreuen",
+    "zum Beträufeln",
+    "zum Dekorieren",
+    "zur Dekoration",
+    "nach Belieben",
+    "nach Geschmack",
+    "frisch",
+    "aus der Dose/Glas",
+    "aus der Dose",
+    "aus dem Glas",
+    "(optional)",
+    "optional"
+  ],
   "categoryMatching": {
     "stopwords": ["küche", "rezept", "rezepte", "gericht", "gerichte", "essen"],
     "joiners": ["und"],

@@ -238,6 +238,10 @@ export const packPhrasesSchema = z.looseObject({
     // Regional names and the name Monsieur Cuisine recipes use for the same food.
     regionalNames: z.record(z.string(), text),
   }),
+  // Trailing phrases of an ingredient name that say how it is used or bought ("zum
+  // Garnieren", "aus der Dose"). The ingredient-id lookup tries the name without them when
+  // the full name is not in the catalog (src/ingredients/catalog-match.ts).
+  qualifierSuffixes: textList,
   // Matching Mealie categories and tags with the Monsieur Cuisine catalog by name. Read on
   // Mealie names, so the lists of every pack count.
   categoryMatching: z.looseObject({

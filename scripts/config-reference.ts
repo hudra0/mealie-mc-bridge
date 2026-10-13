@@ -88,7 +88,7 @@ const REFERENCE = {
   },
   MC_RESOLVE_INGREDIENTS: {
     description:
-      "How ingredients get their Monsieur Cuisine ingredient id, which the app uses for the shopping list. `exact`: bundled catalog, local cache, then the site's search, exact name matches only. `off`: no ids and no searches.",
+      "How ingredients get their Monsieur Cuisine ingredient id, which the app uses for the shopping list. `exact`: bundled catalog, also without qualifiers like \"zum Garnieren\", local cache, then the site's search. `off`: none.",
   },
   MC_COOKIE: {
     description:

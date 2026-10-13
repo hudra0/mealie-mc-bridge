@@ -36,7 +36,7 @@ import { createIngredientCatalog } from "../ingredients/catalog.js";
 import type { McIngredientSuggestion } from "../mc/index.js";
 import { CATEGORY_CACHE_KEY, categoryCacheKey } from "./categories.js";
 import { ConverterNotConfiguredError, type Converter } from "./converter-port.js";
-import { IngredientResolver, type ResolveMode } from "./ingredient-resolver.js";
+import { IngredientResolver, cacheKey, type ResolveMode } from "./ingredient-resolver.js";
 import type { PipelineLocale } from "./locale.js";
 import { prepareRecipe } from "./prepare.js";
 import { isTransient, runJob, type PipelineConfig, type RunJobDeps } from "./run-job.js";
@@ -782,13 +782,38 @@ describe("runJob ingredient ids", () => {
     );
     expect(s.store.jobs.get(job.id)?.ingredients).toEqual({
       catalog: 1,
+      catalogRelaxed: 0,
       cache: 0,
       search: 1,
       unresolved: 0,
       unresolvedNames: [],
       enabled: true,
     });
-    expect(s.store.ingredientCache.get("rote linsen")?.systemIngredientId).toBe(9002);
+    expect(s.store.ingredientCache.get(cacheKey("rote linsen"))?.systemIngredientId).toBe(9002);
+  });
+
+  it("offers the converter catalog names for the source ingredients", async () => {
+    const suggest = vi.fn((names: readonly string[]) =>
+      names.map((_, index) => (index === 1 ? ["Kürbis"] : [])),
+    );
+    const s = setup({
+      ingredients: {
+        resolveAll: (names) =>
+          Promise.resolve({
+            ids: new Map(names.map((name) => [name.toLowerCase(), null])),
+            stats: { catalog: 0, catalogRelaxed: 0, cache: 0, search: 0, unresolved: names.length },
+            unresolvedNames: [...names],
+            enabled: true,
+          }),
+        suggest,
+      },
+    });
+    await runJob(s.claim(), s.deps);
+    const request = s.converter.requests[0];
+    expect(suggest.mock.calls[0]?.[0]).toEqual(
+      request?.ingredients.map((item) => item.food || item.original),
+    );
+    expect(request?.catalogNames).toEqual([{ index: 1, names: ["Kürbis"] }]);
   });
 
   it("sends unknown names without an id and keeps them out of the timeline", async () => {
@@ -845,7 +870,7 @@ describe("runJob ingredient ids", () => {
           controller.abort();
           return Promise.resolve({
             ids: new Map(names.map((name) => [name.toLowerCase(), null])),
-            stats: { catalog: 0, cache: 0, search: 0, unresolved: names.length },
+            stats: { catalog: 0, catalogRelaxed: 0, cache: 0, search: 0, unresolved: names.length },
             unresolvedNames: [...names],
             enabled: true,
           });

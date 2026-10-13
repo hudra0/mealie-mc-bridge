@@ -245,7 +245,9 @@ class JobRun {
         "convert",
         () =>
           deps.converter.convert(
-            conversionRequest(recipe, prepared, plan, deps.locale.pack.locale),
+            conversionRequest(recipe, prepared, plan, deps.locale.pack.locale, {
+              ingredients: deps.ingredients,
+            }),
             signal ? { signal } : {},
           ),
         false,

@@ -2,19 +2,25 @@
 // Monsieur Cuisine app can put them on its shopping list and filter by them. The device
 // itself shows no icons either way, so a name without an id still cooks fine.
 //
-// Three layers, first hit wins:
-//   1. the catalog from knowledge/ingredient-catalog.json, in memory;
-//   2. the ingredient_cache table: ids an earlier search found, and recent misses;
-//   3. the quick search of Monsieur Cuisine, at most one request per second.
+// Four layers, first hit wins:
+//   1. the catalog of the locale pack, in memory, by the exact name;
+//   2. the same catalog by a relaxed form of the name (src/ingredients/catalog-match.ts):
+//      trailing qualifiers such as "zum Garnieren" removed, "Zwiebeln (rot)" as
+//      "Zwiebeln, rot", singular and plural folded;
+//   3. the ingredient_cache table: ids an earlier search found, and recent misses;
+//   4. the quick search of Monsieur Cuisine, at most one request per second.
 //
-// Only a name that is the same after normalizeIngredientName counts as a match, in the
-// catalog and in the search hits alike. The search answers "Wasser" with "Wasser erhitzen"
-// and the like, so its first hit is never taken on trust. A miss is cached for
-// NEGATIVE_TTL_MS so an unknown name costs one search a week, not one per job.
+// Only a name that is the same after normalizeIngredientName counts as a search match. The
+// search answers "Wasser" with "Wasser erhitzen" and the like, so its first hit is never
+// taken on trust. A miss is cached for NEGATIVE_TTL_MS so an unknown name costs one search
+// a week, not one per job.
 //
 // A session error from the search is passed on, so the job waits for a new session like
 // any other session problem. Every other search failure is logged and leaves the name
 // without an id; it is not cached, so the next job tries again.
+//
+// Before the conversion, suggest offers the converter catalog names close to each source
+// ingredient, so the model can write a name the catalog knows in the first place.
 
 import { errorMessage, type AppLogger } from "../app-logger.js";
 import {
@@ -22,6 +28,12 @@ import {
   normalizeIngredientName,
   type IngredientCatalog,
 } from "../ingredients/catalog.js";
+import {
+  createCatalogMatcher,
+  DEFAULT_SUGGESTIONS,
+  type CatalogMatcher,
+  type CatalogMatchRules,
+} from "../ingredients/catalog-match.js";
 import { McSessionError, type McClient } from "../mc/index.js";
 import type { IngredientCacheStore } from "../store/ingredient-cache.js";
 
@@ -30,11 +42,23 @@ export const RESOLVE_MODES = ["exact", "off"] as const satisfies readonly Resolv
 
 export const NEGATIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const SEARCH_REQUESTS_PER_SECOND = 1;
+// Part of every cache key. Raise it when the lookups before the search change, so misses
+// recorded under the old rules get searched again instead of waiting out NEGATIVE_TTL_MS.
+// Version 2 added the relaxed catalog lookup.
+export const CACHE_KEY_VERSION = 2;
+
+// The ingredient_cache key of a normalized name.
+export function cacheKey(nameNorm: string): string {
+  return `v${CACHE_KEY_VERSION}|${nameNorm}`;
+}
 
 export type IngredientSearch = Pick<McClient, "searchIngredients">;
 
 export interface IngredientResolveStats {
+  // Catalog hits, the relaxed ones included.
   catalog: number;
+  // Catalog hits that needed the relaxed form of the name.
+  catalogRelaxed: number;
   cache: number;
   search: number;
   unresolved: number;
@@ -59,6 +83,9 @@ export interface ResolveOptions {
 
 export interface IngredientResolverPort {
   resolveAll(names: readonly string[], options?: ResolveOptions): Promise<IngredientResolution>;
+  // Catalog names close to each of `names`, in the same order; empty lists when there is
+  // no catalog or resolution is off.
+  suggest?(names: readonly string[]): string[][];
 }
 
 // Spaces requests out to `ratePerSecond`, with a burst of `capacity`. Calls queue up in
@@ -115,6 +142,9 @@ export interface IngredientResolverOptions {
   mode: ResolveMode;
   // Required for mode "exact"; may be null when resolution is off.
   catalog: IngredientCatalog | null;
+  // The name rules of the locale pack (catalogMatchRules). Without them there is no relaxed
+  // lookup and no suggestion.
+  rules?: CatalogMatchRules;
   cache: Pick<IngredientCacheStore, "get" | "put">;
   search: IngredientSearch | null;
   logger: AppLogger;
@@ -130,6 +160,7 @@ export class IngredientResolver implements IngredientResolverPort {
   readonly #limiter: Pick<TokenBucket, "take">;
   readonly #now: () => Date;
   readonly #isSessionError: (error: unknown) => boolean;
+  readonly #matcher: CatalogMatcher | null;
 
   constructor(options: IngredientResolverOptions) {
     if (options.mode === "exact" && !options.catalog) {
@@ -140,6 +171,15 @@ export class IngredientResolver implements IngredientResolverPort {
       options.limiter ?? new TokenBucket({ ratePerSecond: SEARCH_REQUESTS_PER_SECOND });
     this.#now = options.now ?? (() => new Date());
     this.#isSessionError = options.isSessionError ?? ((error) => error instanceof McSessionError);
+    this.#matcher =
+      options.catalog && options.rules
+        ? createCatalogMatcher(options.catalog, options.rules)
+        : null;
+  }
+
+  suggest(names: readonly string[], limit = DEFAULT_SUGGESTIONS): string[][] {
+    const matcher = this.#options.mode === "off" ? null : this.#matcher;
+    return names.map((name) => (matcher ? matcher.suggest(name, limit) : []));
   }
 
   get mode(): ResolveMode {
@@ -156,7 +196,13 @@ export class IngredientResolver implements IngredientResolverPort {
       if (key !== "" && !distinct.has(key)) distinct.set(key, name.trim());
     }
     const ids = new Map<string, number | null>();
-    const stats: IngredientResolveStats = { catalog: 0, cache: 0, search: 0, unresolved: 0 };
+    const stats: IngredientResolveStats = {
+      catalog: 0,
+      catalogRelaxed: 0,
+      cache: 0,
+      search: 0,
+      unresolved: 0,
+    };
     const unresolvedNames: string[] = [];
     const enabled = this.#options.mode !== "off";
     const miss = (key: string, name: string) => {
@@ -176,7 +222,14 @@ export class IngredientResolver implements IngredientResolverPort {
         stats.catalog++;
         continue;
       }
-      const cached = this.#options.cache.get(key);
+      const relaxed = this.#matcher?.relaxedLookup(name) ?? null;
+      if (relaxed !== null) {
+        ids.set(key, relaxed.systemIngredientId);
+        stats.catalog++;
+        stats.catalogRelaxed++;
+        continue;
+      }
+      const cached = this.#cached(key);
       if (cached && cached.systemIngredientId !== null) {
         ids.set(key, cached.systemIngredientId);
         stats.cache++;
@@ -222,11 +275,20 @@ export class IngredientResolver implements IngredientResolverPort {
     const hit = hits.find((candidate) => normalizeIngredientName(candidate.name) === key);
     const id = hit?.systemIngredientId ?? null;
     if (id !== null && Number.isInteger(id) && id > 0) {
-      this.#options.cache.put(key, id, "search");
+      this.#options.cache.put(cacheKey(key), id, "search");
       return id;
     }
-    this.#options.cache.put(key, null, "none");
+    this.#options.cache.put(cacheKey(key), null, "none");
     return null;
+  }
+
+  // The cache row of a name. An id found under an older key version still counts; a miss
+  // recorded under older rules does not.
+  #cached(key: string) {
+    const current = this.#options.cache.get(cacheKey(key));
+    if (current) return current;
+    const legacy = this.#options.cache.get(key);
+    return legacy && legacy.systemIngredientId !== null ? legacy : null;
   }
 
   #expired(resolvedAt: string): boolean {
@@ -242,5 +304,6 @@ export function describeResolution(resolution: IngredientResolution): string {
     return `Ingredient ids not resolved (MC_RESOLVE_INGREDIENTS=off): ${resolution.stats.unresolved} without id`;
   }
   const s = resolution.stats;
-  return `Ingredients resolved: ${s.catalog} catalog, ${s.cache} cache, ${s.search} search, ${s.unresolved} without id`;
+  const relaxed = s.catalogRelaxed > 0 ? ` (${s.catalogRelaxed} relaxed)` : "";
+  return `Ingredients resolved: ${s.catalog} catalog${relaxed}, ${s.cache} cache, ${s.search} search, ${s.unresolved} without id`;
 }

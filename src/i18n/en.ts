@@ -229,8 +229,8 @@ export const en: Messages = {
         `${input} input${cached ? ` (${cached} cached)` : ""}, ${output} output tokens`,
       ingredientIds: "Ingredient ids",
       resolutionOff: (unresolved) => `resolution off (${unresolved} without id)`,
-      resolution: (catalog, cache, search, unresolved) =>
-        `${catalog} catalog, ${cache} cache, ${search} search, ${unresolved} without id`,
+      resolution: (catalog, relaxed, cache, search, unresolved) =>
+        `${catalog} catalog${relaxed > 0 ? ` (${relaxed} without qualifiers in the name)` : ""}, ${cache} cache, ${search} search, ${unresolved} without id`,
       withoutId: "Without id",
       error: "Error",
       runningLocked: "Running jobs cannot be changed.",

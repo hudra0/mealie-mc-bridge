@@ -174,7 +174,13 @@ export interface AdminMessages {
     tokens(input: number, cached: number | null, output: number): string;
     ingredientIds: string;
     resolutionOff(unresolved: number): string;
-    resolution(catalog: number, cache: number, search: number, unresolved: number): string;
+    resolution(
+      catalog: number,
+      relaxed: number,
+      cache: number,
+      search: number,
+      unresolved: number,
+    ): string;
     withoutId: string;
     error: string;
     runningLocked: string;

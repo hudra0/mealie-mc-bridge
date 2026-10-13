@@ -25,6 +25,7 @@ import {
   type MergedCategories,
 } from "./categories.js";
 import type { ConversionRequest, ConversionResult } from "./converter-port.js";
+import type { IngredientResolverPort } from "./ingredient-resolver.js";
 import type { PipelineLocale } from "./locale.js";
 import { sourceHash } from "./source-hash.js";
 
@@ -79,7 +80,9 @@ export function conversionRequest(
   prepared: PreparedRecipe,
   plan: CategoryPlan,
   locale: string,
+  options: { ingredients?: Pick<IngredientResolverPort, "suggest"> | undefined } = {},
 ): ConversionRequest {
+  const catalogNames = catalogNameHints(prepared.scaled, options.ingredients);
   return {
     title: recipe.name,
     rendered: prepared.rendered,
@@ -87,7 +90,18 @@ export function conversionRequest(
     locale,
     ingredients: prepared.scaled,
     categoryHints: plan.hints,
+    ...(catalogNames.length > 0 ? { catalogNames } : {}),
   };
+}
+
+// Catalog names close to each source ingredient, for the source lines that have some.
+export function catalogNameHints(
+  ingredients: readonly NormalizedIngredient[],
+  resolver: Pick<IngredientResolverPort, "suggest"> | undefined,
+): { index: number; names: string[] }[] {
+  if (!resolver?.suggest || ingredients.length === 0) return [];
+  const suggestions = resolver.suggest(ingredients.map((item) => item.food || item.original));
+  return suggestions.flatMap((names, index) => (names.length > 0 ? [{ index, names }] : []));
 }
 
 export interface CheckedRecipe {

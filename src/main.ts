@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { pino } from "pino";
 import { loadServiceConfig } from "./config.js";
 import { loadConfiguredCatalog } from "./ingredients/catalog.js";
+import { catalogMatchRules } from "./ingredients/catalog-match.js";
 import { loggerOptions } from "./logger.js";
 import { McClient, McTransport, StaticSessionProvider } from "./mc/index.js";
 import { MealieClient } from "./mealie/index.js";
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
   const ingredients = new IngredientResolver({
     mode: config.MC_RESOLVE_INGREDIENTS,
     catalog,
+    rules: catalogMatchRules(locale.pack),
     cache: store.ingredientCache,
     search: mc,
     logger,

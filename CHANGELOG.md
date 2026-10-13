@@ -12,7 +12,7 @@ First version, not tagged yet.
 - Conversion with OpenAI or Anthropic into the step format of the Monsieur Cuisine Smart, with the device limits, conversion rules and cooking techniques of a knowledge base distilled from published recipes.
 - Validation of every answer against the device limits of each program and plausibility rules (heat-up time, bowl mass, turbo, whisk, kneading, steaming, step structure, completeness and amounts of the ingredients), with correction rounds that send the errors back to the model.
 - Upload to the user's monsieur-cuisine.com account with the photo, as a draft that is then saved privately so it appears on the machine. `MC_RECIPE_STATUS=draft` stops after the draft.
-- Ingredient ids from a catalog of published recipes, a local cache and the site's search, exact name matches only (`MC_RESOLVE_INGREDIENTS`).
+- Ingredient ids from a catalog of published recipes, a local cache and the site's search (`MC_RESOLVE_INGREDIENTS`). The model gets close catalog names to pick from, and the catalog is tried once more without qualifiers such as "zum Garnieren"; search hits need the exact name.
 - Write-back into Mealie: a tag, machine state in `extras` and a timeline entry with the link, servings, model and the points to check.
 - A recipe that has not changed since it was last sent is not sent again; "Force rebuild" overrides this.
 - Job queue in SQLite with a single worker, retries for temporary failures, recovery after a crash, and a point of no return before the draft is created so a recipe is never created twice.

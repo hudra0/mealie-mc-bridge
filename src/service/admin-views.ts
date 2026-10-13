@@ -386,7 +386,13 @@ function ingredientStats(job: Job, t: AdminMessages): string {
   const stats = job.ingredients;
   if (!stats) return "–";
   if (!stats.enabled) return t.jobDetail.resolutionOff(stats.unresolved);
-  return t.jobDetail.resolution(stats.catalog, stats.cache, stats.search, stats.unresolved);
+  return t.jobDetail.resolution(
+    stats.catalog,
+    stats.catalogRelaxed ?? 0,
+    stats.cache,
+    stats.search,
+    stats.unresolved,
+  );
 }
 
 export function dryRunForm(recipe: string, scale: number, t: AdminMessages): SafeHtml {

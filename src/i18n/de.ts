@@ -231,8 +231,8 @@ export const de: Messages = {
         `${input} Eingabe-Tokens${cached ? ` (${cached} aus dem Cache)` : ""}, ${output} Ausgabe-Tokens`,
       ingredientIds: "Zutaten-IDs",
       resolutionOff: (unresolved) => `Zuordnung ausgeschaltet (${unresolved} ohne ID)`,
-      resolution: (catalog, cache, search, unresolved) =>
-        `${catalog} aus dem Katalog, ${cache} aus dem Cache, ${search} aus der Suche, ${unresolved} ohne ID`,
+      resolution: (catalog, relaxed, cache, search, unresolved) =>
+        `${catalog} aus dem Katalog${relaxed > 0 ? ` (${relaxed} ohne Zusätze im Namen)` : ""}, ${cache} aus dem Cache, ${search} aus der Suche, ${unresolved} ohne ID`,
       withoutId: "Ohne ID",
       error: "Fehler",
       runningLocked: "Laufende Aufträge lassen sich nicht ändern.",

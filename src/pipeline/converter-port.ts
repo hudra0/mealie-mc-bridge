@@ -21,6 +21,8 @@ export interface ConversionRequest {
   // The live Monsieur Cuisine categories as "<id>: <name>", the ones matching the Mealie
   // categories and tags first.
   categoryHints?: string[];
+  // Catalog names close to source ingredients, by index into ingredients.
+  catalogNames?: { index: number; names: string[] }[];
 }
 
 export interface ConversionResult {

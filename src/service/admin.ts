@@ -29,6 +29,7 @@ import {
   planCategories,
   prepareRecipe,
 } from "../pipeline/prepare.js";
+import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
 import type { PipelineLocale } from "../pipeline/locale.js";
 import type { MealiePort } from "../pipeline/run-job.js";
 import type { WorkerStatus } from "../pipeline/worker.js";
@@ -68,6 +69,8 @@ export interface AdminOptions {
   language?: UiLanguage;
   logger: AppLogger;
   recipeStatus: "draft" | "private-publish";
+  // Offers the converter catalog names in the dry run, as the job does.
+  ingredients?: Pick<IngredientResolverPort, "suggest">;
   worker?: { status(): WorkerStatus; nudge?(): void };
   // The link to a recipe in Mealie, or null when the public URL is unknown.
   mealieRecipeUrl?: (slug: string) => string | null;
@@ -355,7 +358,9 @@ export function admin(
             },
           );
           const result = await options.converter.convert(
-            conversionRequest(recipe, prepared, plan, options.locale.pack.locale),
+            conversionRequest(recipe, prepared, plan, options.locale.pack.locale, {
+              ingredients: options.ingredients,
+            }),
           );
           data.conversion = { plan, result, checked: checkConverted(result, plan, options.limits) };
         } catch (error) {

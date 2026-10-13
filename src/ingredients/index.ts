@@ -47,3 +47,5 @@ export type {
   IngredientCatalogEntry,
   IngredientCatalogFile,
 } from "./catalog.js";
+export { catalogMatchRules, createCatalogMatcher, DEFAULT_SUGGESTIONS } from "./catalog-match.js";
+export type { CatalogHit, CatalogMatcher, CatalogMatchRules } from "./catalog-match.js";

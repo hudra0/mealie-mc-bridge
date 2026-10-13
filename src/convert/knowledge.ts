@@ -380,7 +380,12 @@ export async function loadKnowledge(dir: string = DEFAULT_KNOWLEDGE_DIR): Promis
   const absolute = resolve(dir);
   const F = KNOWLEDGE_FILES;
   const names = Object.keys(F) as (keyof typeof F)[];
-  const contents = await Promise.all(names.map((name) => readText(absolute, F[name])));
+  // All reads settle before an error is thrown, so a missing file is reported in the fixed
+  // order of KNOWLEDGE_FILES, not by whichever read fails first.
+  const results = await Promise.allSettled(names.map((name) => readText(absolute, F[name])));
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed) throw failed.reason;
+  const contents = results.map((result) => (result.status === "fulfilled" ? result.value : ""));
   const files = Object.fromEntries(names.map((name, i) => [name, contents[i] ?? ""]));
   return buildKnowledge(files as unknown as KnowledgeTexts);
 }

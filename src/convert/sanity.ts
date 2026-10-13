@@ -513,6 +513,11 @@ function mayAddRest(ctx: SanityContext, position: number, counted: readonly Addi
 // ingredient may be that portion going back in.
 const SET_ASIDE = new RegExp(`${EMPTYING.source}|${RESERVED.source}`, "iu");
 
+// A text clause that puts back a portion weighed or prepared earlier: "die beiseitegestellten
+// 400 g Birnen wieder dazugeben", "die abgewogenen 150 g Hirse hineingeben", "die aus 200 g
+// Sahne geschlagene Sahne unterheben". Its amount was counted when it was weighed.
+const REUSED = new RegExp(`${RESERVED.source}|abgewogen|wieder|geschlagen`, "iu");
+
 // Whether a step after `from`, up to and including `to`, sets a portion aside.
 function setAsideBetween(ctx: SanityContext, from: number, to: number): boolean {
   return ctx.recipe.servingSize.steps
@@ -536,8 +541,8 @@ export interface Addition {
 // ingredient, and amounts such as "2 Tl Salz" in step texts. A text amount counts only in a
 // clause with an adding verb that does not put it outside the bowl, and once per step:
 // "600 g Kartoffeln schälen", "die 3 Nelken entfernen" or "in den Dampfgaraufsatz
-// geben" add nothing. A text amount equal to a scale step of the same ingredient next to it
-// describes the same addition.
+// geben" add nothing, and neither does a portion that goes back in. A text amount equal to a
+// scale step of the same ingredient next to it describes the same addition.
 export function collectAdditions(ctx: SanityContext): Addition[] {
   const { recipe, index, knowledge } = ctx;
   const additions: Addition[] = [];
@@ -558,7 +563,7 @@ export function collectAdditions(ctx: SanityContext): Addition[] {
     if (step.kind !== "text") return;
     const seen = new Set<string>();
     for (const clause of clauses(text)) {
-      if (!ADDING.test(clause) || OUTSIDE_BOWL.test(clause)) continue;
+      if (!ADDING.test(clause) || OUTSIDE_BOWL.test(clause) || REUSED.test(clause)) continue;
       for (const mention of amountMentions(clause)) {
         const ingredient = attributeIngredient(mention.phrase, index);
         const food = ingredient === null ? undefined : ctx.request.ingredients[ingredient]?.food;

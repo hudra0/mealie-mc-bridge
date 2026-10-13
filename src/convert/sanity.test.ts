@@ -366,6 +366,20 @@ describe("amount_balance", () => {
     expect(run(amountBalanceRule, steps, ingredients)).toEqual({ errors: [], warnings: [] });
   });
 
+  it("does not count a portion that goes back in as a new addition", () => {
+    const pears = [ingredient("Birnen", 800, "g"), ingredient("Hirse", 150, "g")];
+    const steps = [
+      scale(400, "Birnen"),
+      text("Die Birnen umfüllen und beiseitestellen."),
+      scale(400, "Birnen"),
+      text("Die beiseitegestellten 400 g Birnen wieder dazugeben."),
+      scale(150, "Hirse", "in einer Schüssel auf dem Mixbehälter abwiegen"),
+      text("Den Kocheinsatz einsetzen und die abgewogenen 150 g Hirse hineingeben."),
+    ];
+    expect(run(amountBalanceRule, steps, pears)).toEqual({ errors: [], warnings: [] });
+    expect(run(duplicateAdditionRule, steps, pears).warnings).toEqual([]);
+  });
+
   it("does not count text amounts that go into the steamer", () => {
     const broccoli = [ingredient("Brokkoli", 200, "g")];
     const steps = [

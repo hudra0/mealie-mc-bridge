@@ -10,9 +10,11 @@ import type { SessionErrorKind } from "./transport.js";
 export interface SessionProvider {
   // The Cookie header value, or null when no session is configured.
   getCookie(): Promise<string | null>;
-  // Called after the server rejected the cookie. Implementations flag the session for
-  // renewal; they must not throw.
-  onSessionError(kind: SessionErrorKind): Promise<void>;
+  // Called after the server rejected the cookie. `cookie` is the value the rejected request
+  // used (null when there was none), so a provider whose cookie was replaced in the meantime
+  // can ignore a late error. Implementations flag the session for renewal; they must not
+  // throw.
+  onSessionError(kind: SessionErrorKind, cookie?: string | null): Promise<void>;
 }
 
 export type SessionErrorListener = (kind: SessionErrorKind) => void | Promise<void>;

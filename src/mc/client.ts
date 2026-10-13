@@ -366,7 +366,7 @@ export class McClient implements McRecipeSink {
   private async call(endpoint: string, method: HttpMethod = "GET", payload?: unknown) {
     const cookie = await this.session.getCookie();
     if (cookie === null) {
-      await this.session.onSessionError("invalid");
+      await this.session.onSessionError("invalid", null);
       throw new McSessionError({
         kind: "invalid",
         status: 0,
@@ -379,7 +379,7 @@ export class McClient implements McRecipeSink {
     try {
       return await this.transport.proxy({ endpoint, method, payload, cookie, lang: this.locale });
     } catch (error) {
-      if (error instanceof McSessionError) await this.session.onSessionError(error.kind);
+      if (error instanceof McSessionError) await this.session.onSessionError(error.kind, cookie);
       throw error;
     }
   }

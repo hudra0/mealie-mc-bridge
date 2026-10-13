@@ -86,7 +86,7 @@ export const CustomizedStepSchema = z
       .enum(ACCESSORIES)
       .optional()
       .describe(
-        "Set to butterfly_whisk while the whisk (Rühraufsatz) is fitted; the speed limit drops. Not sent to the device.",
+        "Set to butterfly_whisk while the whisk attachment is fitted; the speed limit drops. Not sent to the device.",
       ),
   })
   .describe("Manual cooking: temperature, time, speed and rotation");
@@ -186,7 +186,9 @@ export const IngredientSchema = z.strictObject({
       z.number().nonnegative("amount must not be negative"),
     ])
     .describe('Amount as a number, or as text for ranges and fractions ("1-2", "1/2")'),
-  unit: text("unit", 0, L.ingredientUnit.max).describe("Unit such as g, EL, TL, Prise, Stück"),
+  unit: text("unit", 0, L.ingredientUnit.max).describe(
+    "Unit as the Units section of the system prompt spells it; empty for counted items",
+  ),
   isOptional: z.boolean(),
 });
 
@@ -221,7 +223,7 @@ export const ServingSizeSchema = z
   .strictObject({
     amount: int("servings"),
     unit: text("serving unit", L.servingUnit.min, L.servingUnit.max).describe(
-      'Serving unit, for example "Portionen" or "Stück"',
+      "Serving unit in the recipe language",
     ),
     instruction: text("instruction", 0, L.instruction.max)
       .optional()

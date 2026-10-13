@@ -16,6 +16,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { isUnitCode } from "../ingredients/units.js";
+import { validPhraseEntry } from "./matcher.js";
 
 export const LOCALES_DIR = "locales";
 export const DEFAULT_LOCALE = "de-DE";
@@ -85,6 +86,9 @@ export const LOCALE_PATTERN = /^[a-z]{2,3}-[A-Z]{2}$/;
 const localeId = z.string().regex(LOCALE_PATTERN, "must look like de-DE");
 const text = z.string().min(1);
 const textList = z.array(text);
+// A word-list entry read in step texts: "^" or "$" alone would match almost every text.
+const phrase = z.string().refine(validPhraseEntry, "needs text between ^ and $");
+const phraseList = z.array(phrase);
 
 export const mcLocaleSchema = z.strictObject({
   locale: localeId,
@@ -202,19 +206,23 @@ export const packPhrasesSchema = z.looseObject({
   }),
   // The lists below are read in step texts. An entry matches anywhere inside a word,
   // case-insensitively; a leading ^ ties it to the start of a word, a trailing $ to its end.
-  additionVerbs: textList.min(1),
-  emptyingPhrases: textList.min(1),
-  coolingPhrases: textList.min(1),
-  reservedPhrases: textList.min(1),
-  reusedPhrases: textList,
-  outsideBowlPhrases: textList.min(1),
-  hotPhrases: textList,
-  whiskPhrases: z.looseObject({ accessory: textList.min(1), fit: textList, remove: textList }),
+  additionVerbs: phraseList.min(1),
+  emptyingPhrases: phraseList.min(1),
+  coolingPhrases: phraseList.min(1),
+  reservedPhrases: phraseList.min(1),
+  reusedPhrases: phraseList,
+  outsideBowlPhrases: phraseList.min(1),
+  hotPhrases: phraseList,
+  whiskPhrases: z.looseObject({
+    accessory: phraseList.min(1),
+    fit: phraseList,
+    remove: phraseList,
+  }),
   // A number followed by one of these is a size, a time or a setting, not an amount.
-  measureWords: textList,
+  measureWords: phraseList,
   // "plus mehr", "plus more": the source allows more than its amount. Read on the source
   // recipe, so the words of every pack count.
-  moreAllowedWords: textList,
+  moreAllowedWords: phraseList,
   ingredientWords: z.looseObject({
     foaming: textList,
     liquid: textList.min(1),

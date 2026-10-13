@@ -680,6 +680,22 @@ describe("ingredient_mapping", () => {
     expect(errors[1]?.message).toContain("[0] to [3]");
   });
 
+  it("reports a misspelled mapping name once, not also as a dropped source line", () => {
+    const english = [
+      ingredient("vegetable stock", 1500, "g"),
+      ingredient("carrots", 500, "g"),
+      ingredient("onion", 1, null),
+    ];
+    const list = [entry("Gemüsebrühe"), entry("Möhren"), entry("Zwiebeln")];
+    const mapping = [
+      { name: "Gemüsebrühe", inputIndex: 0 },
+      { name: "Pastinaken", inputIndex: 1 },
+      { name: "Zwiebeln", inputIndex: 2 },
+    ];
+    const { errors } = run(ingredientMappingRule, [text("x")], english, { list, mapping });
+    expect(errors.map((issue) => issue.path)).toEqual(["ingredientMapping[1].name"]);
+  });
+
   it("finds a list entry whose name the mapping writes with other qualifiers", () => {
     const list = [entry("Zwiebeln (rot)"), entry("Gemüsebrühe"), entry("Karotten")];
     const mapping = [

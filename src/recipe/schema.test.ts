@@ -272,6 +272,13 @@ describe("recipeInputJsonSchema", () => {
     expect((steps.oneOf ?? steps.anyOf ?? []).length).toBe(STEP_KINDS.length);
   });
 
+  it("names no unit or serving words of one language, so every locale can use it", () => {
+    const text = JSON.stringify(recipeInputJsonSchema(undefined, { locale: "en-US" }));
+    for (const word of ["EL", "TL", "Tl", "El", "Prise", "Stück", "Portionen", "Rühraufsatz"]) {
+      expect(text).not.toMatch(new RegExp(String.raw`(?<![\p{L}_])${word}(?![\p{L}_])`, "u"));
+    }
+  });
+
   it("writes the recipe limits of the knowledge file into the schema", async () => {
     const limits = await loadDeviceLimits();
     const schema = recipeInputJsonSchema(limits) as { properties: Record<string, Json> };

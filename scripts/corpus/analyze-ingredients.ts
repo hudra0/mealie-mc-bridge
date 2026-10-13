@@ -874,6 +874,14 @@ function optionalIngredients(rows: readonly IngRow[], recipes: readonly Normaliz
 /** Upper bounds for one spoon or pinch; observations above are mismatches and are dropped. */
 const maxGramsPerUnit: Record<string, number> = { TL: 15, EL: 40, Prise: 2, Msp: 2 };
 
+// Whether a list row can be the counted amount a step weighs: listed in g or ml, counted
+// without a unit, or in the same unit. A row in a measure of its own is another ingredient
+// that only shares a word: "1/4 tsp pepper, black, ground" is not the "1 pepper (150 g)".
+function weighsAs(row: IngRow, concept: string): boolean {
+  if (row.mass !== null || row.unitCanon === "") return true;
+  return (conceptOf(effectiveUnit(row.ing)) ?? row.unitCanon) === concept;
+}
+
 function pieceWeights(rows: readonly IngRow[], steps: readonly StepLite[]) {
   const byRecipe = groupBy(rows, (r) => [String(r.recipe.id)]);
   // Observations: ingredient key -> grams per listed unit, with the listed unit concept.
@@ -905,7 +913,7 @@ function pieceWeights(rows: readonly IngRow[], steps: readonly StepLite[]) {
       // ingredient in g ("Zwiebeln 80 g" listed, "1 Zwiebel (80 g)" in the step), which is
       // exactly the piece weight a free-text "1 Zwiebel" needs.
       const r = match(s.recipeId, a.words);
-      if (!r) continue;
+      if (!r || !weighsAs(r, a.concept)) continue;
       obs.push({
         key: ingredientKey(r.ing),
         name: r.ing.name.trim(),

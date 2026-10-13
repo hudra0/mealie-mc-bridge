@@ -38,6 +38,7 @@ import { CATEGORY_CACHE_KEY, categoryCacheKey } from "./categories.js";
 import { ConverterNotConfiguredError, type Converter } from "./converter-port.js";
 import { IngredientResolver, type ResolveMode } from "./ingredient-resolver.js";
 import type { PipelineLocale } from "./locale.js";
+import { prepareRecipe } from "./prepare.js";
 import { isTransient, runJob, type PipelineConfig, type RunJobDeps } from "./run-job.js";
 
 const sessionExpired = () =>
@@ -915,6 +916,41 @@ describe("runJob in another language", () => {
     expect(entry?.eventMessage).toContain(
       "**Please check:**\n- Check the cooking time of the lentils",
     );
+  });
+
+  it("sends a recipe again after MC_LOCALE changed instead of skipping it", async () => {
+    const s = setup();
+    await runJob(s.claim(), s.deps);
+    const english = fakeConverter(
+      conversionResult({ recipe: convertedRecipe({ locale: "en-US" }) }),
+    );
+    const enDeps: RunJobDeps = { ...s.deps, locale: enLocale, converter: english };
+
+    const outcome = await runJob(s.claim(), enDeps);
+    expect(outcome.status).toBe("done");
+    expect(english.requests).toHaveLength(1);
+    expect(s.mc.payloads.at(-1)).toMatchObject({ languageLocale: "en-US" });
+  });
+
+  it("does not reuse a stored conversion written in another locale", async () => {
+    const s = setup({ mc: { upload: networkError() } });
+    const job = s.claim();
+    expect((await runJob(job, s.deps, { finalAttempt: false })).status).toBe("retry");
+    const english = fakeConverter(
+      conversionResult({ recipe: convertedRecipe({ locale: "en-US" }) }),
+    );
+    const enDeps: RunJobDeps = { ...s.deps, locale: enLocale, converter: english };
+    const retried = s.store.jobs.get(job.id)!;
+    // The stored de-DE conversion even carries the fingerprint of the en-US run.
+    const hash = prepareRecipe(s.mealie.recipe, 1, limits, enLocale).hash;
+    s.store.jobs.update(job.id, {
+      conversion: { sourceHash: hash, result: retried.conversion!.result },
+    });
+
+    const outcome = await runJob(s.store.jobs.get(job.id)!, enDeps);
+    expect(outcome.status).toBe("done");
+    expect(english.requests).toHaveLength(1);
+    expect(s.mc.payloads.at(-1)).toMatchObject({ languageLocale: "en-US" });
   });
 
   it("reports a failure and a waiting job in English", async () => {

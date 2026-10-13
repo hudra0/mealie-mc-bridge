@@ -214,15 +214,8 @@
       { "name": "shallots", "unit": "piece", "grams": 30, "range": [20, 40], "n": 48 },
       { "name": "yeast, fresh", "unit": "piece", "grams": 40, "range": [40, 42], "n": 34 },
       { "name": "tomatoes", "unit": "piece", "grams": 100, "range": [75, 119], "n": 25 },
-      { "name": "vanilla sugar", "unit": "piece", "grams": 8, "range": [8, 8], "n": 23 },
+      { "name": "vanilla sugar", "unit": "piece", "grams": 8, "range": [8, 8], "n": 21 },
       { "name": "leek", "unit": "piece", "grams": 155, "range": [100, 310], "n": 20 },
-      {
-        "name": "pepper, black, ground",
-        "unit": "piece",
-        "grams": 150,
-        "range": [150, 200],
-        "n": 20
-      },
       { "name": "spring onions", "unit": "piece", "grams": 27, "range": [20, 42], "n": 19 },
       { "name": "potatoes, waxy", "unit": "piece", "grams": 100, "range": [75, 133], "n": 17 },
       { "name": "celeriac", "unit": "piece", "grams": 200, "range": [74, 600], "n": 15 },
@@ -230,9 +223,9 @@
       { "name": "peppers, red", "unit": "piece", "grams": 153, "range": [150, 175], "n": 11 },
       { "name": "broccoli", "unit": "piece", "grams": 500, "range": [390, 510], "n": 10 },
       { "name": "lemons, untreated", "unit": "piece", "grams": 100, "range": [68, 163], "n": 9 },
-      { "name": "baking powder", "unit": "piece", "grams": 16, "range": [15, 20], "n": 9 },
       { "name": "cauliflower", "unit": "piece", "grams": 750, "range": [351, 1260], "n": 8 },
       { "name": "apples, sweet", "unit": "piece", "grams": 200, "range": [138, 207], "n": 7 },
+      { "name": "baking powder", "unit": "piece", "grams": 16, "range": [15, 16], "n": 7 },
       { "name": "bananas", "unit": "piece", "grams": 123, "range": [105, 150], "n": 6 },
       { "name": "parsley root", "unit": "piece", "grams": 100, "range": [90, 133], "n": 6 },
       {

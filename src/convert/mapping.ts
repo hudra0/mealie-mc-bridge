@@ -129,6 +129,8 @@ export function linkIngredients(
     const item = itemFor(entry.name, items, keys, text);
     if (item === null) {
       unknownNames.push(problem);
+      // The entry covers its source line; the only problem to report is the name.
+      if (inputIndex !== null && inputIndex < inputs.length) linkedInputs.add(inputIndex);
       return;
     }
     const target = items[item];

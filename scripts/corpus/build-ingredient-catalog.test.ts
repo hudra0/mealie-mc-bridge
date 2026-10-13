@@ -7,6 +7,7 @@ import {
   CATALOG_GENERATED_FROM,
   CATALOG_MIN_RECIPES,
   buildIngredientCatalog,
+  catalogCategories,
   readCatalogSource,
 } from "./build-ingredient-catalog.js";
 
@@ -174,5 +175,41 @@ describe("buildIngredientCatalog rules", () => {
       { source: null, ingredients: [{ name: null, systemIngredientId: 3 }] },
     ]);
     expect(catalog.entries).toEqual([]);
+  });
+});
+
+describe("catalogCategories", () => {
+  const counts = (entries: [number, [string, number][]][]) =>
+    new Map(entries.map(([id, seen]) => [id, new Map(seen)]));
+
+  it("keeps the category every recipe names for an ingredient", () => {
+    const categories = catalogCategories(
+      counts([
+        [1, [["Gewürze", 5]]],
+        [2, [["Gemüse", 2]]],
+        [3, []],
+      ]),
+    );
+    expect([...categories]).toEqual([
+      [1, "Gewürze"],
+      [2, "Gemüse"],
+      [3, null],
+    ]);
+  });
+
+  it("writes null everywhere when the recipes of a corpus disagree on the category", () => {
+    const categories = catalogCategories(
+      counts([
+        [
+          1,
+          [
+            ["Potatoes", 5],
+            ["Beef", 3],
+          ],
+        ],
+        [2, [["Vegetables", 2]]],
+      ]),
+    );
+    expect([...categories.values()]).toEqual([null, null]);
   });
 });

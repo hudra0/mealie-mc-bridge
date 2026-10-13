@@ -80,7 +80,7 @@ Commands:
   prompt --mealie-json <file>    print the system prompt and the user message
       --scale <factor>
   eval --ids <id,id,...>         convert corpus recipes and compare the programs with the originals
-      --corpus-dir <dir>         default local/corpus
+      --corpus-dir <dir>         default the corpus of the locale (see below)
       --provider <name>
       --out <file>               write the converted recipes as JSON
 
@@ -117,7 +117,7 @@ export type Command =
   | { name: "prompt"; mealieJson: string; scale: number; categories?: string; locale?: string }
   | {
       name: "eval";
-      corpusDir: string;
+      corpusDir?: string;
       ids: number[];
       provider?: LlmProvider;
       out?: string;
@@ -217,7 +217,7 @@ export function parseCommand(args: readonly string[]): Command {
       if (ids.some((id) => !/^\d+$/.test(id))) throw new UsageError("--ids takes recipe numbers");
       return {
         name,
-        corpusDir: values["corpus-dir"] ?? defaultCorpusDir(locale ?? "de-DE"),
+        ...optional("corpusDir", values["corpus-dir"]),
         ids: ids.map(Number),
         ...optional("provider", provider as LlmProvider | undefined),
         ...optional("out", values.out),
@@ -681,10 +681,12 @@ async function runEval(
   knowledge: Knowledge,
   ctx: ConvertContext,
 ): Promise<number> {
-  const details = join(resolve(command.corpusDir), "details");
+  // The corpus of the language the recipes are converted into, so the comparison is like for like.
+  const corpusDir = command.corpusDir ?? defaultCorpusDir(knowledge.pack.locale);
+  const details = join(resolve(corpusDir), "details");
   if (!existsSync(details)) {
     ctx.err(
-      `No corpus at ${command.corpusDir} (expected ${details}). Build one with npm run corpus:crawl; the corpus stays local and is never committed.`,
+      `No corpus at ${corpusDir} (expected ${details}). Build one with npm run corpus:crawl; the corpus stays local and is never committed.`,
     );
     return EXIT.noInput;
   }

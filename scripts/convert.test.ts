@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -134,19 +135,19 @@ describe("parseCommand", () => {
       scale: 1,
       categories: "c.json",
     });
-    expect(parseCommand(["eval", "--ids", "1, 2,3"])).toEqual({
+    expect(parseCommand(["eval", "--ids", "1, 2,3"])).toEqual({ name: "eval", ids: [1, 2, 3] });
+    expect(parseCommand(["eval", "--ids", "1", "--corpus-dir", "c"])).toEqual({
       name: "eval",
-      corpusDir: "local/corpus",
-      ids: [1, 2, 3],
+      corpusDir: "c",
+      ids: [1],
     });
     expect(parseCommand(["--help"])).toEqual({ name: "help" });
     expect(parseCommand(["help"])).toEqual({ name: "help" });
   });
 
-  it("reads --locale and picks the corpus of that locale", () => {
+  it("reads --locale", () => {
     expect(parseCommand(["eval", "--ids", "1", "--locale", "en-US"])).toEqual({
       name: "eval",
-      corpusDir: "local/corpus/en-US",
       ids: [1],
       locale: "en-US",
     });
@@ -310,6 +311,15 @@ describe("runConvert", () => {
     );
     expect(err[0]).toContain("No corpus at");
   });
+
+  it.skipIf(existsSync("local/corpus/en-US/details"))(
+    "evaluates against the corpus of MC_LOCALE when no --locale is given",
+    async () => {
+      const { run, err } = harness([], { MC_LOCALE: "en-US" });
+      expect(await run(["eval", "--ids", "1"])).toBe(EXIT.noInput);
+      expect(err[0]).toContain("No corpus at local/corpus/en-US");
+    },
+  );
 
   it("evaluates corpus recipes against their programs", async () => {
     const corpus = join(dir, "corpus");

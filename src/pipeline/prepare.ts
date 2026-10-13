@@ -40,7 +40,7 @@ export function prepareRecipe(
   recipe: MealieRecipe,
   scale: number,
   limits: DeviceLimits,
-  locale: Pick<PipelineLocale, "labels">,
+  locale: Pick<PipelineLocale, "labels" | "pack">,
 ): PreparedRecipe {
   const normalized = normalizeIngredients(recipe);
   const scaled = scaleIngredients(normalized, scale);
@@ -51,7 +51,8 @@ export function prepareRecipe(
     ingredients: scaled,
     labels: locale.labels,
   });
-  return { normalized, scaled, servings, rendered, hash: sourceHash(recipe, normalized, scale) };
+  const hash = sourceHash(recipe, normalized, scale, locale.pack.locale);
+  return { normalized, scaled, servings, rendered, hash };
 }
 
 export interface CategoryPlan {

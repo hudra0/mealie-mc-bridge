@@ -153,12 +153,45 @@ function detailRecipe(json: unknown): DetailRecipe | null {
   return top?.data?.recipe ?? top?.recipe ?? null;
 }
 
+// Share of ingredient ids, among those seen at least twice, whose recipes may name different
+// categories before the field counts as unreliable for the whole corpus.
+export const CATEGORY_DISAGREEMENT_LIMIT = 0.05;
+
+// The category per id. In de-DE every recipe names the same category for an ingredient. The
+// en-US API fills the field with recipe-like categories that change from recipe to recipe
+// (salt as "Potatoes", "Beef", "Seafood"), so when too many ids disagree, every category is
+// null. Otherwise an id keeps its most frequent category, on a tie the one seen first.
+export function catalogCategories(
+  counts: ReadonlyMap<number, ReadonlyMap<string, number>>,
+): Map<number, string | null> {
+  const repeated = [...counts.values()].filter(
+    (seen) => [...seen.values()].reduce((sum, count) => sum + count, 0) >= 2,
+  );
+  const disagreeing = repeated.filter((seen) => seen.size > 1).length;
+  const reliable =
+    repeated.length === 0 || disagreeing / repeated.length <= CATEGORY_DISAGREEMENT_LIMIT;
+  const result = new Map<number, string | null>();
+  for (const [id, seen] of counts) {
+    let best: string | null = null;
+    let bestCount = 0;
+    for (const [category, count] of seen) {
+      if (count > bestCount) {
+        best = category;
+        bestCount = count;
+      }
+    }
+    result.set(id, reliable ? best : null);
+  }
+  return result;
+}
+
 function readDetails(dir: string): {
   recipes: CatalogRecipe[];
   categories: Map<number, string | null>;
 } {
   const recipes: CatalogRecipe[] = [];
-  const categories = new Map<number, string | null>();
+  // Category name -> count per id.
+  const counts = new Map<number, Map<string, number>>();
   const files = readdirSync(dir)
     .filter((f) => f.endsWith(".json"))
     .sort();
@@ -168,14 +201,14 @@ function readDetails(dir: string): {
     for (const ingredient of ingredients) {
       const id = ingredient.systemIngredientId;
       if (typeof id !== "number" || id <= 0) continue;
+      const seen = counts.get(id) ?? new Map<string, number>();
+      counts.set(id, seen);
       const category = ingredient.ingredientCategory?.name ?? null;
-      if (!categories.has(id) || (categories.get(id) === null && category !== null)) {
-        categories.set(id, category);
-      }
+      if (category !== null) seen.set(category, (seen.get(category) ?? 0) + 1);
     }
     recipes.push({ source: recipe?.source ?? null, ingredients });
   }
-  return { recipes, categories };
+  return { recipes, categories: catalogCategories(counts) };
 }
 
 /** The catalog input, or null when neither recipes.jsonl nor details/ exists. */

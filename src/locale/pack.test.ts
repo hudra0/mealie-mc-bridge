@@ -111,6 +111,19 @@ describe("parseLocalePack", () => {
     );
   });
 
+  it("rejects a word-list entry with nothing between ^ and $", () => {
+    const base = texts();
+    for (const bad of ["^", "$", "^$"]) {
+      const phrases = edit(
+        base.phrases,
+        (v) => (v.additionVerbs = [...(v.additionVerbs as string[]), bad]),
+      );
+      expect(() => parseLocalePack({ ...base, phrases }, "de-DE")).toThrow(
+        /phrases\.json does not have the expected shape: additionVerbs\.\d+: needs text between \^ and \$/,
+      );
+    }
+  });
+
   it("needs every unit concept once, with a known unit code", () => {
     const base = texts();
     type Entry = { concept: string; code: string };

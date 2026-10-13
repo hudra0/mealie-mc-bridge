@@ -66,4 +66,15 @@ describe("sourceHash", () => {
       }),
     ).toBe(original);
   });
+
+  it("changes with the output locale but keeps de-DE hashes as they were", () => {
+    const recipe = mealieRecipe();
+    const ingredients = normalizeIngredients(recipe);
+    const legacy = sourceHash(recipe, ingredients, 1);
+    expect(sourceHash(recipe, ingredients, 1, "de-DE")).toBe(legacy);
+    expect(sourceHash(recipe, ingredients, 1, "en-US")).not.toBe(legacy);
+    expect(sourceHash(recipe, ingredients, 1, "en-US")).not.toBe(
+      sourceHash(recipe, ingredients, 1, "fr-FR"),
+    );
+  });
 });

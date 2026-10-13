@@ -231,7 +231,7 @@ class JobRun {
     );
 
     this.#checkAbort();
-    const stored = storedConversion(job, prepared.hash);
+    const stored = storedConversion(job, prepared.hash, deps.locale.pack.locale);
     let result: ConversionResult;
     if (stored) {
       result = stored;
@@ -565,9 +565,9 @@ function isRefusal(error: unknown): boolean {
 }
 
 // The validated conversion from an earlier attempt of this job, when the recipe has not
-// changed since. The stored value was written by this code; the checks only guard against
-// a hand-edited or truncated row.
-function storedConversion(job: Job, hash: string): ConversionResult | null {
+// changed since and it is written in the current locale. The stored value was written by
+// this code; the checks only guard against a hand-edited or truncated row.
+function storedConversion(job: Job, hash: string, locale: string): ConversionResult | null {
   const stored = job.conversion;
   if (!stored || stored.sourceHash !== hash) return null;
   const result = stored.result as Partial<ConversionResult> | null;
@@ -580,7 +580,8 @@ function storedConversion(job: Job, hash: string): ConversionResult | null {
     typeof result.model !== "string" ||
     !result.usage ||
     !Array.isArray(result.warnings) ||
-    !Array.isArray(result.reviewHints)
+    !Array.isArray(result.reviewHints) ||
+    result.recipe.locale !== locale
   ) {
     return null;
   }

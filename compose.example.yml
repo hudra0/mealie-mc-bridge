@@ -1,19 +1,26 @@
-# Copy to compose.yml next to a filled-in .env. Mealie posts to the bridge and the bridge
-# calls Mealie, so both must share a Docker network. Two ways:
-# - Paste the mc-bridge service into Mealie's compose file. Keep .env and data/ next to that
-#   file. The networks lines below stay commented out.
+# Copy to compose.yml next to a filled-in .env (from .env.example). Mealie posts to the bridge
+# and the bridge calls Mealie, so both must share a Docker network. Two ways:
+# - Paste the mc-bridge service into Mealie's compose file and keep data/ next to that file.
+#   Name the settings file mc-bridge.env there and point env_file at it, so it does not
+#   collide with a .env of Mealie's project. The networks lines below stay commented out.
 # - Keep this as its own compose project and join Mealie's network: uncomment both networks
 #   blocks and set the name to Mealie's network (`docker network ls`; usually
 #   <mealie project directory>_default).
 services:
   mc-bridge:
     image: ghcr.io/hudra0/mealie-mc-bridge:latest
-    # To build the image yourself instead of pulling it, replace the image line with:
+    # latest follows main. To pin a build, use its sha-<commit> tag; once a release is tagged,
+    # its X.Y tag works too. To build the image yourself from a clone of the repository,
+    # replace the image line with the path of the clone:
     # build: .
     restart: unless-stopped
+    # Every setting comes from .env; README.md has the full reference.
     env_file: .env
-    # The admin pages listen here. Mealie reaches the webhook over the Docker network, so
-    # the host port only needs to be open for you. Keep it on localhost or a LAN address.
+    # The admin pages and /health. Mealie reaches the webhook over the Docker network as
+    # http://mc-bridge:3000, so the host port only needs to be open for you. As written it
+    # answers on this machine only. To open the admin pages to your LAN, put the host's LAN
+    # address in front, for example "<LAN address>:3000:3000". Never publish it on the
+    # internet.
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -25,6 +32,15 @@ services:
     stop_grace_period: 45s
     # networks:
     #   - mealie
+
+  # Mealie in the same compose project, shortened to the one line the bridge needs. From
+  # 3.26 on, Mealie refuses to post to private addresses that are not on its allow list,
+  # and the recipe action then fails without a message. The value is the bridge's service
+  # name, without scheme or port. Add it to your existing Mealie service:
+  # mealie:
+  #   image: ghcr.io/mealie-recipes/mealie:latest
+  #   environment:
+  #     HTTP_ALLOW_LIST: "mc-bridge"
 
 # networks:
 #   mealie:

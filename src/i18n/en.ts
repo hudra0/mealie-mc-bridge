@@ -89,7 +89,7 @@ export const en: Messages = {
     sessionNextSteps: [
       "What to do:",
       "1. Log in on www.monsieur-cuisine.com.",
-      "2. Copy the cookie from the browser's developer tools (see the README, “Run it”, step 5: “Paste the Monsieur Cuisine session”).",
+      "2. Copy the cookie from the browser's developer tools (see the README, section “Monsieur Cuisine session”).",
       "3. Paste it on the bridge's admin page (/admin) and save.",
     ],
     lastChecked: (when) => `Last checked: ${when}`,

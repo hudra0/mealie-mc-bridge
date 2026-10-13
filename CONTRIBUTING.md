@@ -3,8 +3,11 @@
 ## Workflow
 
 - Branch from `main`.
+- Write code, comments, commit messages, pull requests and docs in English.
 - Commit subjects are short and imperative ("Add ingredient parser"). The body explains why the change is needed, not what the diff already shows.
-- Before pushing, run `npm run check`, `npm run build` and `gitleaks git` (scans the history).
+- Before pushing, run `npm run check` (format, lint, typecheck, tests with coverage), `npm run build` and `gitleaks git` (scans the history).
+- Tests come first for parsers, mappers and the device and plausibility rules. A device limit or a rule is data in one place with a unit test, not a constant in the code that uses it.
+- Code ported from SmartRecipe (MIT) keeps a header comment naming its source file and gets a row in `THIRD_PARTY_NOTICES.md`.
 
 ## Pull requests
 
@@ -37,16 +40,28 @@ Rules:
 
 ## Secrets
 
-- Never commit keys, cookies, tokens, passwords, or hostnames and addresses of private infrastructure.
-- Put every setting in `.env.example` with an empty or harmless value. Real values live in your own `.env`, which git ignores.
-- Install the pre-commit hook with `npm run hooks:install`. It runs gitleaks on staged changes and refuses to commit when gitleaks is missing. `SKIP_GITLEAKS=1` skips the scan once.
-- CI runs gitleaks on every push and pull request, and rescans the full history weekly.
+- Never commit keys, cookies, tokens, passwords, account ids, or host names and addresses of private infrastructure. Examples use `example.com` hosts and placeholders such as `<LAN address>`; the gitleaks rules in `.gitleaks.toml` also flag private network addresses and the Monsieur Cuisine cookie formats.
+- Put every setting in `.env.example` with an empty or harmless value. Real values live in your own `.env`, which git ignores, and personal deployment files live under `local/`, which git ignores as well.
+- Browser sessions, HAR files and cookie dumps belong under `local/`.
+- CI runs gitleaks over the whole history on every push to `main`, every tag, every pull request, and weekly.
 - Maintainer only: a newly pushed GHCR package is private until its visibility is set to public in the package settings.
-- Browser sessions, HAR files and cookie dumps belong under `local/`, which git ignores.
 
-## Fixtures
+## Hooks
 
-Recorded API responses are scrubbed before they are committed: ids, names, emails and cookies are replaced with synthetic values.
+`npm run hooks:install` points git at `.githooks/`. The pre-commit hook runs `gitleaks git --staged` and refuses to commit when gitleaks (8.19 or newer) is missing. `SKIP_GITLEAKS=1` skips the scan once; CI still scans every pull request and every push to `main`.
+
+## Fixtures and recipe data
+
+- Recorded API responses are scrubbed before they are committed: ids, names, emails, avatars, media URLs, signed URLs, user-typed text and cookies are replaced with synthetic values. Give a directory of recorded responses a README that names the source of every file and what was replaced; `test/fixtures/mc/README.md` is the model.
+- Recipes on monsieur-cuisine.com are copyrighted. The raw crawl stays under `local/corpus/`, which git ignores. Test fixtures that need corpus files are invented (`test/fixtures/corpus/`).
+- `knowledge/` holds only derived tables and rules written in our own words: numbers, ingredient names and short standard device phrases, never recipe texts.
+
+## Adding a setting
+
+1. Add it to `settingsSchema` in `src/config.ts`, with its default.
+2. Describe it in `scripts/config-reference.ts`. The compiler refuses a setting without a description.
+3. Add it to `.env.example` with an empty or harmless value and a comment. A test fails when a setting is missing there.
+4. Run `npm run docs:config`, which rewrites the configuration table in `README.md`. A test fails when the table and the schema disagree.
 
 ## Adding a language
 

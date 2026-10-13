@@ -1,7 +1,7 @@
 #!/bin/sh
 # Scan staged changes for secrets. Enable with: npm run hooks:install
 # Needs gitleaks 8.19 or newer (https://github.com/gitleaks/gitleaks).
-# Set SKIP_GITLEAKS=1 to commit without the scan; CI still scans every push.
+# Set SKIP_GITLEAKS=1 to commit without the scan; CI still scans every pull request and every push to main.
 if command -v gitleaks >/dev/null 2>&1; then
   exec gitleaks git --staged --pre-commit --verbose
 fi

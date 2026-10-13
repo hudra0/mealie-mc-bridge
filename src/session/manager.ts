@@ -3,8 +3,8 @@
 //
 // The cookie is stored encrypted in the settings table. MC_COOKIE seeds it on the first
 // start and whenever the variable changes; the admin page replaces it after validating it
-// against the account. A periodic check (also a keep-alive) calls the cheapest account
-// endpoint. When Monsieur Cuisine rejects the cookie, the manager records the state,
+// against the account. A periodic check calls the cheapest account endpoint; it does not
+// extend the cookie's lifetime. When Monsieur Cuisine rejects the cookie, the manager records the state,
 // pauses the queue and sends one notification per state change. A new valid cookie puts
 // the waiting jobs back into the queue.
 

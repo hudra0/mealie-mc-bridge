@@ -1,0 +1,114 @@
+{
+  "title": "Kürbis-Linsen-Suppe",
+  "description": "Cremige Suppe aus Hokkaido-Kürbis und roten Linsen mit Kokosmilch.",
+  "locale": "de-DE",
+  "complexity": "easy",
+  "categoryIds": [228],
+  "servingSize": {
+    "amount": 4,
+    "unit": "Portionen",
+    "preparationTime": 15,
+    "readyInTime": 45,
+    "ingredientGroups": [
+      {
+        "name": "",
+        "ingredients": [
+          { "name": "Zwiebeln", "amount": "1", "unit": "Stück", "isOptional": false },
+          { "name": "Knoblauchzehen", "amount": "2", "unit": "Stück", "isOptional": false },
+          { "name": "Olivenöl", "amount": "25", "unit": "g", "isOptional": false },
+          { "name": "Hokkaido-Kürbis", "amount": "500", "unit": "g", "isOptional": false },
+          { "name": "Linsen, rot", "amount": "200", "unit": "g", "isOptional": false },
+          { "name": "Gemüsebrühe", "amount": "1000", "unit": "g", "isOptional": false },
+          { "name": "Salz zum Abschmecken", "amount": "", "unit": "", "isOptional": false },
+          { "name": "Kokosmilch", "amount": "150", "unit": "g", "isOptional": false },
+          { "name": "Koriander", "amount": "1", "unit": "Bund", "isOptional": true },
+          { "name": "Kürbiskerne, geröstet", "amount": "30", "unit": "g", "isOptional": false },
+          { "name": "Croûtons zum Servieren", "amount": "", "unit": "", "isOptional": true }
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "kind": "text",
+        "title": "Zwiebel und Knoblauch schälen",
+        "description": "Zwiebel schälen und halbieren, Knoblauch schälen und beides in den Mixbehälter geben."
+      },
+      {
+        "kind": "customized",
+        "title": "Zerkleinern",
+        "temperature": 0,
+        "minutes": 0,
+        "seconds": 5,
+        "speed": 5,
+        "rotation": "right"
+      },
+      {
+        "kind": "text",
+        "title": "Nach unten schieben",
+        "description": "Mit dem Spatel nach unten schieben und den Messbecher entfernen."
+      },
+      {
+        "kind": "scale",
+        "title": "25 g Olivenöl",
+        "description": "25 g Olivenöl in den Mixbehälter geben.",
+        "grams": 25
+      },
+      {
+        "kind": "customized",
+        "title": "Andünsten",
+        "temperature": 100,
+        "minutes": 3,
+        "seconds": 0,
+        "speed": 1,
+        "rotation": "left"
+      },
+      {
+        "kind": "text",
+        "title": "Kürbis und Linsen zugeben",
+        "description": "Kürbis in Stücke schneiden und mit den Linsen in den Mixbehälter geben."
+      },
+      {
+        "kind": "scale",
+        "title": "1000 g Gemüsebrühe",
+        "description": "1000 g Gemüsebrühe einwiegen.",
+        "grams": 1000
+      },
+      {
+        "kind": "customized",
+        "title": "Köcheln",
+        "temperature": 100,
+        "minutes": 25,
+        "seconds": 0,
+        "speed": 1,
+        "rotation": "right"
+      },
+      {
+        "kind": "text",
+        "title": "Messbecher einsetzen",
+        "description": "Messbecher einsetzen."
+      },
+      { "kind": "puree", "title": "Pürieren", "minutes": 1, "seconds": 0 },
+      {
+        "kind": "scale",
+        "title": "150 g Kokosmilch",
+        "description": "150 g Kokosmilch zugeben.",
+        "grams": 150
+      },
+      {
+        "kind": "customized",
+        "title": "Unterrühren",
+        "temperature": 0,
+        "minutes": 0,
+        "seconds": 20,
+        "speed": 3,
+        "rotation": "right"
+      },
+      {
+        "kind": "text",
+        "title": "Abschmecken und servieren",
+        "description": "Mit Salz abschmecken und mit Koriander, Kürbiskernen und Croûtons servieren."
+      }
+    ]
+  },
+  "reviewHints": ["Croûtons nach Belieben, Menge nicht angegeben."]
+}

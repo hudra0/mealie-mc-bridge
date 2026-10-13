@@ -14,6 +14,7 @@ export default defineConfig({
         "src/recipe/**/*.ts": { lines: 85 },
         "src/mealie/**/*.ts": { lines: 85 },
         "src/ingredients/**/*.ts": { lines: 85 },
+        "src/convert/**/*.ts": { lines: 85 },
       },
     },
   },

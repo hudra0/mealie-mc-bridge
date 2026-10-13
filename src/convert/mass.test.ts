@@ -4,18 +4,22 @@ import type { NormalizedIngredient } from "../ingredients/index.js";
 import type { RecipeInput, RecipeStep } from "../recipe/schema.js";
 import { loadKnowledge } from "./knowledge.js";
 import {
+  HOT_ADDITION_C,
   amountMentions,
   attributeIngredient,
+  clauses,
   densityOf,
   gramsFor,
   indexIngredients,
   ingredientGrams,
+  ingredientKeys,
   matchScore,
   mentionedIngredients,
   nameKeys,
   pieceWeight,
   stem,
   stepTemperature,
+  stepText,
   mixedTemperature,
   traceBowl,
 } from "./mass.js";
@@ -86,6 +90,14 @@ describe("name matching", () => {
     expect(nameKeys("frische Hefe")).toEqual(["hef"]);
   });
 
+  it("matches input ingredients without their qualifiers in parentheses", () => {
+    expect(ingredientKeys("Auflaufform (ca. 20 x 30 cm)")).toEqual(["auflaufform"]);
+    expect(ingredientKeys("Spaghetti (Kochzeit 9 Minuten)")).toEqual(["spaghetti"]);
+    expect(ingredientKeys("(Deko)")).toEqual(["deko"]);
+    const index = indexIngredients([ingredient("Spaghetti (Kochzeit 9 Minuten)", 500, "g")]);
+    expect(attributeIngredient("Minuten garen", index)).toBeNull();
+  });
+
   it("scores exact and compound matches", () => {
     const stems = (text: string) => text.toLowerCase().split(" ").map(stem);
     expect(matchScore(nameKeys("Zwiebeln"), stems("die zwiebel schälen"))).toBe(2);
@@ -123,6 +135,43 @@ describe("amountMentions", () => {
 
   it("ignores numbers without a following name", () => {
     expect(amountMentions("Stufe 3.")).toEqual([]);
+  });
+
+  it("does not read sizes, times and settings as amounts", () => {
+    expect(amountMentions("Eine Form von 20 x 30 cm einfetten")).toEqual([]);
+    expect(amountMentions("Die Spaghetti 9 Minuten garen")).toEqual([]);
+    expect(amountMentions("Auf 100 °C erhitzen")).toEqual([]);
+    expect(amountMentions("2 Min. warten, dann 2 Eier zugeben")).toEqual([
+      { amount: 2, unit: null, phrase: "Eier zugeben" },
+    ]);
+  });
+});
+
+describe("step texts", () => {
+  it("splits sentences and semicolon parts, not abbreviations", () => {
+    expect(clauses("Zwiebel schälen; 2 Eier zugeben. Dann rühren.")).toEqual([
+      "Zwiebel schälen",
+      "2 Eier zugeben",
+      "Dann rühren",
+    ]);
+    expect(clauses("Ca. 1 Msp. Muskat zugeben.")).toEqual(["Ca. 1 Msp. Muskat zugeben"]);
+  });
+
+  it("reads a text step's description and a scale step's title only when it adds something", () => {
+    const step: RecipeStep = {
+      kind: "text",
+      title: "4 Eier zugeben",
+      description: "4 Eier aufschlagen und in den Mixbehälter geben.",
+    };
+    expect(stepText(step)).toBe("4 Eier aufschlagen und in den Mixbehälter geben.");
+    expect(stepText(scale(200, "Sahne"))).toBe("200 g Sahne in den Mixbehälter geben.");
+    const short: RecipeStep = {
+      kind: "scale",
+      title: "200 g Sahne",
+      description: "Einwiegen.",
+      grams: 200,
+    };
+    expect(stepText(short)).toBe("200 g Sahne\nEinwiegen.");
   });
 });
 
@@ -217,6 +266,36 @@ describe("traceBowl", () => {
     );
     expect(traces[0]?.after).toMatchObject({ grams: 300, flourGrams: 300, unknown: false });
     expect(traces[1]?.after.unknown).toBe(true);
+  });
+
+  it("counts oil poured onto the lid as going into the bowl", () => {
+    const traces = traceBowl(
+      recipeWith([
+        scale(100, "Eigelb"),
+        text("250 g Öl langsam auf den Deckel gießen, sodass es in den Mixbehälter läuft."),
+      ]),
+      [ingredient("Eigelb", 100, "g"), ingredient("Öl", 250, "g")],
+      knowledge,
+    );
+    expect(traces[1]?.after.grams).toBe(350);
+  });
+
+  it("counts hot additions at a hot temperature", () => {
+    const boil: RecipeStep = {
+      kind: "customized",
+      title: "Kochen",
+      temperature: 100,
+      minutes: 5,
+      seconds: 0,
+      speed: 1,
+      rotation: "right",
+    };
+    const traces = traceBowl(
+      recipeWith([scale(500, "Wasser"), boil, scale(500, "heiße Gemüsebrühe")]),
+      [],
+      knowledge,
+    );
+    expect(traces[2]?.after.temperature).toBe((100 + HOT_ADDITION_C) / 2);
   });
 
   it("keeps steamer contents out of the bowl and follows liquid in text", () => {

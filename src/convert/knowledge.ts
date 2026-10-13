@@ -38,6 +38,7 @@ const quantile = z.looseObject({
   note: z.string().optional(),
   formula: z.string().optional(),
   formulaNote: z.string().optional(),
+  formulaR2: z.number().optional(),
 });
 const speed = z.looseObject({ typical: z.number(), max: z.number().optional() });
 
@@ -185,7 +186,10 @@ const converterRulesFileSchema = z.looseObject({
   ingredientClassWords: z.looseObject({
     classes: z.record(z.string(), z.array(z.string().min(1)).min(1)),
   }),
-  amountBalance: z.looseObject({ tolerance: z.number().min(0).max(1) }),
+  amountBalance: z.looseObject({
+    tolerance: z.number().min(0).max(1),
+    volumeLiquids: z.looseObject({ words: z.array(z.string().min(1)).min(1) }),
+  }),
 });
 
 export type Technique = z.infer<typeof techniqueSchema>;
@@ -219,6 +223,9 @@ export interface Knowledge {
   ingredientClassWords: Readonly<Record<string, readonly string[]>>;
   // Share by which an amount may exceed or fall short of the input (converter-rules.json).
   amountTolerance: number;
+  // Words for liquids, German and English: a cup of anything else is a volume of a solid,
+  // which the amount check skips (converter-rules.json).
+  volumeLiquidWords: readonly string[];
 }
 
 // Techniques every prompt carries: the scale step, chopping, sautéing and simmering cover
@@ -363,6 +370,7 @@ export function buildKnowledge(files: KnowledgeTexts): Knowledge {
     massLimits,
     ingredientClassWords: converterRules.ingredientClassWords.classes,
     amountTolerance: converterRules.amountBalance.tolerance,
+    volumeLiquidWords: converterRules.amountBalance.volumeLiquids.words,
   };
 }
 
@@ -372,7 +380,12 @@ export async function loadKnowledge(dir: string = DEFAULT_KNOWLEDGE_DIR): Promis
   const absolute = resolve(dir);
   const F = KNOWLEDGE_FILES;
   const names = Object.keys(F) as (keyof typeof F)[];
-  const contents = await Promise.all(names.map((name) => readText(absolute, F[name])));
+  // All reads settle before an error is thrown, so a missing file is reported in the fixed
+  // order of KNOWLEDGE_FILES, not by whichever read fails first.
+  const results = await Promise.allSettled(names.map((name) => readText(absolute, F[name])));
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed) throw failed.reason;
+  const contents = results.map((result) => (result.status === "fulfilled" ? result.value : ""));
   const files = Object.fromEntries(names.map((name, i) => [name, contents[i] ?? ""]));
   return buildKnowledge(files as unknown as KnowledgeTexts);
 }
@@ -467,11 +480,17 @@ export function techniqueSummaryLine(technique: Technique): string {
   return `${technique.id}: ${technique.label} | ${parts.join(", ")}`;
 }
 
+// An ingredient class with a hit scores this much. Classes such as liquid or dairy occur in
+// almost every recipe, so at a full point they outweighed the aliases and picked yeast
+// dough for a custard; at a quarter they only decide between techniques of the same verb.
+export const CLASS_HIT_SCORE = 0.25;
+
 // Picks the offered techniques whose German or English aliases or ingredient classes occur
 // in the recipe. The techniques of ALWAYS_SELECTED are always in; the others rank by score, ties
 // in knowledge-file order. An alias hit scores 3 divided by the number of techniques that
 // share the alias ("zerkleinern" names five chopping techniques), an ingredient class
-// with a hit scores 1, so the ingredients decide between techniques of the same verb.
+// with a hit scores CLASS_HIT_SCORE, so the ingredients decide between techniques of the
+// same verb.
 export function selectTechniques(
   request: Pick<ConversionRequest, "title" | "rendered" | "ingredients">,
   knowledge: Knowledge,
@@ -495,7 +514,7 @@ export function selectTechniques(
       const classHits = technique.ingredientClasses.filter(
         (name) => countHits(text, knowledge.ingredientClassWords[name] ?? []) > 0,
       ).length;
-      return { technique, order, score: aliasScore + classHits };
+      return { technique, order, score: aliasScore + classHits * CLASS_HIT_SCORE };
     })
     .filter(({ technique, score }) => !always.has(technique.id) && score > 0)
     .sort((a, b) => b.score - a.score || a.order - b.order);

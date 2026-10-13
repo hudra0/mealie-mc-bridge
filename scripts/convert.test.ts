@@ -298,7 +298,12 @@ describe("runConvert", () => {
     expect(out[2]).toContain("900002  missing or unreadable");
     expect(out[3]).toMatch(/^ {2}total/);
     expect(out[3]).toContain("1 failed");
-    expect((JSON.parse(await readFile(file, "utf8")) as unknown[]).length).toBe(1);
+    expect(out[5]).toMatch(/^tokens: 1000 input \(0 cached\), 100 output; /);
+    const written = JSON.parse(await readFile(file, "utf8")) as {
+      result: { corrections: unknown[] };
+    }[];
+    expect(written).toHaveLength(1);
+    expect(written[0]?.result.corrections).toEqual([]);
   });
 });
 

@@ -94,6 +94,10 @@ describe("createConverter", () => {
     const { log, info, warn } = logger();
     const result = await converter(generator, { logger: log }).convert(request);
     expect(result.recipe.title).toBe("Kürbis-Linsen-Suppe");
+    // Text step titles come from the description, cut at the title length.
+    expect(result.recipe.servingSize.steps[0]?.title).toBe(
+      "Zwiebel schälen und halbieren, Knoblauch schälen und beides in den Mixbehälter",
+    );
     expect(result.attempts).toBe(1);
     expect(result.provider).toBe("fake");
     expect(result.model).toBe("gpt-5.5");
@@ -125,6 +129,12 @@ describe("createConverter", () => {
     expect(result.usage.inputTokens).toBe(40_000);
     expect(result.usage.outputTokens).toBe(10_000);
     expect(result.usage.costUsd).toBe(0.5);
+    expect(result.corrections).toEqual([
+      {
+        attempt: 1,
+        errors: [expect.objectContaining({ path: "servingSize.steps[4].speed" })],
+      },
+    ]);
   });
 
   it("reports plausibility errors and keeps warnings apart from the review hints", async () => {

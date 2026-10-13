@@ -280,6 +280,10 @@ function rangeText(value: { typical: number; range?: [number, number] | undefine
   return low === high ? `${value.typical} ${unit}` : `${value.typical} ${unit} (${low}-${high})`;
 }
 
+// A fitted time formula below this R² predicts nothing (the simmering fit has 0.07) and only
+// pads times, so the prompt leaves it out. Physical formulas carry no R² and stay.
+export const MIN_FORMULA_R2 = 0.3;
+
 export function techniqueDetail(technique: Technique, usable: ModeFilter = anyMode): string {
   const d = technique.device;
   const lines = [`### ${technique.id}: ${technique.label}`, ""];
@@ -308,7 +312,8 @@ export function techniqueDetail(technique: Technique, usable: ModeFilter = anyMo
   if (d.accessory?.attachment) program.push(`attachment ${d.accessory.attachment}`);
   lines.push(`- Program: ${program.join("; ")}`);
   if (d.temperature?.note) lines.push(`- Temperature: ${d.temperature.note}`);
-  if (d.timeSeconds?.formula) {
+  const fit = d.timeSeconds?.formulaR2;
+  if (d.timeSeconds?.formula && (fit === undefined || fit >= MIN_FORMULA_R2)) {
     lines.push(
       `- Time formula: ${d.timeSeconds.formula}${d.timeSeconds.formulaNote ? ` (${d.timeSeconds.formulaNote})` : ""}`,
     );
@@ -362,7 +367,7 @@ function timingSection(knowledge: Knowledge): string {
   const c = t.constants;
   const h = knowledge.heatUp;
   const lines = [
-    `- Heat-up: tMin = grams / 1000 × ${c.heatCapacityJoulePerKgKelvin} × (min(T, 100) − ${c.startTemperatureC}) / (${c.heaterWatts} × ${c.efficiency}) seconds, about ${t.functions.tMinSeconds.secondsPerKgToBoil} s per kg of watery contents to the boil. A heated manual step at ${h.minTemperature} °C or more on contents below that temperature must last at least ${h.warningFactor} × tMin; below ${h.errorFactor} × tMin the recipe is rejected.${h.typicalFactor !== undefined ? ` Official recipes give about ${h.typicalFactor} × tMin.` : ""} Cold ingredients added to hot contents cool them to the mixing temperature, and tMin then counts from there for the whole bowl: sautéed onions plus a litre of cold stock need nearly the full heat-up again. Steps on contents that are still hot may be shorter. Roasting does not follow this model.`,
+    `- Heat-up: tMin = grams / 1000 × ${c.heatCapacityJoulePerKgKelvin} × (min(T, 100) − ${c.startTemperatureC}) / (${c.heaterWatts} × ${c.efficiency}) seconds, about ${t.functions.tMinSeconds.secondsPerKgToBoil} s per kg of watery contents to the boil. A heated manual step at ${h.minTemperature} °C or more on contents below that temperature must last at least ${h.warningFactor} × tMin; below ${h.errorFactor} × tMin the recipe is rejected.${h.typicalFactor !== undefined ? ` Official first heatings of cold contents run about ${h.typicalFactor} × tMin; that factor is not a target for later steps.` : ""} Cold ingredients added to hot contents cool them to the mixing temperature, and tMin then counts from there for the whole bowl: sautéed onions plus a litre of cold stock need nearly the full heat-up again. Hot additions such as hot stock barely cool the bowl. Steps on contents that are still hot are often shorter than tMin in official recipes; do not pad them. The cooking goal sets the time beyond the heat-up. Roasting does not follow this model.`,
   ];
   if (t.manualCooking.note) lines.push(`- Manual cooking: ${t.manualCooking.note}`);
   lines.push(

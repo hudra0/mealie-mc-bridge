@@ -98,6 +98,7 @@
       "target": "g",
       "fallback": "El",
       "gramsPerUnit": 15,
+      "note": "15 g is the default; weigh by food where it differs: seeds, poppy seeds, flour and starch about 10 g, ground nuts about 8 g, oil about 12 g, sugar and salt about 15 g, honey and syrup about 20 g",
       "evidence": "Member El rows with an official counterpart: g 88.2 %, Tl 7.6 %, El 2.3 %. 15 g per El from only 7 stated weights; liquids and powders differ (oil about 12 g, flour about 10 g, honey about 20 g)."
     },
     {
@@ -192,7 +193,7 @@
       "input": ["Tasse", "cup"],
       "target": "g",
       "gramsPerUnit": "240 ml * density",
-      "note": "US cup; not in the corpus. Dry goods: flour about 125 g, sugar about 200 g, rice about 185 g per cup."
+      "note": "US cup; not in the corpus. 240 ml × density holds for liquids only; for solids use: flour about 125 g, sugar about 200 g, rice about 185 g, grated hard cheese about 90 g, whole cherry tomatoes about 150 g per cup."
     },
     { "input": ["oz", "ounce"], "target": "g", "gramsPerUnit": 28.35 },
     { "input": ["lb", "pound"], "target": "g", "gramsPerUnit": 453.6 },

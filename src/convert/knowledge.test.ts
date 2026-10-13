@@ -60,6 +60,7 @@ describe("loadKnowledge", () => {
       typicalFactor: 2.3,
     });
     expect(knowledge.amountTolerance).toBe(0.1);
+    expect(knowledge.volumeLiquidWords).toEqual(expect.arrayContaining(["brühe", "broth"]));
     expect(massLimit(knowledge, "bowl_max").grams).toBe(3000);
     expect(massLimit(knowledge, "steaming_liquid_min").grams).toBe(500);
     expect(ruleValue(knowledge, "speed_max_whisk")).toBe(4);
@@ -188,6 +189,18 @@ describe("selectTechniques", () => {
     const ids = select("Pasta", "Den Käse fein hacken.", ["Parmesan"]);
     expect(ids).toContain("grate_hard_cheese");
     expect(ids).not.toContain("chop_fruit");
+  });
+
+  it("ranks an alias hit above techniques that only share common ingredient classes", () => {
+    // Milk, water and flour give stir_cold and activate_yeast three class hits each; one
+    // shared verb plus the carrots still wins the only free slot.
+    const ids = select("Suppe", "Alles zerkleinern.", ["Milch", "Wasser", "Mehl", "Karotten"], 5);
+    expect(ids).toContain("chop_vegetables");
+    expect(ids).not.toContain("activate_yeast");
+  });
+
+  it("finds steaming from the name of the steamer", () => {
+    expect(select("Hähnchen", "Den Dampfgaraufsatz aufsetzen.")).toContain("steam_in_steamer");
   });
 
   it("respects the maximum and keeps the knowledge-file order", () => {

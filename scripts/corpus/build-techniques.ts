@@ -46,8 +46,19 @@ interface Row {
   technique: string | null;
   mainIngredient: string | null;
   chopClass: string;
+  /** chopClass of the previous program step when that step chopped (cold manual chop or turbo). */
+  afterChop: string | null;
   splash: boolean;
 }
+
+/** A cold manual chop (0 °C, speed 5 or more, at most 15 s) or a turbo pulse. */
+const isChopRow = (r: Row) =>
+  r.mode === "turbo" ||
+  (r.mode === "customized" &&
+    r.temperature === 0 &&
+    (r.speed ?? 0) >= 5 &&
+    (r.timeSeconds ?? 0) > 0 &&
+    (r.timeSeconds ?? 0) <= 15);
 
 // ---------------------------------------------------------------- enrich steps
 function enrich(input: TechniquesInput): Row[] {
@@ -61,6 +72,7 @@ function enrich(input: TechniquesInput): Row[] {
   const rows: Row[] = [];
   for (const list of byRecipe.values()) {
     list.sort((a, b) => a.stepIndex - b.stepIndex);
+    let previous: Row | null = null;
     list.forEach((s, i) => {
       if (s.kind !== "machine") return;
       const parts: string[] = [];
@@ -75,7 +87,7 @@ function enrich(input: TechniquesInput): Row[] {
           splash = true;
       }
       const t = techByKey.get(`${s.recipeId}:${s.stepIndex}`);
-      rows.push({
+      const row: Row = {
         recipeId: s.recipeId,
         source: s.source,
         mode: s.mode,
@@ -89,8 +101,11 @@ function enrich(input: TechniquesInput): Row[] {
         technique: t?.technique ?? null,
         mainIngredient: t?.mainIngredient ?? null,
         chopClass: classify(parts.join(" | "), chopClasses).primary,
+        afterChop: previous && isChopRow(previous) ? previous.chopClass : null,
         splash,
-      });
+      };
+      rows.push(row);
+      if (s.mode !== "scale") previous = row;
     });
   }
   return rows;
@@ -167,6 +182,8 @@ interface Spec {
   attachment?: string | null;
   formula?: string;
   formulaNote?: string;
+  /** R² of the formula's fit; the prompt leaves out formulas with no predictive power. */
+  formulaR2?: number;
   structure: string[];
   notes?: string[];
   alternativesNote?: Record<string, string>;
@@ -230,7 +247,8 @@ const specs: Spec[] = [
       "Usually followed by fat in a scale step and the sauté or roasting step.",
     ],
     alternativesNote: {
-      turbo: "Turbo for 2-3 s chops onions coarsely (229 turbo steps work on onion or garlic).",
+      turbo:
+        "Turbo for 2 s (1-5 s) is an equal choice before sautéing: official recipes chop onion or garlic with turbo in about a third of cases (98 of 290 chops before the first heated step). Turbo needs contents at room temperature, no whisk and at most 2500 g in the bowl.",
     },
   },
   {
@@ -464,6 +482,7 @@ const specs: Spec[] = [
     formula: "clamp(30, 120, 33 + 0.009 * massGrams)",
     formulaNote:
       "puree program time vs bowl mass, R² 0.13 (n 76): the time is nearly fixed at 30-60 s",
+    formulaR2: 0.13,
     structure: [
       "Measuring cup in before puréeing hot contents (at ramp steps the cup was inserted 30 times, never removed).",
       "Never start hot contents at a high speed. Without the puree program, use manual steps at 0 °C with rising speed, starting at speed 4 or lower, for example 10 s each at speed 4, 6 and 8 (official ramps run 4>5>6>7>8 at about 10 s per phase).",
@@ -518,10 +537,10 @@ const specs: Spec[] = [
     selection: 'technique "emulgieren"',
     speedCap: 4,
     reverse: false,
-    cup: "out",
+    cup: "in",
     structure: [
-      'The oil goes in slowly through the lid opening while the blade runs ("durch die Deckelöffnung", 98 text steps; the next step is the working step in 94 %).',
-      "Two-step pattern: a short step (about 10 s) mixes the base, then a long step at speed 4 (top setting 240 s) runs while the oil is poured onto the lid.",
+      'The oil is poured slowly onto the lid while the measuring cup stays in, so it runs in along the cup in a thin stream ("das Öl langsam auf den Deckel gießen, sodass es am Messbecher entlang in den Mixbehälter läuft"); 16 of 17 official oil emulsions pour the oil onto the lid, none through the lid opening.',
+      "Two-step pattern: a short step (about 10 s) mixes the base, then a long step at speed 4 (top setting 240 s, 13 of 17 official oil emulsions) runs while the oil is poured onto the lid.",
     ],
   },
   {
@@ -574,6 +593,7 @@ const specs: Spec[] = [
     formula: "min(240, max(60, round((95 + 0.091 * flourGrams) / 30) * 30))",
     formulaNote:
       "kneading time vs flour in the bowl, R² 0.10: the time is a plateau at 120 s up to 1250 g flour",
+    formulaR2: 0.1,
     structure: [
       "At most 1000 g flour per kneading step (corpus maximum 1000 g, p90 600 g; SmartRecipe rule 1000 g).",
       "Text step after: let the dough rise covered outside the machine and name the time (52 % of recipes name passive time in text).",
@@ -631,7 +651,7 @@ const specs: Spec[] = [
     reverse: "true when the dish contains pieces that must stay whole",
     cup: "either",
     structure: [
-      "Milk at most 95 °C (SmartRecipe rule) so it does not boil over; stir at speed 1-2.",
+      "Official recipes heat milk at 100 °C (32 of 48 official heated manual steps on milk without egg or starch, 3 at 95 °C); stir at speed 1-2 and keep foaming contents below the foaming limit.",
     ],
     notes: [
       "Mostly a member-recipe label (23 official steps); official recipes fold warming into simmer steps.",
@@ -639,25 +659,27 @@ const specs: Spec[] = [
   },
   {
     id: "saute_onions",
-    label: "Sauté onions, garlic or vegetables in fat without browning (anschwitzen, dünsten)",
+    label: "Sauté onions, garlic or vegetables in fat (anschwitzen, andünsten)",
     de: ["anschwitzen", "andünsten", "dünsten", "glasig dünsten"],
     en: ["sauté", "sweat", "soften"],
     classes: ["onion_garlic", "vegetables"],
-    select: T("anschwitzen"),
-    selection: 'technique "anschwitzen"',
-    mode: "customized",
+    select: (r) =>
+      r.technique === "anschwitzen" || (r.mode === "roasting" && r.afterChop === "onion_garlic"),
+    selection:
+      'technique "anschwitzen", plus roasting steps right after chopping onion, shallot, garlic or ginger',
+    mode: "roasting",
     speedCap: 3,
-    reverse:
-      "true when diced vegetables must keep their shape (52.6 % of official manual sauté steps)",
+    reverse: false,
     cup: "out",
     structure: [
+      "Official recipes sauté chopped onion with the roasting program in about three of four cases (213 of 290 first heated steps after chopping onion or garlic); the roasting program stirs on its own and takes no speed.",
       "Text step before: add the fat (oil is named in 37 %) and push the chopped onions down with the spatula (the spatula is named in 50 % of the text before official sauté steps).",
       "Measuring cup out so the steam escapes (state at manual steps of 105-130 °C: removed 148, inserted 67).",
       "Spices bloom at the end of this step; deglaze afterwards with liquid in a scale step.",
     ],
     alternativesNote: {
-      roasting:
-        "The roasting program at 120-130 °C for 180 s does the same job (official top setting roasting 130 °C, 180 s).",
+      customized:
+        "Manual mode when the food must stay pale or liquid is already in the bowl; reverse when diced vegetables must keep their shape (52.6 % of official manual sauté steps).",
     },
   },
   {
@@ -725,6 +747,7 @@ const specs: Spec[] = [
     formula: "max(tMinSeconds(massGrams, temperature), 421 + 0.252 * massGrams)",
     formulaNote:
       "100 °C fit over all steps (R² 0.07, residual p10/p90 -526/+623 s); the cooking goal sets the time, the mass only the lower bound",
+    formulaR2: 0.07,
     structure: [
       "Text step before: the liquid goes in by a scale step (stock, water); name what cooks.",
       "The first heated step after filling must at least cover the heat-up time (official headroom: time/tMin median 2.30, p10 0.87).",
@@ -765,7 +788,7 @@ const specs: Spec[] = [
     structure: [
       "Starch thickens only at 95 °C or more for at least 2 minutes (bridge sanity rule).",
       "Add thickeners in the last 2-3 minutes (SmartRecipe rule) or stir them cold into the liquid first.",
-      "Egg yolk at most 80 °C, dairy at most 95 °C (SmartRecipe rules); custard runs at 80-90 °C, speed 2-3.",
+      "Egg-yolk mixtures (custard, sabayon, egg liqueur) at 70-80 °C, speed 2-3, and 70 °C when alcohol is in the bowl (official heated egg-yolk steps: 70 °C in 9 of 25); milk and cream up to 100 °C.",
     ],
   },
   {
@@ -813,7 +836,7 @@ const specs: Spec[] = [
     reverse: "true for milk rice so the grains stay whole; false for smooth pudding",
     cup: "in",
     structure: [
-      "Milk at most 95 °C (SmartRecipe rule); long milk rice steps run at 90-100 °C with reverse.",
+      "Milk rice and pudding at 90-100 °C (official recipes heat milk at 100 °C); long milk rice steps run with reverse, and foaming contents stay below the foaming limit.",
     ],
   },
   {
@@ -858,7 +881,7 @@ const specs: Spec[] = [
   {
     id: "steam_in_steamer",
     label: "Steam in the steamer attachment (vegetables, fish, meat, dumplings)",
-    de: ["dämpfen", "dampfgaren", "im Dampfgaraufsatz garen"],
+    de: ["dämpfen", "dampfgaren", "im Dampfgaraufsatz garen", "Dampfgaraufsatz", "Dampfgareinsatz"],
     en: ["steam"],
     classes: ["vegetables", "fish", "meat", "potatoes", "flour_dough"],
     select: (r) =>
@@ -981,7 +1004,8 @@ interface Device {
   weightGrams?: Quant & { max: number };
   modeSetting?: Record<string, { typical?: string; observed: Record<string, number> }>;
   temperature?: (Quant & { note?: string }) | null;
-  timeSeconds?: (Partial<Quant> & { formula?: string; formulaNote?: string }) | null;
+  timeSeconds?:
+    (Partial<Quant> & { formula?: string; formulaNote?: string; formulaR2?: number }) | null;
   speed?: DeviceStats["speed"];
   reverse?: boolean | string;
   turbo?: boolean;
@@ -1108,6 +1132,7 @@ export function buildTechniques(input: TechniquesInput) {
             ...st.timeSeconds,
             formula: s.formula,
             ...(s.formulaNote ? { formulaNote: s.formulaNote } : {}),
+            ...(s.formulaR2 !== undefined ? { formulaR2: s.formulaR2 } : {}),
           }
         : st.timeSeconds;
       device.speed = mainMode === "customized" ? st.speed : null;
@@ -1226,7 +1251,7 @@ export function buildTechniques(input: TechniquesInput) {
       "device.temperature":
         "°C; typical = median, range = [p10, p90] of the basis group in the recommended mode (nearest rank, so every value is one the device used).",
       "device.timeSeconds":
-        "Seconds; typical = median, range = [p10, p90]. formula, when present, is an expression in massGrams (bowl content), flourGrams or temperature, using tMinSeconds() from timing-model.json; clamp(lo, hi, x) limits x to [lo, hi].",
+        "Seconds; typical = median, range = [p10, p90]. formula, when present, is an expression in massGrams (bowl content), flourGrams or temperature, using tMinSeconds() from timing-model.json; clamp(lo, hi, x) limits x to [lo, hi]. formulaR2 is the R² of a fitted formula; the converter's prompt leaves out formulas below 0.3.",
       "device.speed":
         "typical = median, max = p90 of the basis group, capped by the rules in device-limits.json (3 when heated or in reverse, 4 with the whisk). null for program modes, which store no speed.",
       "device.reverse": "true, false, or a condition the converter decides per recipe.",

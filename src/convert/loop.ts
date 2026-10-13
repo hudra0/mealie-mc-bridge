@@ -9,13 +9,14 @@ import { validateRecipeInput, type ValidationIssue } from "../recipe/validate.js
 import { DEFAULT_PRICES, estimateCost, type PriceTable } from "./cost.js";
 import { ConversionFailedError } from "./errors.js";
 import { selectTechniques, type Knowledge } from "./knowledge.js";
-import { parseJsonOutput } from "./output.js";
+import { deriveTextStepTitles, parseJsonOutput } from "./output.js";
 import { buildSystemPrompt, buildUserMessage, usableModes, type Category } from "./prompt.js";
 import { checkSanity } from "./sanity.js";
 import type {
   ConversionRequest,
   ConversionResult,
   Converter,
+  CorrectionRound,
   GenerationFeedback,
   RecipeGenerator,
   TokenUsage,
@@ -124,6 +125,7 @@ export function createConverter(options: ConverterOptions): Converter {
       let model = generator.model;
       let lastErrors: ValidationIssue[] = [];
       let lastJson = "";
+      const corrections: CorrectionRound[] = [];
 
       for (let attempt = 1; attempt <= maxCorrections + 1; attempt++) {
         if (signal?.aborted) throw abortReason(signal);
@@ -159,6 +161,7 @@ export function createConverter(options: ConverterOptions): Converter {
           errors = [{ path: "(answer)", message: parsed.message }];
         } else {
           lastJson = parsed.text;
+          deriveTextStepTitles(parsed.value, limits.recipe.stepTitle.max);
           const validation = validateRecipeInput(parsed.value, limits, {
             knownCategoryIds,
             attachments,
@@ -184,6 +187,7 @@ export function createConverter(options: ConverterOptions): Converter {
             return {
               recipe: validation.recipe,
               attempts: attempt,
+              corrections,
               usage: total,
               warnings,
               reviewHints: [...(validation.recipe.reviewHints ?? [])],
@@ -193,6 +197,7 @@ export function createConverter(options: ConverterOptions): Converter {
           }
         }
         lastErrors = errors;
+        corrections.push({ attempt, errors });
         logger.warn(
           { provider: generator.provider, model, attempt, errors: errors.length },
           attempt <= maxCorrections
@@ -209,6 +214,7 @@ export function createConverter(options: ConverterOptions): Converter {
         provider: generator.provider,
         model,
         lastJson,
+        corrections,
       });
     },
   };

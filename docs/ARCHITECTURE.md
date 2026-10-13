@@ -1,6 +1,6 @@
 # Architecture
 
-Status: partly built. Implemented are the HTTP skeleton with `/health`, the Mealie side (`src/mealie`), ingredient handling (`src/ingredients`), the Monsieur Cuisine client (`src/mc`), the recipe input format with its validator and payload builder (`src/recipe`), and the knowledge base. They exist as libraries and are not yet wired together: the webhook route, the job queue, the LLM conversion and the pipeline that runs the Mealie write-back are still target design. [Modules](#modules) lists what exists; the rest of this page describes what the finished service will do.
+Status: partly built. Implemented are the HTTP skeleton with `/health`, the Mealie side (`src/mealie`), ingredient handling (`src/ingredients`), the Monsieur Cuisine client (`src/mc`), the recipe input format with its validator and payload builder (`src/recipe`), the LLM converter (`src/convert`), and the knowledge base. They exist as libraries and are not yet wired together: the webhook route, the job queue and the pipeline that runs the Mealie write-back are still target design. [Modules](#modules) lists what exists; the rest of this page describes what the finished service will do.
 
 The bridge turns a Mealie recipe into a private draft in a Monsieur Cuisine account. It runs as one container next to Mealie and keeps its state under `/data`.
 
@@ -68,6 +68,41 @@ The Mealie side and ingredient handling:
 webhook  ->  client.getRecipe  ->  normalizeIngredients  ->  scaleIngredients  ->  renderRecipeForLlm
 ```
 
+The converter (job flow step 5):
+
+- **`src/convert`**: turns a rendered Mealie recipe into a validated `RecipeInput` with a language model.
+  - `types.ts` is the contract the service depends on: `ConversionRequest`, `ConversionResult`, `Converter`, and the provider interface `RecipeGenerator` with `GenerationInput` and `GenerationOutput`.
+  - `knowledge.ts` loads `techniques.json`, `timing-model.json`, `units.json`, `device-limits.json`, `prompt-rules.md` and `step-patterns.md` from `KNOWLEDGE_DIR`, checks the fields it reads, and picks the techniques a recipe needs (aliases and ingredient classes found in the recipe, plus chopping, sautéing, simmering and the scale step).
+  - `prompt.ts` builds the system prompt in a fixed order (role, device limits from the effective layer of `device-programs.json`, structure rules, conversion rules, technique table and the picked techniques, timing, units, output contract) and the user message (category list, servings, recipe, and on a correction round the errors and the previous answer). Both are deterministic, so the provider's prompt cache can reuse them.
+  - `sanity.ts` holds the plausibility rules, each an id, a description and a function: heat-up time of the first heating, bowl mass, foaming contents, turbo, whisk, flour per kneading step, steaming water, a text step before every program step, ingredients used, amounts against the input, descriptions on program steps, roasting and sautéing temperatures, duplicate additions, servings. Thresholds come from the knowledge base. `mass.ts` follows the bowl content from step to step for them.
+  - `loop.ts` runs the conversion: prompts, generator call, JSON parsing, validator and plausibility rules, correction rounds, usage and cost over all attempts, abort signal.
+  - `cost.ts` is the price table per model (USD per million tokens, `LLM_PRICES_JSON` overrides it) and the cost estimate.
+  - `providers/openai.ts` calls the Responses API with a strict JSON schema; `prepareStrictSchema` turns the recipe schema into what strict mode accepts. `providers/anthropic.ts` calls `messages.parse` with structured output, a cached system block and server-side fallbacks.
+  - `index.ts` exports the module and `createGenerator(config)`, which picks the provider from `LLM_PROVIDER`.
+
+```text
+ConversionRequest (rendered Markdown, scaled ingredients, servings)
+  |
+  v
+selectTechniques -> buildSystemPrompt + buildUserMessage
+  |
+  v
++-> RecipeGenerator.generate ---------------------------- OpenAI or Anthropic
+|     |
+|     v
+|   parse JSON -> validateRecipeInput (device-programs.json)
+|              -> checkSanity (physics, structure, amounts)
+|     |
+|     +-- no errors ---------------------> ConversionResult (warnings become review hints)
+|     |
+|     +-- errors, rounds left: feedback = errors + previous answer
+|     |
++-----+
+      +-- errors, no rounds left --------> ConversionFailedError
+```
+
+`scripts/convert.ts` runs the converter from the command line (`convert`, `prompt`, `eval` against a local corpus) and never uploads.
+
 ## Data stores
 
 - **SQLite** (`/data/bridge.db`): `jobs` (status, attempts, errors, LLM input and output, token usage), `mc_recipes` (recipe id, scale, source hash, draft id and link) and `settings` (the encrypted session, last session check, category cache).
@@ -76,4 +111,4 @@ webhook  ->  client.getRecipe  ->  normalizeIngredients  ->  scaleIngredients  -
 
 ## Provider abstraction
 
-A `RecipeGenerator` interface takes the normalized recipe plus validator feedback and returns the intermediate recipe structure. Each provider implements it with its own SDK and structured-output mechanism. The prompt builder, the Zod schema and the validation loop are shared, so adding a provider does not touch the rest of the pipeline.
+A `RecipeGenerator` takes the prompts, the recipe JSON Schema and, on a correction round, the errors with the previous answer, and returns the answer as JSON text with its token usage. Each provider implements it with its own SDK and structured-output mechanism. The prompt builder, the Zod schema, the plausibility rules and the correction loop are shared, so adding a provider means one new file in `src/convert/providers` and a branch in `createGenerator`.

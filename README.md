@@ -11,8 +11,9 @@ Early development, not usable yet. What exists:
 - the recipe format the converter will produce, its validator against the device limits in `knowledge/device-programs.json`, and the builder for the Monsieur Cuisine payload
 - `npm run mc:smoke`, a command line tool for manual checks against your own account
 - the Mealie side: the recipe action parser, the REST client, ingredient parsing and scaling, and the Markdown input for the converter
+- the converter: OpenAI or Anthropic turns a Mealie recipe into the device format, the validator and the plausibility checks review the result, and `npm run convert` runs it from the command line
 
-The LLM converter, the job queue and the pipeline that connects the parts are still missing.
+The job queue and the pipeline that connects the parts are still missing.
 
 ## Planned architecture
 
@@ -86,12 +87,41 @@ npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publi
 
 `create` adds a real recipe to your account. It is created as a draft; `--status private-publish` then saves it on your device only. If that second step fails, the tool prints the id and editor link of the draft it left behind; set the status there instead of running `create` again. The tool never submits a recipe for publication. Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it).
 
+## Conversion
+
+A language model turns the Mealie recipe into the recipe format of the device. The bridge then checks the answer twice: the validator against the device limits in `knowledge/device-programs.json`, and a set of plausibility rules for what a limit table cannot see (heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 with the whisk, 1000 g flour per kneading step, 500 g water under the steamer, a text step before every program step, no amount larger than in the source recipe). Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they become review hints for the cook.
+
+Two providers are supported. Pick one with `LLM_PROVIDER` and put its key into `.env`:
+
+| `LLM_PROVIDER` | Key                 | Model setting                                                                    | How it asks for JSON                                                                              |
+| -------------- | ------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `openai`       | `OPENAI_API_KEY`    | `OPENAI_MODEL` (default `gpt-5.5`), `OPENAI_REASONING_EFFORT` (default `medium`) | Responses API with a strict JSON schema                                                           |
+| `anthropic`    | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` (default `claude-opus-5-5`)                                    | structured output from the recipe schema, cached system prompt, server-side fallback on a refusal |
+
+The model defaults are the ones the bridge was written against. Check that your account offers them. Other settings: `LLM_MAX_CORRECTIONS` (default 3), `KNOWLEDGE_DIR` (default `./knowledge`) and `LLM_PRICES_JSON`, which overrides the price table used for the cost estimate.
+
+`npm run convert` runs the converter from the command line. It never uploads anything. The input is a recipe as Mealie's `GET /api/recipes/{slug}` returns it:
+
+```sh
+npm run convert -- prompt --mealie-json recipe.json                 # print both prompts, no API call
+npm run convert -- convert --mealie-json recipe.json --scale 1.5    # convert and print the steps
+npm run convert -- convert --mealie-json recipe.json --provider anthropic --out result.json
+```
+
+`convert` prints the steps, the warnings, the review hints, the token usage and a cost estimate. The system prompt is about 15 000 tokens; a correction round sends it again, mostly from the provider's prompt cache. The category list comes from `--categories <file>` or, without it, from the public Monsieur Cuisine API (no login needed).
+
+`npm run convert:eval -- --ids 1234,5678` checks the converter against recipes of your own corpus crawl (see [Knowledge base](#knowledge-base)): it converts each recipe from its ingredients and instruction texts and compares the programs, temperatures and times with the original. It refuses to run without `local/corpus`.
+
+Exit codes: 0 done, 1 unreadable input or a recipe that still failed after the last correction, 3 provider error (refusal, cut-off answer, API failure), 64 usage error, 66 no corpus, 78 configuration (missing key, broken knowledge base).
+
+The tests never call a provider. `src/convert/providers/live.test.ts` converts a fixture with the real API when `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set in the environment, and is skipped otherwise and in CI. Each run costs money.
+
 ## Development
 
 ```sh
 npm run check           # format, lint, typecheck, tests with coverage
 npm test                # tests only
-npm run test:coverage   # tests with an 85 % line threshold for src/mc, src/recipe, src/mealie and src/ingredients
+npm run test:coverage   # tests with an 85 % line threshold for src/mc, src/recipe, src/mealie, src/ingredients and src/convert
 npm run build
 npm run hooks:install   # secret scan before every commit, needs gitleaks 8.19 or newer
 ```

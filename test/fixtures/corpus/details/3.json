@@ -1,0 +1,46 @@
+{
+  "recipe": {
+    "id": 3,
+    "name": "Testrezept 3",
+    "source": "member",
+    "servingSizes": [
+      {
+        "amount": 1,
+        "ingredients": [
+          {
+            "order": 0,
+            "amount": "1",
+            "unit": "Stück",
+            "name": "Testzutat B",
+            "systemIngredientId": 9003,
+            "ingredientCategory": null
+          },
+          {
+            "order": 1,
+            "amount": "3",
+            "unit": "Stück",
+            "name": "Testzutat B",
+            "systemIngredientId": 9003,
+            "ingredientCategory": null
+          },
+          {
+            "order": 2,
+            "amount": "20",
+            "unit": "g",
+            "name": "Testzutat A",
+            "systemIngredientId": 9005,
+            "ingredientCategory": null
+          },
+          {
+            "order": 3,
+            "amount": "5",
+            "unit": "g",
+            "name": "Testzutat E",
+            "systemIngredientId": null,
+            "ingredientCategory": null
+          }
+        ]
+      }
+    ]
+  }
+}

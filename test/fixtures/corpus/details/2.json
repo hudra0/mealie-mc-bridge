@@ -1,0 +1,38 @@
+{
+  "recipe": {
+    "id": 2,
+    "name": "Testrezept 2",
+    "source": "official",
+    "servingSizes": [
+      {
+        "amount": 2,
+        "ingredients": [
+          {
+            "order": 0,
+            "amount": "50",
+            "unit": "g",
+            "name": "testzutat a",
+            "systemIngredientId": 9001,
+            "ingredientCategory": { "id": 1, "name": "Testkategorie" }
+          },
+          {
+            "order": 1,
+            "amount": "1",
+            "unit": "Stück",
+            "name": "Testzutat B",
+            "systemIngredientId": 9003,
+            "ingredientCategory": null
+          },
+          {
+            "order": 2,
+            "amount": "10",
+            "unit": "g",
+            "name": " Testzutat  D (Sorte 1) ",
+            "systemIngredientId": 9004,
+            "ingredientCategory": null
+          }
+        ]
+      }
+    ]
+  }
+}

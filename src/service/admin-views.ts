@@ -14,11 +14,59 @@ import { JOB_STATUSES } from "../store/jobs.js";
 import type { SentRecipe } from "../store/mc-recipes.js";
 import { escapeHtml, html, safeHref, SafeHtml } from "./html.js";
 
-export function formatTime(iso: string | null | undefined): string {
+// The zone the admin pages show times in: TZ when it names a zone Intl knows, else the
+// zone of the system. The Mealie timeline entries use local time as well.
+export function adminTimeZone(env: NodeJS.ProcessEnv = process.env): string {
+  const zone = env.TZ?.trim();
+  if (zone) {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: zone }).resolvedOptions().timeZone;
+    } catch {
+      // Not a zone name; fall back to the system zone.
+    }
+  }
+  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+// The short name of a zone at a date: "CEST", "EDT", "UTC". en-US knows the American
+// abbreviations and en-GB the European ones; anything else stays "GMT+2" and the like.
+function zoneAbbreviation(date: Date, timeZone: string): string {
+  let fallback = "";
+  for (const locale of ["en-US", "en-GB"]) {
+    const name = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: "short" })
+      .formatToParts(date)
+      .find((part) => part.type === "timeZoneName")?.value;
+    if (!name) continue;
+    if (!/^GMT[+-]/.test(name)) return name;
+    fallback ||= name;
+  }
+  return fallback;
+}
+
+// "2026-10-14 01:29:27 CEST": the time in the admin zone with the zone's short name.
+export function formatTime(
+  iso: string | null | undefined,
+  timeZone: string = adminTimeZone(),
+): string {
   if (!iso) return "–";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  ) as Record<string, string>;
+  const time = `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${time} ${zoneAbbreviation(date, timeZone)}`.trim();
 }
 
 // Catalog text with `code` spans, escaped, the spans as <code>.

@@ -42,7 +42,7 @@ const REFERENCE = {
   TZ: {
     default: "UTC in the image",
     description:
-      "Time zone of the dates in timeline entries and mails, for example `Europe/Berlin`. Read by Node.js itself. The admin pages always show UTC.",
+      "Time zone of the dates in timeline entries, mails and the admin pages, for example `Europe/Berlin`. Read by Node.js itself.",
   },
   DATA_DIR: {
     description:
@@ -88,7 +88,7 @@ const REFERENCE = {
   },
   MC_RESOLVE_INGREDIENTS: {
     description:
-      "How ingredients get their Monsieur Cuisine ingredient id, which the app uses for the shopping list. `exact`: bundled catalog, also without qualifiers like \"zum Garnieren\", local cache, then the site's search. `off`: none.",
+      'How ingredients get their Monsieur Cuisine ingredient id, which the app uses for the shopping list. `exact`: bundled catalog, also without qualifiers like "zum Garnieren", local cache, then the site\'s search. `off`: none.',
   },
   MC_COOKIE: {
     description:

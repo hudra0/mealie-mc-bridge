@@ -4,11 +4,15 @@
 //
 // Four layers, first hit wins:
 //   1. the catalog of the locale pack, in memory, by the exact name;
-//   2. the same catalog by a relaxed form of the name (src/ingredients/catalog-match.ts):
-//      trailing qualifiers such as "zum Garnieren" removed, "Zwiebeln (rot)" as
-//      "Zwiebeln, rot", singular and plural folded;
-//   3. the ingredient_cache table: ids an earlier search found, and recent misses;
-//   4. the quick search of Monsieur Cuisine, at most one request per second.
+//   2. the ingredient_cache table: an id an earlier search found for the exact name;
+//   3. the same catalog by a relaxed form of the name (src/ingredients/catalog-match.ts):
+//      usage notes such as "zum Garnieren" removed, "Zwiebeln (rot)" as "Zwiebeln, rot",
+//      singular and plural folded;
+//   4. the quick search of Monsieur Cuisine, at most one request per second, unless the
+//      cache holds a recent miss for the name.
+//
+// A cached search hit comes before the relaxed form, because the search matched the exact
+// name; a cached miss comes after it, so a relaxed hit still wins over a recorded miss.
 //
 // Only a name that is the same after normalizeIngredientName counts as a search match. The
 // search answers "Wasser" with "Wasser erhitzen" and the like, so its first hit is never
@@ -44,8 +48,9 @@ export const NEGATIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const SEARCH_REQUESTS_PER_SECOND = 1;
 // Part of every cache key. Raise it when the lookups before the search change, so misses
 // recorded under the old rules get searched again instead of waiting out NEGATIVE_TTL_MS.
-// Version 2 added the relaxed catalog lookup.
-export const CACHE_KEY_VERSION = 2;
+// Version 2 added the relaxed catalog lookup; version 3 changed its rules (buying forms,
+// parentheses, the order of the forms).
+export const CACHE_KEY_VERSION = 3;
 
 // The ingredient_cache key of a normalized name.
 export function cacheKey(nameNorm: string): string {
@@ -86,6 +91,8 @@ export interface IngredientResolverPort {
   // Catalog names close to each of `names`, in the same order; empty lists when there is
   // no catalog or resolution is off.
   suggest?(names: readonly string[]): string[][];
+  // True when the catalog has `name`, exactly or in a relaxed form.
+  knows?(name: string): boolean;
 }
 
 // Spaces requests out to `ratePerSecond`, with a burst of `capacity`. Calls queue up in
@@ -182,6 +189,12 @@ export class IngredientResolver implements IngredientResolverPort {
     return names.map((name) => (matcher ? matcher.suggest(name, limit) : []));
   }
 
+  knows(name: string): boolean {
+    const catalog = this.#options.catalog;
+    if (this.#options.mode === "off" || !catalog) return false;
+    return lookupCatalog(catalog, name) !== null || this.#matcher?.relaxedLookup(name) != null;
+  }
+
   get mode(): ResolveMode {
     return this.#options.mode;
   }
@@ -222,17 +235,17 @@ export class IngredientResolver implements IngredientResolverPort {
         stats.catalog++;
         continue;
       }
+      const cached = this.#cached(key);
+      if (cached && cached.systemIngredientId !== null) {
+        ids.set(key, cached.systemIngredientId);
+        stats.cache++;
+        continue;
+      }
       const relaxed = this.#matcher?.relaxedLookup(name) ?? null;
       if (relaxed !== null) {
         ids.set(key, relaxed.systemIngredientId);
         stats.catalog++;
         stats.catalogRelaxed++;
-        continue;
-      }
-      const cached = this.#cached(key);
-      if (cached && cached.systemIngredientId !== null) {
-        ids.set(key, cached.systemIngredientId);
-        stats.cache++;
         continue;
       }
       if (cached && !this.#expired(cached.resolvedAt)) {

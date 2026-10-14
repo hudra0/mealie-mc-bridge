@@ -328,12 +328,19 @@ describe("cookieIssuedAt", () => {
   const login = new Date(expires.getTime() - WORDPRESS_LOGIN_DAYS * 24 * 3_600_000);
 
   it("is the expiry minus the WordPress login length", () => {
-    expect(cookieIssuedAt(expires, new Date("2026-10-14T00:00:00.000Z"))).toEqual(login);
+    expect(cookieIssuedAt(expires, new Date("2026-10-13T12:00:00.000Z"))).toEqual(login);
     expect(cookieIssuedAt(expires, null)).toEqual(login);
   });
 
   it("stays unknown without an expiry or when the cookie was stored before that time", () => {
     expect(cookieIssuedAt(null, null)).toBeNull();
+    // Stored before the computed login: the login was longer than 14 days.
     expect(cookieIssuedAt(expires, new Date("2026-10-12T00:00:00.000Z"))).toBeNull();
+  });
+
+  it("stays unknown for a login shorter than 14 days", () => {
+    // A 2-day login on 2026-10-10, stored an hour later.
+    const shortExpiry = new Date("2026-10-12T10:00:00.000Z");
+    expect(cookieIssuedAt(shortExpiry, new Date("2026-10-10T11:00:00.000Z"))).toBeNull();
   });
 });

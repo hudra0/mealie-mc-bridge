@@ -393,7 +393,8 @@ describe("IngredientResolver relaxed catalog lookup and suggestions", () => {
   const rules = {
     stopwords: ["frisch", "rot", "zum", "aus", "der"],
     stemEndings: ["en", "er", "n", "e", "s"],
-    qualifierSuffixes: ["zum Garnieren", "frisch", "aus der Dose/Glas", "(optional)"],
+    qualifierSuffixes: ["zum Garnieren", "(optional)"],
+    buyingFormSuffixes: { frisch: ["frisch"], "aus der Dose/Glas": ["dose", "glas"] },
   };
   const entry = (name: string, systemIngredientId: number) => ({
     name,
@@ -441,8 +442,35 @@ describe("IngredientResolver relaxed catalog lookup and suggestions", () => {
       search: 0,
       unresolved: 0,
     });
-    expect(t.cache.get).not.toHaveBeenCalled();
     expect(t.search.searchIngredients).not.toHaveBeenCalled();
+  });
+
+  it("takes an id a search found for the exact name before a relaxed form", async () => {
+    const recent = NOW.toISOString();
+    const cache = fakeCache([
+      {
+        nameNorm: cacheKey("zwiebeln (rot)"),
+        systemIngredientId: 777,
+        source: "search",
+        resolvedAt: recent,
+      },
+      {
+        nameNorm: cacheKey("kokosmilch zum garnieren"),
+        systemIngredientId: null,
+        source: "none",
+        resolvedAt: recent,
+      },
+    ]);
+    const t = resolver({ catalog: relaxedCatalog, rules, cache });
+    const result = await t.resolver.resolveAll(["Zwiebeln (rot)", "Kokosmilch zum Garnieren"]);
+    // A cached miss does not hide the relaxed hit.
+    expect(result.ids).toEqual(
+      new Map([
+        ["zwiebeln (rot)", 777],
+        ["kokosmilch zum garnieren", 46979],
+      ]),
+    );
+    expect(result.stats).toMatchObject({ catalog: 1, catalogRelaxed: 1, cache: 1 });
   });
 
   it("takes no spelling variant or short word as an id, and searches those names exactly", async () => {

@@ -40,13 +40,18 @@ import {
   type RecipeGenerator,
 } from "../src/convert/index.js";
 import {
+  catalogMatchRules,
+  createCatalogMatcher,
+  IngredientCatalogError,
+  loadIngredientCatalog,
+  lookupCatalog,
   normalizeIngredients,
   normalizeUnit,
   scaleIngredients,
   servingsFor,
   type NormalizedIngredient,
 } from "../src/ingredients/index.js";
-import { LOCALE_PATTERN, type LocalePack } from "../src/locale/pack.js";
+import { LOCALE_PATTERN, packDir, type LocalePack } from "../src/locale/pack.js";
 import { McTransport, type FetchLike } from "../src/mc/index.js";
 import {
   mealieRecipeSchema,
@@ -57,6 +62,8 @@ import {
 import { DeviceLimitsError, loadDeviceLimits, type DeviceLimits } from "../src/recipe/limits.js";
 import { stepSeconds } from "../src/recipe/modes.js";
 import type { RecipeInput, RecipeStep } from "../src/recipe/schema.js";
+import type { IngredientResolverPort } from "../src/pipeline/ingredient-resolver.js";
+import { catalogNameHints } from "../src/pipeline/prepare.js";
 import { parseAmount, parseDetailFile, stepText } from "./corpus/normalize.js";
 import type { RawRecipe } from "./corpus/types.js";
 
@@ -247,8 +254,17 @@ export async function runConvert(args: readonly string[], ctx: ConvertContext): 
     const limits = await loadDeviceLimits(config.DEVICE_PROGRAMS_PATH);
     const knowledge = await loadKnowledge(config.KNOWLEDGE_DIR, command.locale ?? config.MC_LOCALE);
     const pack = knowledge.pack;
-    if (command.name === "eval") return await runEval(command, config, limits, knowledge, ctx);
-    const request = await mealieRequest(command.mealieJson, command.scale, limits, pack);
+    const catalogHints = await catalogHintSource(config.KNOWLEDGE_DIR, pack);
+    if (command.name === "eval") {
+      return await runEval(command, config, limits, knowledge, ctx, catalogHints);
+    }
+    const request = await mealieRequest(
+      command.mealieJson,
+      command.scale,
+      limits,
+      pack,
+      catalogHints,
+    );
     const categories = await loadCategories(command.categories, ctx, pack);
     if (command.name === "prompt") {
       const usable = usableModes(limits);
@@ -319,13 +335,45 @@ async function writeJson(file: string, value: unknown): Promise<void> {
   await writeFile(resolve(file), `${JSON.stringify(value, null, 2)}\n`);
 }
 
+export type CatalogHintSource = Pick<IngredientResolverPort, "suggest" | "knows">;
+
+// The near catalog names the service offers the converter (catalogNameHints), from the
+// ingredient catalog of the pack. Undefined when the pack has no catalog.
+export async function catalogHintSource(
+  knowledgeDir: string,
+  pack: LocalePack,
+): Promise<CatalogHintSource | undefined> {
+  let catalog;
+  try {
+    catalog = await loadIngredientCatalog(packDir(knowledgeDir, pack.locale));
+  } catch (error) {
+    if (error instanceof IngredientCatalogError) return undefined;
+    throw error;
+  }
+  const matcher = createCatalogMatcher(catalog, catalogMatchRules(pack));
+  return {
+    suggest: (names) => names.map((name) => matcher.suggest(name)),
+    knows: (name) => lookupCatalog(catalog, name) !== null || matcher.relaxedLookup(name) !== null,
+  };
+}
+
+function withCatalogNames(
+  request: ConversionRequest,
+  hints: CatalogHintSource | undefined,
+): ConversionRequest {
+  const catalogNames = catalogNameHints(request.ingredients, hints);
+  return catalogNames.length > 0 ? { ...request, catalogNames } : request;
+}
+
 // The request the service builds from a Mealie recipe: normalized and scaled
-// ingredients, the servings of Mealie's scaler and the rendered Markdown.
+// ingredients, the servings of Mealie's scaler, the rendered Markdown and the near
+// catalog names.
 export function buildRequest(
   recipeJson: unknown,
   scale: number,
   limits: DeviceLimits,
   pack: LocalePack,
+  hints?: CatalogHintSource,
 ): ConversionRequest {
   const parsed = mealieRecipeSchema.safeParse(recipeJson);
   if (!parsed.success) {
@@ -336,19 +384,28 @@ export function buildRequest(
   const servings = servingsFor(recipe, scale, limits.recipe.servings);
   const labels = renderLabels(pack);
   const rendered = renderRecipeForLlm(recipe, { scale, servings, ingredients, labels });
-  const hints = recipe.recipeCategory.map((category) => category.name).filter(Boolean);
-  return {
-    title: recipe.name,
-    rendered,
-    servings,
-    locale: pack.locale,
-    ingredients,
-    ...(hints.length > 0 ? { categoryHints: hints } : {}),
-  };
+  const categoryHints = recipe.recipeCategory.map((category) => category.name).filter(Boolean);
+  return withCatalogNames(
+    {
+      title: recipe.name,
+      rendered,
+      servings,
+      locale: pack.locale,
+      ingredients,
+      ...(categoryHints.length > 0 ? { categoryHints } : {}),
+    },
+    hints,
+  );
 }
 
-async function mealieRequest(file: string, scale: number, limits: DeviceLimits, pack: LocalePack) {
-  return buildRequest(await readJson(file, "Mealie recipe"), scale, limits, pack);
+async function mealieRequest(
+  file: string,
+  scale: number,
+  limits: DeviceLimits,
+  pack: LocalePack,
+  hints: CatalogHintSource | undefined,
+) {
+  return buildRequest(await readJson(file, "Mealie recipe"), scale, limits, pack, hints);
 }
 
 const categoryList = z.array(z.looseObject({ id: z.number().int(), name: z.string() }));
@@ -476,6 +533,7 @@ interface ProgramStep {
 export function corpusRequest(
   raw: RawRecipe,
   pack: Pick<LocalePack, "locale" | "phrases">,
+  catalogHints?: CatalogHintSource,
 ): {
   request: ConversionRequest;
   original: ProgramStep[];
@@ -565,14 +623,17 @@ export function corpusRequest(
   });
   const hints = (raw.categories ?? []).map((category) => category.name ?? "").filter(Boolean);
   return {
-    request: {
-      title,
-      rendered: lines.join("\n"),
-      servings,
-      locale: pack.locale,
-      ingredients,
-      ...(hints.length > 0 ? { categoryHints: hints } : {}),
-    },
+    request: withCatalogNames(
+      {
+        title,
+        rendered: lines.join("\n"),
+        servings,
+        locale: pack.locale,
+        ingredients,
+        ...(hints.length > 0 ? { categoryHints: hints } : {}),
+      },
+      catalogHints,
+    ),
     original,
   };
 }
@@ -680,6 +741,7 @@ async function runEval(
   limits: DeviceLimits,
   knowledge: Knowledge,
   ctx: ConvertContext,
+  catalogHints?: CatalogHintSource,
 ): Promise<number> {
   // The corpus of the language the recipes are converted into, so the comparison is like for like.
   const corpusDir = command.corpusDir ?? defaultCorpusDir(knowledge.pack.locale);
@@ -735,7 +797,7 @@ async function runEval(
       );
       continue;
     }
-    const { request, original } = corpusRequest(raw, knowledge.pack);
+    const { request, original } = corpusRequest(raw, knowledge.pack, catalogHints);
     ctx.err(`Converting ${id} "${request.title}" ...`);
     try {
       const result = await converter.convert(request);

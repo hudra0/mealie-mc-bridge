@@ -83,7 +83,7 @@ export function conversionRequest(
   prepared: PreparedRecipe,
   plan: CategoryPlan,
   locale: string,
-  options: { ingredients?: Pick<IngredientResolverPort, "suggest"> | undefined } = {},
+  options: { ingredients?: Pick<IngredientResolverPort, "suggest" | "knows"> | undefined } = {},
 ): ConversionRequest {
   const catalogNames = catalogNameHints(prepared.scaled, options.ingredients);
   return {
@@ -97,13 +97,24 @@ export function conversionRequest(
   };
 }
 
+// Share of source lines the catalog must know (exactly or relaxed) before near matches are
+// offered. Below it the recipe is most likely written in another language than the pack,
+// and near matches are false friends ("olive oil" -> "Oliven", "rote Paprika" -> the
+// spice "paprika").
+export const MIN_KNOWN_SHARE = 0.2;
+
 // Catalog names close to each source ingredient, for the source lines that have some.
 export function catalogNameHints(
   ingredients: readonly NormalizedIngredient[],
-  resolver: Pick<IngredientResolverPort, "suggest"> | undefined,
+  resolver: Pick<IngredientResolverPort, "suggest" | "knows"> | undefined,
 ): { index: number; names: string[] }[] {
   if (!resolver?.suggest || ingredients.length === 0) return [];
-  const suggestions = resolver.suggest(ingredients.map((item) => item.food || item.original));
+  const names = ingredients.map((item) => item.food || item.original);
+  if (resolver.knows) {
+    const known = names.filter((name) => resolver.knows?.(name)).length;
+    if (known === 0 || known < MIN_KNOWN_SHARE * names.length) return [];
+  }
+  const suggestions = resolver.suggest(names);
   return suggestions.flatMap((names, index) => (names.length > 0 ? [{ index, names }] : []));
 }
 

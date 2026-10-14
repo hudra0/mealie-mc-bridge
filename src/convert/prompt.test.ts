@@ -325,7 +325,7 @@ describe("catalog names in the user message", () => {
   it("lists the names by source index after the recipe and asks for them verbatim", () => {
     const user = buildUserMessage(withNames, categories);
     expect(user).toContain(
-      "# Catalog names\n\nMonsieur Cuisine catalog names close to source ingredient lines, by index. When one fits the ingredient, write it verbatim as the ingredient-list name",
+      "# Catalog names\n\nMonsieur Cuisine catalog names close to source ingredient lines, by index. When one names the same product, write it verbatim as the ingredient-list name",
     );
     expect(user).toContain(
       "- [0] Butternusskürbis: Butternutkürbis\n- [2] Zwiebeln (rot): Zwiebeln, rot | Zwiebeln\n",
@@ -357,6 +357,8 @@ describe("catalog names in the user message", () => {
 
   it("asks for catalog names in the language rules of both packs", () => {
     expect(system).toContain("When the user message lists catalog names for an ingredient line");
-    expect(buildSystemPrompt(english, limits)).toContain('not "coconut milk from a tin"');
+    expect(buildSystemPrompt(english, limits)).toContain(
+      '"yeast, fresh", "tomatoes, chopped, from a tin/jar"',
+    );
   });
 });

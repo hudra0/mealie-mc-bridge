@@ -257,13 +257,15 @@
     "zur Dekoration",
     "nach Belieben",
     "nach Geschmack",
-    "frisch",
-    "aus der Dose/Glas",
-    "aus der Dose",
-    "aus dem Glas",
     "(optional)",
     "optional"
   ],
+  "buyingFormSuffixes": {
+    "aus der Dose/Glas": ["dose", "glas"],
+    "aus der Dose": ["dose"],
+    "aus dem Glas": ["glas"],
+    "frisch": ["frisch"]
+  },
   "categoryMatching": {
     "stopwords": ["küche", "rezept", "rezepte", "gericht", "gerichte", "essen"],
     "joiners": ["und"],

@@ -65,13 +65,19 @@ export function wordpressLoginExpiry(cookieHeader: string | null): Date | null {
   return null;
 }
 
-// The login time behind a cookie: its expiry minus the WordPress login length, as long as
-// that is not after the bridge stored the cookie. A cookie stored before that time had a
-// shorter login, so the login time stays unknown.
+// The login time behind a cookie: its expiry minus the WordPress login length. The cookie
+// was stored after the login, so the expiry lies at most that length after the time it was
+// stored. When it lies further out, the login was longer than assumed; when it lies more
+// than a day closer, the login was shorter (WordPress gives 2 days without "remember me").
+// Either way the login time stays unknown.
 export function cookieIssuedAt(expiresAt: Date | null, storedAt: Date | null): Date | null {
   if (!expiresAt) return null;
   const issued = new Date(expiresAt.getTime() - WORDPRESS_LOGIN_DAYS * DAY_MS);
-  if (storedAt && issued.getTime() > storedAt.getTime() + 60_000) return null;
+  if (storedAt) {
+    const left = expiresAt.getTime() - storedAt.getTime();
+    if (left > WORDPRESS_LOGIN_DAYS * DAY_MS + 60_000) return null;
+    if (left < (WORDPRESS_LOGIN_DAYS - 1) * DAY_MS) return null;
+  }
   return issued;
 }
 

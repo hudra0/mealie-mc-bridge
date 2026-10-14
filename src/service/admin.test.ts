@@ -158,11 +158,21 @@ describe("dashboard", () => {
   it("shows when the login behind the cookie expires and counts its age from the login", async () => {
     const loginCookie = (expiresAt: string) =>
       `wordpress_logged_in_0123=someone%7C${Date.parse(expiresAt) / 1000}%7Ctoken%7Chmac`;
-    svc = testService({ seedCookie: loginCookie("2020-01-15T10:00:00.000Z") });
+    // A 14-day login from two hours ago.
+    const expiry = new Date(Date.now() + 14 * 86_400_000 - 2 * 3_600_000);
+    expiry.setUTCMinutes(0, 0, 0);
+    svc = testService({ seedCookie: loginCookie(expiry.toISOString()) });
     let body = (await get("/admin")).body;
     expect(body).toContain("Login expires");
+    expect(body).not.toContain("(expired)");
+    expect(body).toContain("since the login");
+    await svc.dispose();
+
+    // An expired cookie: it was not a 14-day login when stored, so the age counts from then.
+    svc = testService({ seedCookie: loginCookie("2020-01-15T10:00:00.000Z") });
+    body = (await get("/admin")).body;
     expect(body).toMatch(/2020-01-15 \d\d:00:00 [^<]* \(expired\)/);
-    expect(body).toContain("days since the login");
+    expect(body).toContain("since it was stored in the bridge");
     await svc.dispose();
 
     // A login that ends long after it was stored here: its start is unknown.

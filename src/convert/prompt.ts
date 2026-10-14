@@ -609,7 +609,7 @@ export function buildUserMessage(
     parts.push(
       "# Catalog names",
       "",
-      "Monsieur Cuisine catalog names close to source ingredient lines, by index. When one fits the ingredient, write it verbatim as the ingredient-list name; only a catalog name links the ingredient in the app.",
+      "Monsieur Cuisine catalog names close to source ingredient lines, by index. When one names the same product, write it verbatim as the ingredient-list name; catalog names link the ingredient in the app most reliably. When none does, write your own name.",
       "",
       ...catalog,
       "",

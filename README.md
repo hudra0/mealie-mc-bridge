@@ -12,7 +12,7 @@ The bridge is a small service that runs next to Mealie. Mealie hands it a recipe
 4. The recipe is saved privately in your Monsieur Cuisine account, so it appears on the machine.
 5. Mealie gets a tag on the recipe and a timeline entry with the link and the points you should check before you cook.
 
-Status: first version, not tagged yet. It runs end to end and is used with German recipes on a real machine. English output exists but has not been checked on a device yet. Every converted recipe is written by a language model, so check times and temperatures before you cook it.
+Status: first release 0.1.0. It runs end to end and is used with German recipes on a real machine. English output exists but has not been checked on a device yet. Every converted recipe is written by a language model, so check times and temperatures before you cook it.
 
 ## Requirements
 

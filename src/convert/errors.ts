@@ -31,7 +31,7 @@ export class ConversionFailedError extends Error {
       .join("; ");
     const more = init.errors.length > 5 ? ` and ${init.errors.length - 5} more` : "";
     super(
-      `The recipe still has ${init.errors.length} error(s) after ${init.attempts} attempt(s): ${shown}${more}`,
+      `The recipe still has ${plural(init.errors.length, "error")} after ${plural(init.attempts, "attempt")}: ${shown}${more}`,
     );
     this.name = "ConversionFailedError";
     this.errors = init.errors;
@@ -80,4 +80,9 @@ export class LlmConfigError extends Error {
     super(message);
     this.name = "LlmConfigError";
   }
+}
+
+// "1 attempt", "3 attempts".
+export function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }

@@ -34,6 +34,7 @@ import {
   type MealieRecipe,
   type MealieTagRef,
 } from "../mealie/index.js";
+import { messages, type JobEventMessages } from "../i18n/index.js";
 import type { Notifier } from "../notify/email.js";
 import { buildMcPayload } from "../recipe/payload.js";
 import type { DeviceLimits } from "../recipe/limits.js";
@@ -95,8 +96,12 @@ export interface RunJobDeps {
   // Finds the systemIngredientId per ingredient. Without it, every ingredient goes out
   // without an id.
   ingredients?: IngredientResolverPort;
+  // How often a running conversion adds a progress event; CONVERT_HEARTBEAT_MS by default.
+  heartbeatMs?: number;
   now?: () => Date;
 }
+
+export const CONVERT_HEARTBEAT_MS = 30_000;
 
 export interface RunJobOptions {
   signal?: AbortSignal;
@@ -163,6 +168,7 @@ class JobRun {
   readonly #deps: RunJobDeps;
   readonly #options: RunJobOptions;
   readonly #texts: TimelineTexts;
+  readonly #progress: JobEventMessages;
   #recipe: MealieRecipe | null = null;
   // True from the moment the draft creation request may have reached the server.
   #creating = false;
@@ -172,6 +178,7 @@ class JobRun {
     this.#deps = deps;
     this.#options = options;
     this.#texts = timelineTexts(deps.config.UI_LANGUAGE);
+    this.#progress = messages(deps.config.UI_LANGUAGE).jobEvents;
   }
 
   get #jobs(): JobStore {
@@ -236,17 +243,23 @@ class JobRun {
       );
     } else {
       const signal = this.#options.signal;
-      result = await this.#stage(
-        "convert",
-        () =>
-          deps.converter.convert(
-            conversionRequest(recipe, prepared, plan, deps.locale.pack.locale, {
-              ingredients: deps.ingredients,
-            }),
-            signal ? { signal } : {},
-          ),
-        false,
-      );
+      this.#event("info", this.#progress.converting);
+      const stopHeartbeat = this.#startHeartbeat();
+      try {
+        result = await this.#stage(
+          "convert",
+          () =>
+            deps.converter.convert(
+              conversionRequest(recipe, prepared, plan, deps.locale.pack.locale, {
+                ingredients: deps.ingredients,
+              }),
+              { jobId: job.id, ...(signal ? { signal } : {}) },
+            ),
+          false,
+        );
+      } finally {
+        stopHeartbeat();
+      }
       this.#jobs.update(job.id, {
         provider: result.provider,
         model: result.model,
@@ -257,7 +270,7 @@ class JobRun {
       const cost = usage.costUsd === undefined ? "" : `, $${usage.costUsd.toFixed(4)}`;
       this.#event(
         "info",
-        `Converted with ${result.provider}/${result.model} in ${result.attempts} attempt(s) (${usage.inputTokens} input, ${usage.outputTokens} output tokens${cost})`,
+        `Converted with ${result.provider}/${result.model} in ${plural(result.attempts, "attempt")} (${usage.inputTokens} input, ${usage.outputTokens} output tokens${cost})`,
       );
       for (const warning of result.warnings) this.#event("warn", `Converter: ${warning}`);
     }
@@ -342,6 +355,16 @@ class JobRun {
     );
     const done = this.#jobs.finish(job.id, "done", { error: null });
     this.#event("info", "Done");
+    deps.logger.info(
+      {
+        jobId: job.id,
+        status: "done",
+        mcRecipeId: ref.id,
+        durationMs: this.#elapsedMs(),
+        costUsd: done.costUsd,
+      },
+      "job finished",
+    );
     return { status: "done", job: done };
   }
 
@@ -588,6 +611,24 @@ class JobRun {
     }
   }
 
+  // Appends a progress event every heartbeat while the language model works. Returns the
+  // function that stops it.
+  #startHeartbeat(): () => void {
+    const every = this.#deps.heartbeatMs ?? CONVERT_HEARTBEAT_MS;
+    let beats = 0;
+    const timer = setInterval(() => {
+      beats++;
+      this.#event("info", this.#progress.stillConverting(Math.round((beats * every) / 1000)));
+    }, every);
+    timer.unref();
+    return () => clearInterval(timer);
+  }
+
+  #elapsedMs(): number | null {
+    const started = Date.parse(this.#job.startedAt ?? "");
+    return Number.isNaN(started) ? null : Math.max(0, this.#now().getTime() - started);
+  }
+
   #now(): Date {
     return (this.#deps.now ?? (() => new Date()))();
   }
@@ -599,6 +640,11 @@ class JobRun {
   #event(level: EventLevel, message: string): void {
     this.#jobs.appendEvent(this.#job.id, level, message);
   }
+}
+
+// "1 attempt", "3 attempts".
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 // Monsieur Cuisine says the recipe does not exist (any more).

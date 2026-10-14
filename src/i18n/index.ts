@@ -1,5 +1,6 @@
 // Message catalogs for what people read: Mealie timeline entries, mails and the admin
-// pages, per UI_LANGUAGE. Logs, job events and command line output stay English.
+// pages, per UI_LANGUAGE, and the progress events of a running conversion. Logs, the other
+// job events and command line output stay English.
 //
 // Each catalog implements Messages, so the compiler holds every language to the same keys;
 // a test compares them at run time as well. Texts that end up in Markdown or HTML are plain
@@ -251,11 +252,18 @@ export interface AdminMessages {
   };
 }
 
+// Job events while the language model works, so the job page shows progress.
+export interface JobEventMessages {
+  converting: string;
+  stillConverting(seconds: number): string;
+}
+
 export interface Messages {
   language: UiLanguage;
   // The Intl locale for dates.
   intlLocale: string;
   timeline: TimelineMessages;
+  jobEvents: JobEventMessages;
   email: EmailMessages;
   admin: AdminMessages;
 }

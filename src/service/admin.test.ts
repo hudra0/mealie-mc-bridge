@@ -518,7 +518,7 @@ describe("dry run", () => {
     expect(converter.requests).toHaveLength(1);
     expect(svc.mc.calls).toEqual(["mc.getCategories"]);
     expect(svc.mc.payloads).toEqual([]);
-    expect(body).toContain("fake / fake-model, 1 attempt(s)");
+    expect(body).toContain("fake / fake-model, 1 attempt<");
     expect(body).toContain('<span class="ok">passed</span>');
     expect(body).toContain("228 Suppen &amp; Eintöpfe, 588 Vegetarisch, 260 Hauptgerichte");
     expect(body).toContain("&lt;b&gt;Garzeit&lt;/b&gt; prüfen");
@@ -553,7 +553,7 @@ describe("dry run", () => {
     const body = (
       await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${FORM_TOKEN}`)
     ).body;
-    expect(body).toContain("error(s)");
+    expect(body).toMatch(/[0-9]+ errors?</);
     expect(body).toContain("servingSize.steps[2]");
     expect(body).toContain("dropped unknown ids 9999");
   });

@@ -68,8 +68,14 @@ export interface ConversionResult {
   model: string;
 }
 
+export interface ConvertOptions {
+  signal?: AbortSignal;
+  // The job the conversion belongs to, for the log lines.
+  jobId?: string;
+}
+
 export interface Converter {
-  convert(req: ConversionRequest, opts?: { signal?: AbortSignal }): Promise<ConversionResult>;
+  convert(req: ConversionRequest, opts?: ConvertOptions): Promise<ConversionResult>;
 }
 
 export interface GenerationFeedback {

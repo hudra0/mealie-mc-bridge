@@ -74,6 +74,10 @@ export const de: Messages = {
     },
     failureReasons: FAILURE_REASONS,
   },
+  jobEvents: {
+    converting: "Konvertierung gestartet",
+    stillConverting: (seconds) => `Konvertierung läuft noch, ${seconds} s`,
+  },
   email: {
     subjectPrefix: "Monsieur-Cuisine-Bridge",
     session: {

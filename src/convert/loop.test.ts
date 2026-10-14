@@ -250,7 +250,7 @@ describe("createConverter", () => {
       costUsd: 0.75,
     });
     expect(error.lastJson).toBe(wrong);
-    expect(error.message).toContain("after 3 attempt(s)");
+    expect(error.message).toContain("after 3 attempts");
     expect(warn).toHaveBeenCalledTimes(3);
     expect(info).not.toHaveBeenCalled();
   });
@@ -317,6 +317,19 @@ describe("createConverter", () => {
       expect.objectContaining({ attempt: 1 }),
       "conversion stopped by a provider error",
     );
+  });
+
+  it("names the job in its log lines", async () => {
+    const { generator } = fakeGenerator([soup]);
+    const { log, info } = logger();
+    await converter(generator, { logger: log }).convert(request, { jobId: "job-7" });
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: "job-7", attempt: 1 }),
+      "recipe converted",
+    );
+    const plain = logger();
+    await converter(fakeGenerator([soup]).generator, { logger: plain.log }).convert(request);
+    expect(plain.info.mock.calls[0]?.[0]).not.toHaveProperty("jobId");
   });
 
   it("takes the bridge logger", async () => {

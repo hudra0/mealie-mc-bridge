@@ -41,7 +41,10 @@ export interface ConversionResult {
 }
 
 export interface Converter {
-  convert(req: ConversionRequest, opts?: { signal?: AbortSignal }): Promise<ConversionResult>;
+  convert(
+    req: ConversionRequest,
+    opts?: { signal?: AbortSignal; jobId?: string },
+  ): Promise<ConversionResult>;
 }
 
 export class ConverterNotConfiguredError extends Error {

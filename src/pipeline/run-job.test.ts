@@ -325,6 +325,107 @@ describe("runJob happy path", () => {
   });
 });
 
+describe("runJob progress and logs", () => {
+  it("says when the conversion starts and that it is still running", async () => {
+    let finish: () => void = () => undefined;
+    const converter = fakeConverter(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(conversionResult());
+        }),
+    );
+    const s = setup({ converter });
+    s.deps.heartbeatMs = 20;
+    const job = s.claim();
+    const running = runJob(job, s.deps);
+    await vi.waitFor(() => {
+      expect(messages(s, job)).toContain("Konvertierung läuft noch, 0 s");
+    });
+    finish();
+    expect((await running).status).toBe("done");
+    const lines = messages(s, job);
+    const started = lines.indexOf("Konvertierung gestartet");
+    expect(started).toBeGreaterThan(lines.findIndex((line) => line.startsWith("Categories:")));
+    expect(lines[started + 1]).toBe("Konvertierung läuft noch, 0 s");
+    // The heartbeat stops with the conversion.
+    const count = lines.length;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(messages(s, job)).toHaveLength(count);
+    expect(converter.requests).toHaveLength(1);
+  });
+
+  it("counts the heartbeat in seconds and stops it when the conversion fails", async () => {
+    vi.useFakeTimers();
+    try {
+      let fail: (error: Error) => void = () => undefined;
+      const converter = fakeConverter(
+        () =>
+          new Promise((_, reject) => {
+            fail = reject;
+          }),
+      );
+      const s = setup({ converter, config: { UI_LANGUAGE: "en" } });
+      const job = s.claim();
+      const running = runJob(job, s.deps);
+      await vi.advanceTimersByTimeAsync(65_000);
+      fail(new Error("provider down"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await running).status).toBe("failed");
+      const lines = messages(s, job);
+      expect(lines).toContain("Conversion started");
+      expect(lines.filter((line) => line.startsWith("Still converting"))).toEqual([
+        "Still converting, 30 s",
+        "Still converting, 60 s",
+      ]);
+      const count = lines.length;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(messages(s, job)).toHaveLength(count);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("passes the job id to the converter and logs the finished job", async () => {
+    const s = setup();
+    const info = vi.spyOn(s.deps.logger, "info");
+    const job = s.claim();
+    await runJob(job, s.deps);
+    expect(s.converter.requests).toHaveLength(1);
+    expect(messages(s, job)).toContain(
+      "Converted with fake/fake-model in 1 attempt (1200 input, 800 output tokens, $0.0123)",
+    );
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: job.id,
+        status: "done",
+        mcRecipeId: 4242,
+        costUsd: 0.0123,
+        durationMs: expect.any(Number) as number,
+      }),
+      "job finished",
+    );
+  });
+
+  it("logs a skipped job with its id", async () => {
+    const s = setup();
+    await runJob(s.claim(), s.deps);
+    const info = vi.spyOn(s.deps.logger, "info");
+    const second = s.claim();
+    await runJob(second, s.deps);
+    expect(info).toHaveBeenCalledWith(
+      { jobId: second.id, mcRecipeId: 4242 },
+      "job skipped, recipe unchanged",
+    );
+  });
+
+  it("writes attempts in the plural from two on", async () => {
+    const s = setup({ converter: fakeConverter(conversionResult({ attempts: 2 })) });
+    const job = s.claim();
+    await runJob(job, s.deps);
+    expect(messages(s, job).some((line) => line.includes(" in 2 attempts ("))).toBe(true);
+  });
+});
+
 describe("runJob idempotency", () => {
   it("skips an unchanged recipe and points to the existing draft", async () => {
     const s = setup();

@@ -76,6 +76,10 @@ export const en: Messages = {
     },
     failureReasons: FAILURE_REASONS,
   },
+  jobEvents: {
+    converting: "Conversion started",
+    stillConverting: (seconds) => `Still converting, ${seconds} s`,
+  },
   email: {
     subjectPrefix: "Monsieur Cuisine bridge",
     session: {
@@ -280,7 +284,7 @@ export const en: Messages = {
       converterInput: "Converter input (Markdown)",
       conversion: "Conversion",
       model: "Model",
-      attempts: (count) => `${count} attempt(s)`,
+      attempts: (count) => `${count} ${count === 1 ? "attempt" : "attempts"}`,
       usage: "Usage",
       tokens: (input, output) => `${input} input, ${output} output tokens`,
       title: "Title",
@@ -292,7 +296,7 @@ export const en: Messages = {
       droppedIds: (ids) => `· dropped unknown ids ${ids}`,
       validation: "Validation",
       passed: "passed",
-      errors: (count) => `${count} error(s)`,
+      errors: (count) => `${count} ${count === 1 ? "error" : "errors"}`,
       field: "Field",
       problem: "Problem",
       reviewHints: "Review hints",

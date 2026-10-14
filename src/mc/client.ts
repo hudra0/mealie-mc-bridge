@@ -202,6 +202,7 @@ const mediaSchema = z.object({
 export interface McRecipeSink {
   getCurrentUser(): Promise<McUser>;
   getCategories(): Promise<McCategoryList>;
+  getRecipe(recipeId: number): Promise<McRecipeRecord>;
   createRecipe(payload: McRecipePayload): Promise<McRecipeRef>;
   setStatus(recipeId: number, status: McWritableStatus): Promise<McRecipeRef>;
   uploadImage(image: McImageInput): Promise<McUploadedImage>;

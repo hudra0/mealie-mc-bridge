@@ -1,9 +1,9 @@
 // One run of a job, from the Mealie recipe to the draft and the report back into Mealie.
 //
-// Stages: load the recipe and its image, fingerprint it and skip unchanged recipes,
-// normalize, scale and render, pick categories, convert, validate, resolve the ingredient
-// ids, prepare and upload the image, create the draft, set its status, write back to
-// Mealie. Every stage appends a job event.
+// Stages: load the recipe, normalize, scale, render and fingerprint it, skip it when it is
+// unchanged and its Monsieur Cuisine recipe still exists, load the image, pick categories,
+// convert, validate, resolve the ingredient ids, prepare and upload the image, create the
+// draft, set its status, write back to Mealie. Every stage appends a job event.
 //
 // A conversion that passed validation is stored on the job, so a retry after a later
 // temporary failure (an image upload, say) reuses it instead of paying for it again.
@@ -39,7 +39,7 @@ import { buildMcPayload } from "../recipe/payload.js";
 import type { DeviceLimits } from "../recipe/limits.js";
 import type { RecipeInput } from "../recipe/schema.js";
 import { INTERRUPTED_CREATE, type Job, type JobStore, type EventLevel } from "../store/jobs.js";
-import type { McRecipeStore } from "../store/mc-recipes.js";
+import type { McRecipeStore, SentRecipe } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
 import type { ConversionResult, Converter } from "./converter-port.js";
 import { describeResolution, type IngredientResolverPort } from "./ingredient-resolver.js";
@@ -189,8 +189,6 @@ class JobRun {
     this.#jobs.update(job.id, { title: recipe.name || null, mealieSlug: recipe.slug });
     this.#event("info", `Loaded recipe "${recipe.name}" (${recipe.slug})`);
 
-    const image = await this.#loadImage(recipe);
-
     const prepared = await this.#stage("prepare", () =>
       prepareRecipe(recipe, job.scale, deps.limits, deps.locale),
     );
@@ -201,25 +199,18 @@ class JobRun {
       `Prepared ${prepared.normalized.length} ingredients (${unparsed} unparsed) for ${prepared.servings} servings at scale ${job.scale}; source hash ${prepared.hash.slice(0, 12)}`,
     );
 
+    // The skip check comes before the image download, so a repeated click costs one
+    // Monsieur Cuisine lookup and nothing else.
     const sent = deps.store.mcRecipes.find(recipe.id, job.scale, prepared.hash);
     if (sent && !job.force) {
-      this.#event("info", `Unchanged since ${sent.createdAt}; draft ${sent.mcRecipeId} exists`);
-      await this.#timeline(
-        this.#texts.unchangedSubject,
-        this.#texts.unchanged({
-          sentAt: sent.createdAt,
-          url: sent.mcRecipeUrl,
-          status: deps.config.MC_RECIPE_STATUS,
-        }),
-      );
-      const skipped = this.#jobs.finish(job.id, "skipped", {
-        error: null,
-        mcRecipeId: sent.mcRecipeId,
-        mcRecipeUrl: sent.mcRecipeUrl,
-      });
-      return { status: "skipped", job: skipped };
+      const skipped = await this.#skipIfStillThere(sent);
+      if (skipped) return { status: "skipped", job: skipped };
+    } else if (sent) {
+      this.#event("info", "Forced: sending again although the recipe is unchanged");
     }
-    if (sent) this.#event("info", "Forced: sending again although the recipe is unchanged");
+
+    this.#checkAbort();
+    const image = await this.#loadImage(recipe);
 
     this.#checkAbort();
     const plan = await this.#stage("categories", () =>
@@ -406,6 +397,51 @@ class JobRun {
     return { status: "failed", job: failed, error: message, stage };
   }
 
+  // An unchanged recipe was sent before. Skips the job when that Monsieur Cuisine recipe
+  // still exists, or when the check itself fails (the local record is the best guess then).
+  // Returns null when the recipe is gone, so the job converts it again.
+  async #skipIfStillThere(sent: SentRecipe): Promise<Job | null> {
+    const deps = this.#deps;
+    const job = this.#job;
+    let status = deps.config.MC_RECIPE_STATUS;
+    const since = `Unchanged since ${sent.createdAt}`;
+    this.#checkAbort();
+    try {
+      const record = await deps.mc.getRecipe(sent.mcRecipeId);
+      status = record.status === "draft" ? "draft" : "private-publish";
+      this.#event(
+        "info",
+        `${since}; recipe ${sent.mcRecipeId} still exists on Monsieur Cuisine (${record.status}), skipping`,
+      );
+    } catch (error) {
+      if (isGone(error)) {
+        this.#event(
+          "warn",
+          `${since}, but recipe ${sent.mcRecipeId} no longer exists on Monsieur Cuisine; converting again`,
+        );
+        return null;
+      }
+      this.#event(
+        "warn",
+        `${since}; could not check recipe ${sent.mcRecipeId} on Monsieur Cuisine (${errorMessage(error)}), skipping`,
+      );
+    }
+    await this.#timeline(
+      this.#texts.unchangedSubject,
+      this.#texts.unchanged({ sentAt: sent.createdAt, url: sent.mcRecipeUrl, status }),
+    );
+    const skipped = this.#jobs.finish(job.id, "skipped", {
+      error: null,
+      mcRecipeId: sent.mcRecipeId,
+      mcRecipeUrl: sent.mcRecipeUrl,
+    });
+    deps.logger.info(
+      { jobId: job.id, mcRecipeId: sent.mcRecipeId },
+      "job skipped, recipe unchanged",
+    );
+    return skipped;
+  }
+
   // Looks up the systemIngredientId of every ingredient name and records the counts on the
   // job. A session error from the search fails the stage, so the job waits for a session.
   async #resolveIngredients(recipe: RecipeInput): Promise<Map<string, number | null> | null> {
@@ -563,6 +599,11 @@ class JobRun {
   #event(level: EventLevel, message: string): void {
     this.#jobs.appendEvent(this.#job.id, level, message);
   }
+}
+
+// Monsieur Cuisine says the recipe does not exist (any more).
+function isGone(error: unknown): boolean {
+  return error instanceof McApiError && (error.status === 404 || error.status === 410);
 }
 
 // Monsieur Cuisine answered and turned the request down, so it created nothing.

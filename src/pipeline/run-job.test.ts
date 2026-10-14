@@ -334,11 +334,11 @@ describe("runJob idempotency", () => {
     const second = s.claim();
     const outcome = await runJob(second, s.deps);
     expect(outcome.status).toBe("skipped");
-    expect(s.calls).toEqual([
-      "mealie.getRecipe",
-      "mealie.getRecipeImage",
-      "mealie.addTimelineEvent",
-    ]);
+    // No image download: the skip check comes first and only asks Monsieur Cuisine.
+    expect(s.calls).toEqual(["mealie.getRecipe", "mc.getRecipe", "mealie.addTimelineEvent"]);
+    expect(messages(s, second)).toContain(
+      `Unchanged since ${s.store.mcRecipes.find(RECIPE_ID, 1, s.mealie.patches[0]?.patch.extras?.mc_source_hash ?? "")?.createdAt}; recipe 4242 still exists on Monsieur Cuisine (private-publish), skipping`,
+    );
     expect(s.converter.requests).toHaveLength(1);
     const entry = s.mealie.timeline.at(-1)?.event;
     expect(entry?.subject).toBe("Monsieur Cuisine: unverändert");
@@ -348,6 +348,51 @@ describe("runJob idempotency", () => {
       ),
     );
     expect(s.store.jobs.get(second.id)).toMatchObject({ status: "skipped", mcRecipeId: 4242 });
+  });
+
+  it("converts again when the recipe was deleted on Monsieur Cuisine", async () => {
+    const s = setup();
+    await runJob(s.claim(), s.deps);
+    (s.mc.getRecipe as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new McApiError({
+        status: 404,
+        code: null,
+        serverMessage: "Not found",
+        endpoint: "GET api/v3/auth/user/recipes/4242",
+        data: null,
+      }),
+    );
+    s.calls.length = 0;
+    const second = s.claim();
+    const outcome = await runJob(second, s.deps);
+    expect(outcome.status).toBe("done");
+    expect(vi.mocked(s.mc).getRecipe.mock.lastCall).toEqual([4242]);
+    expect(s.calls.slice(0, 2)).toEqual(["mealie.getRecipe", "mealie.getRecipeImage"]);
+    expect(s.converter.requests).toHaveLength(2);
+    const lines = messages(s, second);
+    expect(lines.filter((line) => line.includes("no longer exists"))).toEqual([
+      expect.stringMatching(
+        /, but recipe 4242 no longer exists on Monsieur Cuisine; converting again$/,
+      ),
+    ]);
+  });
+
+  it("skips anyway when Monsieur Cuisine cannot be asked, and says so", async () => {
+    const s = setup({ mc: { existing: networkError() } });
+    await runJob(s.claim(), s.deps);
+    const second = s.claim();
+    expect((await runJob(second, s.deps)).status).toBe("skipped");
+    expect(messages(s, second).some((line) => line.includes("could not check recipe 4242"))).toBe(
+      true,
+    );
+    expect(s.converter.requests).toHaveLength(1);
+  });
+
+  it("links a draft as a draft when Monsieur Cuisine still has it as one", async () => {
+    const s = setup({ mc: { existing: "draft" } });
+    await runJob(s.claim(), s.deps);
+    await runJob(s.claim(), s.deps);
+    expect(s.mealie.timeline.at(-1)?.event.eventMessage).toContain("[Entwurf öffnen]");
   });
 
   it("sends again when forced and remembers the new draft", async () => {

@@ -377,7 +377,11 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
         ${
           job.ingredients && job.ingredients.unresolvedNames.length > 0
             ? html`<dt>${l.withoutId}</dt>
-                <dd>${job.ingredients.unresolvedNames.join(", ")}</dd>`
+                <dd>
+                  <ul>
+                    ${job.ingredients.unresolvedNames.map((name) => html`<li>${name}</li>`)}
+                  </ul>
+                </dd>`
             : ""
         }
         <dt>${l.error}</dt>
@@ -401,6 +405,7 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
         }
       </p>
     </section>
+    ${conversionNotes(job, t)}
     <section>
       <h2>${l.events}</h2>
       <div class="scroll">
@@ -429,6 +434,46 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
         </table>
       </div>
     </section>`;
+}
+
+// The review hints and converter warnings of the conversion stored on the job.
+export function storedNotes(job: Pick<Job, "conversion">): { hints: string[]; warnings: string[] } {
+  const result = job.conversion?.result;
+  if (!result || typeof result !== "object") return { hints: [], warnings: [] };
+  const record = result as { reviewHints?: unknown; warnings?: unknown; recipe?: unknown };
+  const recipe = record.recipe as { reviewHints?: unknown } | undefined;
+  const texts = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+      : [];
+  return {
+    hints: [...new Set([...texts(record.reviewHints), ...texts(recipe?.reviewHints)])],
+    warnings: texts(record.warnings),
+  };
+}
+
+function conversionNotes(job: Job, t: AdminMessages): SafeHtml | string {
+  const { hints, warnings } = storedNotes(job);
+  if (hints.length === 0 && warnings.length === 0) return "";
+  const l = t.jobDetail;
+  return html`<section>
+    ${
+      hints.length > 0
+        ? html`<h2>${l.reviewHints}</h2>
+            <ul>
+              ${hints.map((hint) => html`<li>${hint}</li>`)}
+            </ul>`
+        : ""
+    }
+    ${
+      warnings.length > 0
+        ? html`<h2>${l.warnings}</h2>
+            <ul>
+              ${warnings.map((warning) => html`<li class="warn">${warning}</li>`)}
+            </ul>`
+        : ""
+    }
+  </section>`;
 }
 
 // Where the systemIngredientIds of the draft came from.

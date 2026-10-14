@@ -359,7 +359,8 @@ describe("jobs", () => {
     const body = (await get(`/admin/jobs/${job.id}`)).body;
     expect(body).toContain("7 catalog, 2 cache, 1 search, 2 without id");
     expect(body).toContain("Without id");
-    expect(body).toContain("Testzutat &lt;Z&gt;, Testzutat Y");
+    expect(body).toContain("<li>Testzutat &lt;Z&gt;</li>");
+    expect(body).toContain("<li>Testzutat Y</li>");
 
     svc.store.jobs.update(job.id, {
       ingredients: {
@@ -372,6 +373,29 @@ describe("jobs", () => {
       },
     });
     expect((await get(`/admin/jobs/${job.id}`)).body).toContain("resolution off (3 without id)");
+  });
+
+  it("lists the review hints and converter warnings of the stored conversion", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    expect((await get(`/admin/jobs/${job.id}`)).body).not.toContain("Review hints");
+    svc.store.jobs.finish(job.id, "done", {
+      conversion: {
+        sourceHash: "abc",
+        result: conversionResult({
+          reviewHints: ["Garzeit <b>prüfen</b>", "Menge, Salz"],
+          warnings: ["Fill level close to the limit"],
+          recipe: convertedRecipe({ reviewHints: ["Menge, Salz", "Brühe heiß zugeben"] }),
+        }),
+      },
+    });
+    const body = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(body).toContain("<h2>Review hints</h2>");
+    expect(body).toContain("<li>Garzeit &lt;b&gt;prüfen&lt;/b&gt;</li>");
+    expect(body.split("<li>Menge, Salz</li>")).toHaveLength(2);
+    expect(body).toContain("<li>Brühe heiß zugeben</li>");
+    expect(body).toContain("<h2>Converter warnings</h2>");
+    expect(body).toContain('<li class="warn">Fill level close to the limit</li>');
   });
 
   it("answers 404 for an unknown job", async () => {

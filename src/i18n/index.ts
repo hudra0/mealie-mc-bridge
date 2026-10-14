@@ -186,6 +186,8 @@ export interface AdminMessages {
       unresolved: number,
     ): string;
     withoutId: string;
+    reviewHints: string;
+    warnings: string;
     error: string;
     runningLocked: string;
     retry: string;

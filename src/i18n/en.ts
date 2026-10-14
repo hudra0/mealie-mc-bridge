@@ -237,6 +237,8 @@ export const en: Messages = {
       resolution: (catalog, relaxed, cache, search, unresolved) =>
         `${catalog} catalog${relaxed > 0 ? ` (${relaxed} without qualifiers in the name)` : ""}, ${cache} cache, ${search} search, ${unresolved} without id`,
       withoutId: "Without id",
+      reviewHints: "Review hints",
+      warnings: "Converter warnings",
       error: "Error",
       runningLocked: "Running jobs cannot be changed.",
       retry: "Retry",

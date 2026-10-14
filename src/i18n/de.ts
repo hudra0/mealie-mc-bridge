@@ -239,6 +239,8 @@ export const de: Messages = {
       resolution: (catalog, relaxed, cache, search, unresolved) =>
         `${catalog} aus dem Katalog${relaxed > 0 ? ` (${relaxed} ohne Zusätze im Namen)` : ""}, ${cache} aus dem Cache, ${search} aus der Suche, ${unresolved} ohne ID`,
       withoutId: "Ohne ID",
+      reviewHints: "Prüfhinweise",
+      warnings: "Hinweise des Konverters",
       error: "Fehler",
       runningLocked: "Laufende Aufträge lassen sich nicht ändern.",
       retry: "Erneut versuchen",

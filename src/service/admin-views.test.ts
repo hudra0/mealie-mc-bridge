@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminTimeZone, formatTime } from "./admin-views.js";
+import { adminTimeZone, formatTime, storedNotes } from "./admin-views.js";
 
 const AT = "2026-10-13T23:29:27.000Z";
 
@@ -40,5 +40,27 @@ describe("adminTimeZone", () => {
     expect(adminTimeZone({})).toBe(system);
     expect(adminTimeZone({ TZ: "" })).toBe(system);
     expect(adminTimeZone({ TZ: "Not/AZone" })).toBe(system);
+  });
+});
+
+describe("storedNotes", () => {
+  it("reads hints and warnings of a stored conversion and ignores anything else", () => {
+    expect(storedNotes({ conversion: null })).toEqual({ hints: [], warnings: [] });
+    expect(storedNotes({ conversion: { sourceHash: "x", result: "broken" } })).toEqual({
+      hints: [],
+      warnings: [],
+    });
+    expect(
+      storedNotes({
+        conversion: {
+          sourceHash: "x",
+          result: {
+            reviewHints: ["a", 3, " ", "b"],
+            warnings: "w",
+            recipe: { reviewHints: ["b", "c"] },
+          },
+        },
+      }),
+    ).toEqual({ hints: ["a", "b", "c"], warnings: [] });
   });
 });

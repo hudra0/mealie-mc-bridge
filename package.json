@@ -42,7 +42,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@fastify/formbody": "^9.0.1",
-    "better-sqlite3": "~12.9.0",
+    "better-sqlite3": "~12.11.1",
     "fastify": "^5.12.5",
     "nodemailer": "^10.1.0",
     "openai": "^7.32.0",

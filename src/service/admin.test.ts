@@ -155,6 +155,24 @@ describe("dashboard", () => {
     expect((await get("/admin")).body).toContain("kept as drafts, not shown on the device");
   });
 
+  it("shows when the login behind the cookie expires and counts its age from the login", async () => {
+    const loginCookie = (expiresAt: string) =>
+      `wordpress_logged_in_0123=someone%7C${Date.parse(expiresAt) / 1000}%7Ctoken%7Chmac`;
+    svc = testService({ seedCookie: loginCookie("2020-01-15T10:00:00.000Z") });
+    let body = (await get("/admin")).body;
+    expect(body).toContain("Login expires");
+    expect(body).toMatch(/2020-01-15 \d\d:00:00 [^<]* \(expired\)/);
+    expect(body).toContain("days since the login");
+    await svc.dispose();
+
+    // A login that ends long after it was stored here: its start is unknown.
+    svc = testService({ seedCookie: loginCookie("2099-01-15T10:00:00.000Z") });
+    body = (await get("/admin")).body;
+    expect(body).toMatch(/2099-01-1\d \d\d:00:00/);
+    expect(body).not.toContain("(expired)");
+    expect(body).toContain("h since it was stored in the bridge");
+  });
+
   it("shows a known notice and ignores unknown ones", async () => {
     svc = testService();
     expect((await get("/admin?notice=session-saved")).body).toContain("Session saved.");

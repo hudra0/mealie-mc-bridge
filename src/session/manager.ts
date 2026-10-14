@@ -26,9 +26,53 @@ export type SessionState = "valid" | "invalid" | "expired" | "unknown";
 export interface SessionStatus {
   state: SessionState;
   checkedAt: string | null;
+  // When the bridge stored the cookie.
   cookieSetAt: string | null;
+  // When the login behind the cookie ends, read from the wordpress_logged_in cookie.
+  cookieExpiresAt: string | null;
+  // When that login happened, if the expiry allows the conclusion (see cookieIssuedAt).
+  cookieIssuedAt: string | null;
+  // Hours since the login when it is known, else since the cookie was stored.
   cookieAgeHours: number | null;
+  cookieAgeFrom: "login" | "stored" | null;
   lastError: string | null;
+}
+
+// WordPress gives a "remember me" login 14 days; the Monsieur Cuisine cookies seen so far
+// all expire exactly that long after the login.
+export const WORDPRESS_LOGIN_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// The expiry of the wordpress_logged_in_<hash> cookie of a Cookie header. Its value is
+// "user|expiry|token|hmac" (URL-encoded or not), expiry in Unix seconds. Null when the
+// cookie is missing or does not have that shape.
+export function wordpressLoginExpiry(cookieHeader: string | null): Date | null {
+  if (!cookieHeader) return null;
+  for (const pair of cookieHeader.split(";")) {
+    const at = pair.indexOf("=");
+    if (at < 0 || !pair.slice(0, at).trim().startsWith("wordpress_logged_in")) continue;
+    let value = pair.slice(at + 1).trim();
+    try {
+      value = decodeURIComponent(value);
+    } catch {
+      // Keep the raw value; the fields may still be readable.
+    }
+    const fields = value.split("|");
+    const seconds =
+      fields.length >= 4 && /^\d{9,11}$/.test(fields[1] ?? "") ? Number(fields[1]) : NaN;
+    if (Number.isFinite(seconds)) return new Date(seconds * 1000);
+  }
+  return null;
+}
+
+// The login time behind a cookie: its expiry minus the WordPress login length, as long as
+// that is not after the bridge stored the cookie. A cookie stored before that time had a
+// shorter login, so the login time stays unknown.
+export function cookieIssuedAt(expiresAt: Date | null, storedAt: Date | null): Date | null {
+  if (!expiresAt) return null;
+  const issued = new Date(expiresAt.getTime() - WORDPRESS_LOGIN_DAYS * DAY_MS);
+  if (storedAt && issued.getTime() > storedAt.getTime() + 60_000) return null;
+  return issued;
 }
 
 // The cookie is empty after normalizing.
@@ -119,15 +163,22 @@ export class SessionManager implements SessionProvider {
     const stored = this.#settings.get(SESSION_KEYS.state);
     const state = STATES.includes(stored as SessionState) ? (stored as SessionState) : "unknown";
     const cookieSetAt = this.#settings.get(SESSION_KEYS.cookieSetAt);
+    if (this.#cookie === undefined) this.#cookie = this.#readCookie();
+    const expires = wordpressLoginExpiry(this.#cookie);
+    const issued = cookieIssuedAt(expires, cookieSetAt === null ? null : new Date(cookieSetAt));
+    const since = issued?.toISOString() ?? cookieSetAt;
     const age =
-      cookieSetAt === null
+      since === null
         ? null
-        : Math.max(0, (this.#now().getTime() - new Date(cookieSetAt).getTime()) / 3_600_000);
+        : Math.max(0, (this.#now().getTime() - new Date(since).getTime()) / 3_600_000);
     return {
       state,
       checkedAt: this.#settings.get(SESSION_KEYS.checkedAt),
       cookieSetAt,
+      cookieExpiresAt: expires?.toISOString() ?? null,
+      cookieIssuedAt: issued?.toISOString() ?? null,
       cookieAgeHours: age === null ? null : Math.round(age * 10) / 10,
+      cookieAgeFrom: age === null ? null : issued ? "login" : "stored",
       lastError: this.#settings.get(SESSION_KEYS.lastError),
     };
   }

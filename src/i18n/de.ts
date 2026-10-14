@@ -1,6 +1,6 @@
 // German texts for the timeline, mails and admin pages.
 
-import { escapeMarkdown, formatDate, shorten } from "./format.js";
+import { escapeMarkdown, formatDate, formatNumber, shorten } from "./format.js";
 import type { FailureStage, Messages } from "./index.js";
 
 const MAX_DETAIL = 400;
@@ -188,7 +188,13 @@ export const de: Messages = {
       lastCheck: "Letzte Prüfung",
       cookieAge: "Alter des Cookies",
       noCookie: "kein Cookie",
-      hours: (count) => `${count} h`,
+      age: (hours, from) => {
+        const value =
+          hours < 48 ? `${formatNumber(hours, INTL)} h` : `${formatNumber(hours / 24, INTL)} Tage`;
+        return `${value} ${from === "login" ? "seit der Anmeldung" : "seit dem Speichern in der Bridge"}`;
+      },
+      cookieExpires: "Anmeldung läuft ab",
+      expiresAt: (time, expired) => `am ${time}${expired ? " (abgelaufen)" : ""}`,
       lastError: "Letzter Fehler",
       newRecipes: "Neue Rezepte",
       privatePublish: "nur auf dem Gerät gespeichert",

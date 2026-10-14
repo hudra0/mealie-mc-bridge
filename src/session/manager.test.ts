@@ -8,6 +8,9 @@ import {
   SESSION_KEYS,
   SessionManager,
   SessionRejectedError,
+  WORDPRESS_LOGIN_DAYS,
+  cookieIssuedAt,
+  wordpressLoginExpiry,
   type SessionManagerOptions,
 } from "./manager.js";
 
@@ -248,12 +251,34 @@ describe("health check", () => {
     expect(validate).not.toHaveBeenCalled();
   });
 
-  it("reports the cookie age in hours", () => {
+  it("reports the cookie age in hours since it was stored without a login expiry", () => {
     store = tempStore();
     const clock = steppingClock("2026-10-13T00:00:00.000Z");
     const { manager } = build({ seedCookie: COOKIE }, clock);
     clock.set("2026-10-14T12:00:00.000Z");
-    expect(manager.status().cookieAgeHours).toBe(36);
+    expect(manager.status()).toMatchObject({
+      cookieAgeHours: 36,
+      cookieAgeFrom: "stored",
+      cookieExpiresAt: null,
+      cookieIssuedAt: null,
+    });
+  });
+
+  it("reads the login expiry from the cookie and counts the age from the login", () => {
+    store = tempStore();
+    // Logged in on 2026-10-13 09:15:00 UTC, so the login lasts until 2026-10-27.
+    const expiry = Date.parse("2026-10-27T09:15:00.000Z") / 1000;
+    const cookie = `PHPSESSID=x; wordpress_logged_in_0123abc=someone%7C${expiry}%7Ctoken%7Chmac; lidl_sso_id_token=two`;
+    const clock = steppingClock("2026-10-13T23:00:00.000Z");
+    const { manager } = build({ seedCookie: cookie }, clock);
+    clock.set("2026-10-14T09:15:00.000Z");
+    expect(manager.status()).toMatchObject({
+      cookieSetAt: "2026-10-13T23:00:00.000Z",
+      cookieExpiresAt: "2026-10-27T09:15:00.000Z",
+      cookieIssuedAt: "2026-10-13T09:15:00.000Z",
+      cookieAgeHours: 24,
+      cookieAgeFrom: "login",
+    });
   });
 
   it("checks on start and then on the interval", async () => {
@@ -277,5 +302,38 @@ describe("health check", () => {
     store.settings.set(SESSION_KEYS.state, "weird");
     expect(manager.status().state).toBe("unknown");
     expect(manager.isPaused()).toBe(false);
+  });
+});
+
+describe("wordpressLoginExpiry", () => {
+  const at = new Date("2026-10-27T09:15:00.000Z");
+  const seconds = at.getTime() / 1000;
+
+  it("reads the second field of the login cookie, encoded or not", () => {
+    expect(wordpressLoginExpiry(`wordpress_logged_in_ab=u%7C${seconds}%7Ct%7Ch`)).toEqual(at);
+    expect(wordpressLoginExpiry(`a=1; wordpress_logged_in_ab=u|${seconds}|t|h; b=2`)).toEqual(at);
+  });
+
+  it("gives up on a missing or odd cookie", () => {
+    expect(wordpressLoginExpiry(null)).toBeNull();
+    expect(wordpressLoginExpiry("a=1; b")).toBeNull();
+    expect(wordpressLoginExpiry("wordpress_logged_in_ab=synthetic")).toBeNull();
+    expect(wordpressLoginExpiry("wordpress_logged_in_ab=u|soon|t|h")).toBeNull();
+    expect(wordpressLoginExpiry("wordpress_logged_in_ab=u%E0%A4%A|123|t")).toBeNull();
+  });
+});
+
+describe("cookieIssuedAt", () => {
+  const expires = new Date("2026-10-27T09:15:00.000Z");
+  const login = new Date(expires.getTime() - WORDPRESS_LOGIN_DAYS * 24 * 3_600_000);
+
+  it("is the expiry minus the WordPress login length", () => {
+    expect(cookieIssuedAt(expires, new Date("2026-10-14T00:00:00.000Z"))).toEqual(login);
+    expect(cookieIssuedAt(expires, null)).toEqual(login);
+  });
+
+  it("stays unknown without an expiry or when the cookie was stored before that time", () => {
+    expect(cookieIssuedAt(null, null)).toBeNull();
+    expect(cookieIssuedAt(expires, new Date("2026-10-12T00:00:00.000Z"))).toBeNull();
   });
 });

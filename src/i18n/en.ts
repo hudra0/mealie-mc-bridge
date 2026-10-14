@@ -1,6 +1,6 @@
 // English texts for the timeline, mails and admin pages.
 
-import { escapeMarkdown, formatDate, shorten } from "./format.js";
+import { escapeMarkdown, formatDate, formatNumber, shorten } from "./format.js";
 import type { FailureStage, Messages } from "./index.js";
 
 const MAX_DETAIL = 400;
@@ -186,7 +186,13 @@ export const en: Messages = {
       lastCheck: "Last check",
       cookieAge: "Cookie age",
       noCookie: "no cookie",
-      hours: (count) => `${count} h`,
+      age: (hours, from) => {
+        const value =
+          hours < 48 ? `${formatNumber(hours, INTL)} h` : `${formatNumber(hours / 24, INTL)} days`;
+        return `${value} ${from === "login" ? "since the login" : "since it was stored in the bridge"}`;
+      },
+      cookieExpires: "Login expires",
+      expiresAt: (time, expired) => `${time}${expired ? " (expired)" : ""}`,
       lastError: "Last error",
       newRecipes: "New recipes",
       privatePublish: "saved on the device only",

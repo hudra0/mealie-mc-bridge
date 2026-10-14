@@ -103,7 +103,10 @@ describe("message catalogs", () => {
       expect(admin.errors.recipeNotLoaded("nope")).toContain("nope");
       expect(admin.errors.conversionFailed("nope")).toContain("nope");
       expect(admin.jobsTable.recipeLink(7, "draft")).toContain("7");
-      expect(admin.dashboard.hours(2)).toBe("2 h");
+      expect(admin.dashboard.age(2, "login")).toMatch(/^2 h /);
+      expect(admin.dashboard.age(330, "stored")).toMatch(/^13[.,]8 /);
+      expect(admin.dashboard.expiresAt("t", true)).toContain("t (");
+      expect(admin.dashboard.expiresAt("t", false)).not.toContain("(");
       expect(admin.dashboard.lastWorkerError("t")).toContain("t");
       expect(admin.dashboard.cookieLabel).toContain("`Cookie`");
       expect(admin.jobDetail.openRecipe(7, "private-publish")).toContain("7");

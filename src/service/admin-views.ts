@@ -156,6 +156,8 @@ export interface DashboardData {
   jobs: Job[];
   formToken: string;
   recipeStatus: SavedStatus;
+  // For telling whether the login has expired.
+  now: Date;
 }
 
 export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
@@ -170,7 +172,24 @@ export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
         <dt>${d.lastCheck}</dt>
         <dd>${formatTime(session.checkedAt)}</dd>
         <dt>${d.cookieAge}</dt>
-        <dd>${session.cookieAgeHours === null ? d.noCookie : d.hours(session.cookieAgeHours)}</dd>
+        <dd>
+          ${
+            session.cookieAgeHours === null
+              ? d.noCookie
+              : d.age(session.cookieAgeHours, session.cookieAgeFrom ?? "stored")
+          }
+        </dd>
+        ${
+          session.cookieExpiresAt
+            ? html`<dt>${d.cookieExpires}</dt>
+                <dd>
+                  ${d.expiresAt(
+                    formatTime(session.cookieExpiresAt),
+                    Date.parse(session.cookieExpiresAt) <= data.now.getTime(),
+                  )}
+                </dd>`
+            : ""
+        }
         <dt>${d.lastError}</dt>
         <dd>${session.lastError ?? "–"}</dd>
         <dt>${d.newRecipes}</dt>

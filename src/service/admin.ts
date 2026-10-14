@@ -202,6 +202,7 @@ export function admin(
           jobs: options.store.jobs.listRecent({ limit: 20 }),
           formToken,
           recipeStatus: options.recipeStatus,
+          now: options.now?.() ?? new Date(),
         },
         t,
       ),

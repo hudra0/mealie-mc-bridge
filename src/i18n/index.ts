@@ -133,7 +133,10 @@ export interface AdminMessages {
     lastCheck: string;
     cookieAge: string;
     noCookie: string;
-    hours(count: number): string;
+    // The age of the login (from "login") or of the stored cookie (from "stored").
+    age(hours: number, from: "login" | "stored"): string;
+    cookieExpires: string;
+    expiresAt(time: string, expired: boolean): string;
     lastError: string;
     newRecipes: string;
     privatePublish: string;

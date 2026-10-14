@@ -188,7 +188,7 @@ describe("runJob happy path", () => {
     // The timeline entry carries the link, servings, model and review hints.
     const entry = s.mealie.timeline[0];
     expect(entry?.recipeId).toBe(RECIPE_ID);
-    expect(entry?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
+    expect(entry?.event.subject).toBe("Monsieur Cuisine: Rezept privat gespeichert");
     expect(entry?.event.eventType).toBe("info");
     const message = entry?.event.eventMessage ?? "";
     expect(message).toContain(`[Im Editor öffnen](${url})`);
@@ -235,6 +235,7 @@ describe("runJob happy path", () => {
     expect(outcome.status).toBe("done");
     expect(s.calls.some((call) => call.startsWith("mc.setStatus"))).toBe(false);
     expect(s.mealie.timeline[0]?.event.eventMessage).toContain("Status: Entwurf");
+    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
   });
 
   it("scales servings and records them", async () => {
@@ -343,7 +344,7 @@ describe("runJob idempotency", () => {
     expect(entry?.subject).toBe("Monsieur Cuisine: unverändert");
     expect(entry?.eventMessage).toMatch(
       new RegExp(
-        `^Unverändert, bereits gesendet am .+: \\[Entwurf öffnen\\]\\(${escapeRegExp(mcEditorUrl(4242))}\\)$`,
+        `^Unverändert, bereits gesendet am .+: \\[Rezept öffnen\\]\\(${escapeRegExp(mcEditorUrl(4242))}\\)$`,
       ),
     );
     expect(s.store.jobs.get(second.id)).toMatchObject({ status: "skipped", mcRecipeId: 4242 });
@@ -612,7 +613,7 @@ describe("runJob after the draft exists", () => {
     const job = s.claim();
     const outcome = await runJob(job, s.deps);
     expect(outcome.status).toBe("done");
-    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
+    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Rezept privat gespeichert");
     expect(messages(s, job)).toContain(
       "Mealie refused to update the recipe (403): the bridge user needs edit rights on it. The timeline entry is posted anyway.",
     );
@@ -648,6 +649,7 @@ describe("runJob after the draft exists", () => {
     expect(s.mealie.timeline[0]?.event.eventMessage).toContain(
       "das private Speichern ist fehlgeschlagen",
     );
+    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
   });
 });
 
@@ -934,7 +936,7 @@ describe("runJob in another language", () => {
 
     // The timeline entry is English.
     const entry = s.mealie.timeline[0]?.event;
-    expect(entry?.subject).toBe("Monsieur Cuisine: draft created");
+    expect(entry?.subject).toBe("Monsieur Cuisine: recipe saved to the device");
     expect(entry?.eventMessage).toContain(`[Open in the editor](${mcEditorUrl(4242)})`);
     expect(entry?.eventMessage).toContain("- Servings: 4");
     expect(entry?.eventMessage).toContain("saved privately, visible on your device only");

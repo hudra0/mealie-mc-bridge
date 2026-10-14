@@ -44,10 +44,31 @@ describe("timeline texts", () => {
 
   it("formats the date of an unchanged recipe in German", () => {
     expect(
-      de.unchanged({ sentAt: "2026-10-13T08:05:00.000Z", url: "https://example.com" }),
+      de.unchanged({
+        sentAt: "2026-10-13T08:05:00.000Z",
+        url: "https://example.com",
+        status: "draft",
+      }),
     ).toMatch(
       /^Unverändert, bereits gesendet am 13\.10\.2026, \d{2}:\d{2}: \[Entwurf öffnen\]\(https:\/\/example\.com\)$/,
     );
+  });
+
+  it("says draft only for a draft and saved for a private recipe", () => {
+    const en = timelineTexts("en");
+    expect(de.createdSubject("private-publish")).toBe(
+      "Monsieur Cuisine: Rezept privat gespeichert",
+    );
+    expect(de.createdSubject("draft")).toBe("Monsieur Cuisine: Entwurf erstellt");
+    expect(en.createdSubject("private-publish")).toBe(
+      "Monsieur Cuisine: recipe saved to the device",
+    );
+    expect(en.createdSubject("draft")).toBe("Monsieur Cuisine: draft created");
+    const sent = { sentAt: "2026-10-13T08:05:00.000Z", url: "https://example.com" };
+    expect(de.unchanged({ ...sent, status: "private-publish" })).toContain("[Rezept öffnen]");
+    expect(de.unchanged({ ...sent, status: "private-publish" })).not.toContain("Entwurf");
+    expect(en.unchanged({ ...sent, status: "private-publish" })).toContain("[Open the recipe]");
+    expect(en.unchanged({ ...sent, status: "draft" })).toContain("[Open the draft]");
   });
 
   it("escapes Markdown characters", () => {

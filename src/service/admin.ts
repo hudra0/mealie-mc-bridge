@@ -255,9 +255,14 @@ export function admin(
       ...(status ? { status } : {}),
       ...(search ? { search } : {}),
     });
-    return render(reply, t.titles.jobs, jobListView({ jobs, status, search, offset, limit }, t), {
-      notice: notice(request),
-    });
+    return render(
+      reply,
+      t.titles.jobs,
+      jobListView({ jobs, status, search, offset, limit, recipeStatus: options.recipeStatus }, t),
+      {
+        notice: notice(request),
+      },
+    );
   });
 
   app.get<{ Params: { id: string } }>("/admin/jobs/:id", (request, reply) => {
@@ -275,6 +280,7 @@ export function admin(
           events: found.events,
           formToken,
           mealieUrl: slug && options.mealieRecipeUrl ? options.mealieRecipeUrl(slug) : null,
+          recipeStatus: options.recipeStatus,
         },
         t,
       ),
@@ -327,7 +333,7 @@ export function admin(
     const recipeParam = typeof query.recipe === "string" ? query.recipe.trim().slice(0, 200) : "";
     const scaleRaw = typeof query.scale === "string" ? Number(query.scale) : 1;
     const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 && scaleRaw <= MAX_SCALE ? scaleRaw : 1;
-    const data: DryRunData = { recipeParam, scale, formToken };
+    const data: DryRunData = { recipeParam, scale, formToken, recipeStatus: options.recipeStatus };
     if (!recipeParam) return render(reply, t.titles.dryRun, dryRunView(data, t));
 
     let recipe;

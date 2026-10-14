@@ -37,10 +37,13 @@ export type JobStatusName =
 
 export type SessionStateName = "valid" | "invalid" | "expired" | "unknown";
 
+// How a recipe sits in the Monsieur Cuisine account: a draft, or saved on the device.
+export type SavedStatus = "draft" | "private-publish";
+
 export interface CreatedText {
   url: string;
   servings: number;
-  status: "draft" | "private-publish";
+  status: SavedStatus;
   // The status change to private-publish failed; the recipe stayed a draft.
   statusFailed: boolean;
   provider: string;
@@ -52,10 +55,11 @@ export interface CreatedText {
 // Timeline entries in Mealie. Subjects are plain text. The message functions return
 // Markdown; values from outside (hints, errors, model names) arrive escaped.
 export interface TimelineMessages {
-  createdSubject: string;
+  // "draft" also when the status change to private-publish failed.
+  createdSubject(status: SavedStatus): string;
   created(text: CreatedText): string;
   unchangedSubject: string;
-  unchanged(text: { sentAt: string; url: string }): string;
+  unchanged(text: { sentAt: string; url: string; status: SavedStatus }): string;
   failedSubject(stage: FailureStage): string;
   failed(text: { stage: FailureStage; detail: string }): string;
   sessionSubject: string;
@@ -121,7 +125,7 @@ export interface AdminMessages {
     status: string;
     attempts: string;
     result: string;
-    draft(id: number | string): string;
+    recipeLink(id: number | string, status: SavedStatus): string;
   };
   dashboard: {
     session: string;
@@ -161,7 +165,7 @@ export interface AdminMessages {
     job: string;
     mealieRecipe: string;
     monsieurCuisine: string;
-    openDraft(id: number | string): string;
+    openRecipe(id: number | string, status: SavedStatus): string;
     scale: string;
     servings(count: number): string;
     attempts: string;

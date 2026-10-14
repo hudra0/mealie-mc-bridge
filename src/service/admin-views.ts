@@ -2,7 +2,7 @@
 // routes. Every value from a recipe, a job or an error passes through html``, which
 // escapes it. The texts come from the message catalog of UI_LANGUAGE (src/i18n).
 
-import type { AdminMessages } from "../i18n/index.js";
+import type { AdminMessages, SavedStatus } from "../i18n/index.js";
 import type { ScaledIngredient } from "../ingredients/index.js";
 import type { CheckedRecipe, CategoryPlan, PreparedRecipe } from "../pipeline/prepare.js";
 import type { ConversionResult } from "../pipeline/converter-port.js";
@@ -59,7 +59,7 @@ function jobTitle(job: Job): string {
   return job.title ?? job.mealieSlug ?? job.mealieRecipeId;
 }
 
-function jobsTable(jobs: readonly Job[], t: AdminMessages): SafeHtml {
+function jobsTable(jobs: readonly Job[], t: AdminMessages, status: SavedStatus): SafeHtml {
   const l = t.jobsTable;
   if (jobs.length === 0) return html`<p class="muted">${l.empty}</p>`;
   return html`<div class="scroll">
@@ -87,7 +87,7 @@ function jobsTable(jobs: readonly Job[], t: AdminMessages): SafeHtml {
                 ${
                   job.mcRecipeUrl
                     ? html`<a href="${safeHref(job.mcRecipeUrl)}" rel="noreferrer"
-                        >${l.draft(job.mcRecipeId ?? "")}</a
+                        >${l.recipeLink(job.mcRecipeId ?? "", status)}</a
                       >`
                     : job.error
                       ? html`<span class="bad">${truncate(job.error, 80)}</span>`
@@ -107,7 +107,7 @@ export interface DashboardData {
   worker: WorkerStatus | null;
   jobs: Job[];
   formToken: string;
-  recipeStatus: string;
+  recipeStatus: SavedStatus;
 }
 
 export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
@@ -188,7 +188,7 @@ export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
     </section>
     <section>
       <h2>${d.recentJobs}</h2>
-      ${jobsTable(data.jobs, t)}
+      ${jobsTable(data.jobs, t, data.recipeStatus)}
       <p><a href="/admin/jobs">${t.links.allJobs}</a></p>
     </section>
     <section>
@@ -198,6 +198,7 @@ export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
 }
 
 export interface JobListData {
+  recipeStatus: SavedStatus;
   jobs: Job[];
   status: JobStatus | null;
   search: string;
@@ -237,7 +238,7 @@ export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
       </form>
     </section>
     <section>
-      ${jobsTable(data.jobs, t)}
+      ${jobsTable(data.jobs, t, data.recipeStatus)}
       <p>
         ${
           data.offset > 0
@@ -254,6 +255,7 @@ export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
 }
 
 export interface JobDetailData {
+  recipeStatus: SavedStatus;
   job: Job;
   events: JobEvent[];
   formToken: string;
@@ -296,7 +298,7 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
           ${
             job.mcRecipeUrl
               ? html`<a href="${safeHref(job.mcRecipeUrl)}" rel="noreferrer"
-                  >${l.openDraft(job.mcRecipeId ?? "")}</a
+                  >${l.openRecipe(job.mcRecipeId ?? "", data.recipeStatus)}</a
                 >`
               : "–"
           }
@@ -415,6 +417,7 @@ export function dryRunForm(recipe: string, scale: number, t: AdminMessages): Saf
 }
 
 export interface DryRunData {
+  recipeStatus: SavedStatus;
   recipeParam: string;
   scale: number;
   formToken: string;
@@ -453,7 +456,7 @@ export function dryRunView(data: DryRunData, t: AdminMessages): SafeHtml {
               data.sent
                 ? html`${l.sentAt(formatTime(data.sent.createdAt))}
                     <a href="${safeHref(data.sent.mcRecipeUrl)}" rel="noreferrer"
-                      >${t.jobsTable.draft(data.sent.mcRecipeId)}</a
+                      >${t.jobsTable.recipeLink(data.sent.mcRecipeId, data.recipeStatus)}</a
                     >
                     ${l.wouldSkip}`
                 : l.no

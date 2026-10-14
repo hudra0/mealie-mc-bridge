@@ -206,7 +206,11 @@ class JobRun {
       this.#event("info", `Unchanged since ${sent.createdAt}; draft ${sent.mcRecipeId} exists`);
       await this.#timeline(
         this.#texts.unchangedSubject,
-        this.#texts.unchanged({ sentAt: sent.createdAt, url: sent.mcRecipeUrl }),
+        this.#texts.unchanged({
+          sentAt: sent.createdAt,
+          url: sent.mcRecipeUrl,
+          status: deps.config.MC_RECIPE_STATUS,
+        }),
       );
       const skipped = this.#jobs.finish(job.id, "skipped", {
         error: null,
@@ -333,7 +337,7 @@ class JobRun {
     const statusFailed = await this.#setStatus(ref.id);
     await this.#writeBack(recipe, ref.id, ref.editorUrl, servings, prepared.hash);
     await this.#timeline(
-      this.#texts.createdSubject,
+      this.#texts.createdSubject(statusFailed ? "draft" : deps.config.MC_RECIPE_STATUS),
       this.#texts.created({
         url: ref.editorUrl,
         servings,

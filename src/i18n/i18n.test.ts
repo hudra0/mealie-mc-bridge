@@ -70,7 +70,9 @@ describe("message catalogs", () => {
       expect(text).toContain("gpt\\_x");
       expect(text).toContain("check \\*this\\*");
       expect(t.failed({ stage: "convert", detail: "x".repeat(500) })).toContain("x...");
-      expect(t.unchanged({ sentAt: "2026-10-13T12:00:00.000Z", url: "u" })).toContain("(u)");
+      expect(
+        t.unchanged({ sentAt: "2026-10-13T12:00:00.000Z", url: "u", status: "draft" }),
+      ).toContain("(u)");
       for (const status of ["draft", "private-publish"] as const) {
         expect(
           t.created({ ...created, status, statusFailed: true, reviewHints: [] }),
@@ -100,11 +102,11 @@ describe("message catalogs", () => {
       expect(admin.errors.cookieUnchecked("nope")).toContain("nope");
       expect(admin.errors.recipeNotLoaded("nope")).toContain("nope");
       expect(admin.errors.conversionFailed("nope")).toContain("nope");
-      expect(admin.jobsTable.draft(7)).toContain("7");
+      expect(admin.jobsTable.recipeLink(7, "draft")).toContain("7");
       expect(admin.dashboard.hours(2)).toBe("2 h");
       expect(admin.dashboard.lastWorkerError("t")).toContain("t");
       expect(admin.dashboard.cookieLabel).toContain("`Cookie`");
-      expect(admin.jobDetail.openDraft(7)).toContain("7");
+      expect(admin.jobDetail.openRecipe(7, "private-publish")).toContain("7");
       expect(admin.jobDetail.servings(4)).toContain("4");
       expect(admin.jobDetail.tokens(100, 20, 50)).toContain("20");
       expect(admin.jobDetail.tokens(100, null, 50)).not.toContain("(");

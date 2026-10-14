@@ -23,7 +23,10 @@ export const en: Messages = {
   language: "en",
   intlLocale: INTL,
   timeline: {
-    createdSubject: "Monsieur Cuisine: draft created",
+    createdSubject: (status) =>
+      status === "draft"
+        ? "Monsieur Cuisine: draft created"
+        : "Monsieur Cuisine: recipe saved to the device",
     created(text) {
       const status =
         text.status === "draft"
@@ -54,7 +57,8 @@ export const en: Messages = {
     },
     unchangedSubject: "Monsieur Cuisine: unchanged",
     unchanged(text) {
-      return `Unchanged, already sent on ${formatDate(text.sentAt, INTL)}: [Open the draft](${text.url})`;
+      const link = text.status === "draft" ? "Open the draft" : "Open the recipe";
+      return `Unchanged, already sent on ${formatDate(text.sentAt, INTL)}: [${link}](${text.url})`;
     },
     failedSubject(stage) {
       return `Monsieur Cuisine: error – ${FAILURE_REASONS[stage]}`;
@@ -174,7 +178,7 @@ export const en: Messages = {
       status: "Status",
       attempts: "Attempts",
       result: "Result",
-      draft: (id) => `draft ${id}`,
+      recipeLink: (id, status) => `${status === "draft" ? "draft" : "recipe"} ${id}`,
     },
     dashboard: {
       session: "Monsieur Cuisine session",
@@ -215,7 +219,8 @@ export const en: Messages = {
       job: "Job",
       mealieRecipe: "Mealie recipe",
       monsieurCuisine: "Monsieur Cuisine",
-      openDraft: (id) => `open draft ${id} in the editor`,
+      openRecipe: (id, status) =>
+        `open ${status === "draft" ? "draft" : "recipe"} ${id} in the editor`,
       scale: "Scale",
       servings: (count) => ` (${count} servings)`,
       attempts: "Attempts",

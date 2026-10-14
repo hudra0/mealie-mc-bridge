@@ -320,6 +320,28 @@ describe("jobs", () => {
     expect(body).not.toContain(">Cancel<");
   });
 
+  it("calls the result a recipe when it is saved on the device and a draft otherwise", async () => {
+    const finishedJob = (s: TestService) => {
+      const { job } = s.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+      s.store.jobs.finish(job.id, "done", {
+        mcRecipeId: 4242,
+        mcRecipeUrl: "https://www.monsieur-cuisine.com/de/create-recipe?recipe-id=4242",
+      });
+      return job.id;
+    };
+    svc = testService({ config: { UI_LANGUAGE: "de" } });
+    let id = finishedJob(svc);
+    expect((await get(`/admin/jobs/${id}`)).body).toContain("Rezept 4242 im Editor öffnen");
+    expect((await get("/admin/jobs")).body).toContain(">Rezept 4242</a");
+    expect((await get("/admin/jobs")).body).not.toContain("Entwurf 4242");
+    await svc.dispose();
+
+    svc = testService({ config: { UI_LANGUAGE: "de", MC_RECIPE_STATUS: "draft" } });
+    id = finishedJob(svc);
+    expect((await get(`/admin/jobs/${id}`)).body).toContain("Entwurf 4242 im Editor öffnen");
+    expect((await get("/admin")).body).toContain(">Entwurf 4242</a");
+  });
+
   it("shows where the ingredient ids came from and the names without one", async () => {
     svc = testService();
     const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });

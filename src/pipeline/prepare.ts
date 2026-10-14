@@ -25,6 +25,7 @@ import {
   type MergedCategories,
 } from "./categories.js";
 import type { ConversionRequest, ConversionResult } from "./converter-port.js";
+import type { IngredientResolverPort } from "./ingredient-resolver.js";
 import type { PipelineLocale } from "./locale.js";
 import { sourceHash } from "./source-hash.js";
 
@@ -41,6 +42,8 @@ export function prepareRecipe(
   scale: number,
   limits: DeviceLimits,
   locale: Pick<PipelineLocale, "labels" | "pack">,
+  // The bridge's own tag (TAG_NAME), kept out of the converter input.
+  options: { excludeTags?: readonly string[] } = {},
 ): PreparedRecipe {
   const normalized = normalizeIngredients(recipe);
   const scaled = scaleIngredients(normalized, scale);
@@ -50,6 +53,7 @@ export function prepareRecipe(
     servings,
     ingredients: scaled,
     labels: locale.labels,
+    ...(options.excludeTags ? { excludeTags: options.excludeTags } : {}),
   });
   const hash = sourceHash(recipe, normalized, scale, locale.pack.locale);
   return { normalized, scaled, servings, rendered, hash };
@@ -79,7 +83,9 @@ export function conversionRequest(
   prepared: PreparedRecipe,
   plan: CategoryPlan,
   locale: string,
+  options: { ingredients?: Pick<IngredientResolverPort, "suggest" | "knows"> | undefined } = {},
 ): ConversionRequest {
+  const catalogNames = catalogNameHints(prepared.scaled, options.ingredients);
   return {
     title: recipe.name,
     rendered: prepared.rendered,
@@ -87,7 +93,29 @@ export function conversionRequest(
     locale,
     ingredients: prepared.scaled,
     categoryHints: plan.hints,
+    ...(catalogNames.length > 0 ? { catalogNames } : {}),
   };
+}
+
+// Share of source lines the catalog must know (exactly or relaxed) before near matches are
+// offered. Below it the recipe is most likely written in another language than the pack,
+// and near matches are false friends ("olive oil" -> "Oliven", "rote Paprika" -> the
+// spice "paprika").
+export const MIN_KNOWN_SHARE = 0.2;
+
+// Catalog names close to each source ingredient, for the source lines that have some.
+export function catalogNameHints(
+  ingredients: readonly NormalizedIngredient[],
+  resolver: Pick<IngredientResolverPort, "suggest" | "knows"> | undefined,
+): { index: number; names: string[] }[] {
+  if (!resolver?.suggest || ingredients.length === 0) return [];
+  const names = ingredients.map((item) => item.food || item.original);
+  if (resolver.knows) {
+    const known = names.filter((name) => resolver.knows?.(name)).length;
+    if (known === 0 || known < MIN_KNOWN_SHARE * names.length) return [];
+  }
+  const suggestions = resolver.suggest(names);
+  return suggestions.flatMap((names, index) => (names.length > 0 ? [{ index, names }] : []));
 }
 
 export interface CheckedRecipe {

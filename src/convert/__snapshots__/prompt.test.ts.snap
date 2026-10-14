@@ -352,6 +352,7 @@ Rules for the German text of the recipe, derived from the de-DE corpus. They add
 
 - Write each ingredient list name the way Monsieur Cuisine recipes spell it, so the bridge can link it to the app's ingredient database. Only an exact match apart from case and spacing gets an id; a near miss gets none. Counted items in the plural: "Zwiebeln", "Knoblauchzehen", "Möhren", "Eier (Größe M)". Qualifiers in parentheses: "Mehl (Type 405)", "Sahne (30 % Fett)", "Joghurt natur (3,5 % Fett)". Form and state after a comma: "Hefe, frisch", "Pfeffer, schwarz, gemahlen". To-taste items as in the amounts rules: "Salz zum Abschmecken".
 - Keep the preparation out of the list name ("Zwiebeln", not "Zwiebeln, gewürfelt"); the step that cuts them says how. Steps then use the name without its qualifiers: "die Zwiebeln" for "Zwiebeln (rot)".
+- When the user message lists catalog names for an ingredient line, take one that names the same product and write it verbatim. Among those, prefer a name without preparation, serving notes or amounts: "Kirschtomaten", not "Kirschtomaten, halbiert"; "Salz", not "½ Tl Salz". Keep a product qualifier the ingredient needs, such as "frisch", "getrocknet" or "aus der Dose": "Hefe, frisch", "Tomaten, stückig aus der Dose/Glas". Serving notes such as "zum Garnieren" and "zum Servieren" go into the step text ("Mit Petersilie garnieren."). When no listed name is the same product, write your own name by the rules above.
 
 # Output contract
 
@@ -510,6 +511,7 @@ Rules for the English text of the recipe, written from the en-US corpus of offic
 
 - Write each ingredient list name the way Monsieur Cuisine recipes spell it, so the bridge can link it to the app's ingredient database. Only an exact match apart from case and spacing gets an id; a near miss gets none. Names start in lower case: "onions", "garlic cloves", "carrots", "eggs (medium)". Qualifiers in parentheses: "plain flour (type 405)", "cream (30% fat)", "milk (fresh milk, 3.5% fat)". Form and state after a comma: "yeast, fresh", "pepper, black, ground", "tomatoes, chopped, from a tin/jar". To-taste items as in the amounts rules: "salt to taste".
 - Keep the preparation out of the list name ("onions", not "onions, diced"); the step that cuts them says how. Steps then use the name without its qualifiers: "the onions" for "onions, red".
+- When the user message lists catalog names for an ingredient line, take one that names the same product and write it verbatim. Among those, prefer a name without preparation, serving notes or amounts: "cherry tomatoes", not "cherry tomatoes, halved"; "salt", not "½ tsp salt". Keep a product qualifier the ingredient needs, such as "fresh", "dried" or "from a tin/jar": "yeast, fresh", "tomatoes, chopped, from a tin/jar". Serving notes such as "for garnish" and "to serve" go into the step text ("Garnish with parsley."). When no listed name is the same product, write your own name by the rules above.
 
 # Output contract
 

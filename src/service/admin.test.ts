@@ -155,6 +155,34 @@ describe("dashboard", () => {
     expect((await get("/admin")).body).toContain("kept as drafts, not shown on the device");
   });
 
+  it("shows when the login behind the cookie expires and counts its age from the login", async () => {
+    const loginCookie = (expiresAt: string) =>
+      `wordpress_logged_in_0123=someone%7C${Date.parse(expiresAt) / 1000}%7Ctoken%7Chmac`;
+    // A 14-day login from two hours ago.
+    const expiry = new Date(Date.now() + 14 * 86_400_000 - 2 * 3_600_000);
+    expiry.setUTCMinutes(0, 0, 0);
+    svc = testService({ seedCookie: loginCookie(expiry.toISOString()) });
+    let body = (await get("/admin")).body;
+    expect(body).toContain("Login expires");
+    expect(body).not.toContain("(expired)");
+    expect(body).toContain("since the login");
+    await svc.dispose();
+
+    // An expired cookie: it was not a 14-day login when stored, so the age counts from then.
+    svc = testService({ seedCookie: loginCookie("2020-01-15T10:00:00.000Z") });
+    body = (await get("/admin")).body;
+    expect(body).toMatch(/2020-01-15 \d\d:00:00 [^<]* \(expired\)/);
+    expect(body).toContain("since it was stored in the bridge");
+    await svc.dispose();
+
+    // A login that ends long after it was stored here: its start is unknown.
+    svc = testService({ seedCookie: loginCookie("2099-01-15T10:00:00.000Z") });
+    body = (await get("/admin")).body;
+    expect(body).toMatch(/2099-01-1\d \d\d:00:00/);
+    expect(body).not.toContain("(expired)");
+    expect(body).toContain("h since it was stored in the bridge");
+  });
+
   it("shows a known notice and ignores unknown ones", async () => {
     svc = testService();
     expect((await get("/admin?notice=session-saved")).body).toContain("Session saved.");
@@ -320,6 +348,28 @@ describe("jobs", () => {
     expect(body).not.toContain(">Cancel<");
   });
 
+  it("calls the result a recipe when it is saved on the device and a draft otherwise", async () => {
+    const finishedJob = (s: TestService) => {
+      const { job } = s.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+      s.store.jobs.finish(job.id, "done", {
+        mcRecipeId: 4242,
+        mcRecipeUrl: "https://www.monsieur-cuisine.com/de/create-recipe?recipe-id=4242",
+      });
+      return job.id;
+    };
+    svc = testService({ config: { UI_LANGUAGE: "de" } });
+    let id = finishedJob(svc);
+    expect((await get(`/admin/jobs/${id}`)).body).toContain("Rezept 4242 im Editor öffnen");
+    expect((await get("/admin/jobs")).body).toContain(">Rezept 4242</a");
+    expect((await get("/admin/jobs")).body).not.toContain("Entwurf 4242");
+    await svc.dispose();
+
+    svc = testService({ config: { UI_LANGUAGE: "de", MC_RECIPE_STATUS: "draft" } });
+    id = finishedJob(svc);
+    expect((await get(`/admin/jobs/${id}`)).body).toContain("Entwurf 4242 im Editor öffnen");
+    expect((await get("/admin")).body).toContain(">Entwurf 4242</a");
+  });
+
   it("shows where the ingredient ids came from and the names without one", async () => {
     svc = testService();
     const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
@@ -337,7 +387,8 @@ describe("jobs", () => {
     const body = (await get(`/admin/jobs/${job.id}`)).body;
     expect(body).toContain("7 catalog, 2 cache, 1 search, 2 without id");
     expect(body).toContain("Without id");
-    expect(body).toContain("Testzutat &lt;Z&gt;, Testzutat Y");
+    expect(body).toContain("<li>Testzutat &lt;Z&gt;</li>");
+    expect(body).toContain("<li>Testzutat Y</li>");
 
     svc.store.jobs.update(job.id, {
       ingredients: {
@@ -350,6 +401,43 @@ describe("jobs", () => {
       },
     });
     expect((await get(`/admin/jobs/${job.id}`)).body).toContain("resolution off (3 without id)");
+  });
+
+  it("lists the review hints and converter warnings of the stored conversion", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    expect((await get(`/admin/jobs/${job.id}`)).body).not.toContain("Review hints");
+    svc.store.jobs.finish(job.id, "done", {
+      conversion: {
+        sourceHash: "abc",
+        result: conversionResult({
+          reviewHints: ["Garzeit <b>prüfen</b>", "Menge, Salz"],
+          warnings: ["Fill level close to the limit"],
+          recipe: convertedRecipe({ reviewHints: ["Menge, Salz", "Brühe heiß zugeben"] }),
+        }),
+      },
+    });
+    const body = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(body).toContain("<h2>Review hints</h2>");
+    expect(body).toContain("<li>Garzeit &lt;b&gt;prüfen&lt;/b&gt;</li>");
+    expect(body.split("<li>Menge, Salz</li>")).toHaveLength(2);
+    expect(body).toContain("<li>Brühe heiß zugeben</li>");
+    expect(body).toContain("<h2>Converter warnings</h2>");
+    expect(body).toContain('<li class="warn">Fill level close to the limit</li>');
+  });
+
+  it("offers only the forced rebuild for a skipped job", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    svc.store.jobs.finish(job.id, "skipped", {
+      mcRecipeId: 4242,
+      mcRecipeUrl: "https://example.com/r",
+    });
+    const body = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(body).toContain(">Force rebuild<");
+    expect(body).not.toContain(">Retry<");
+    svc.store.jobs.update(job.id, { status: "failed" });
+    expect((await get(`/admin/jobs/${job.id}`)).body).toContain(">Retry<");
   });
 
   it("answers 404 for an unknown job", async () => {
@@ -416,6 +504,20 @@ describe("dry run", () => {
     expect(svc.mc.calls).toEqual([]);
   });
 
+  it("leaves the bridge's own tag out of the converter input", async () => {
+    const recipe = mealieRecipe({
+      tags: [
+        { id: "00000000-0000-4000-8000-000000000301", name: "Vegetarisch", slug: "vegetarisch" },
+        { id: "tag-1", name: "Monsieur Cuisine", slug: "monsieur-cuisine" },
+      ],
+    });
+    svc = testService({ mealie: { recipe } });
+    const body = (await get("/admin/dry-run?recipe=kurbis-linsen-suppe")).body;
+    const input = body.slice(body.indexOf("<pre>"), body.indexOf("</pre>"));
+    expect(input).toContain("Tags: Vegetarisch");
+    expect(input).not.toContain("Monsieur Cuisine");
+  });
+
   it("escapes a recipe title with markup", async () => {
     svc = testService({ mealie: { recipe: mealieRecipe({ name: "<script>alert(1)</script>" }) } });
     const body = (await get("/admin/dry-run?recipe=kurbis-linsen-suppe")).body;
@@ -454,7 +556,7 @@ describe("dry run", () => {
     expect(converter.requests).toHaveLength(1);
     expect(svc.mc.calls).toEqual(["mc.getCategories"]);
     expect(svc.mc.payloads).toEqual([]);
-    expect(body).toContain("fake / fake-model, 1 attempt(s)");
+    expect(body).toContain("fake / fake-model, 1 attempt<");
     expect(body).toContain('<span class="ok">passed</span>');
     expect(body).toContain("228 Suppen &amp; Eintöpfe, 588 Vegetarisch, 260 Hauptgerichte");
     expect(body).toContain("&lt;b&gt;Garzeit&lt;/b&gt; prüfen");
@@ -462,6 +564,19 @@ describe("dry run", () => {
     expect(body).toContain("20 min 0 s, 100 °C, speed 1, rotation left");
     expect(body).toContain("customized");
     expect(body).toContain("800 g Kürbis");
+  });
+
+  it("offers the converter catalog names in the dry run as the job does", async () => {
+    const converter = fakeConverter();
+    svc = testService({
+      converter,
+      ingredients: {
+        resolveAll: () => Promise.reject(new Error("not used in a dry run")),
+        suggest: (names) => names.map((_, index) => (index === 0 ? ["Kürbis"] : [])),
+      },
+    });
+    await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${FORM_TOKEN}`);
+    expect(converter.requests[0]?.catalogNames).toEqual([{ index: 0, names: ["Kürbis"] }]);
   });
 
   it("lists validation errors of a broken conversion", async () => {
@@ -476,7 +591,7 @@ describe("dry run", () => {
     const body = (
       await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${FORM_TOKEN}`)
     ).body;
-    expect(body).toContain("error(s)");
+    expect(body).toMatch(/[0-9]+ errors?</);
     expect(body).toContain("servingSize.steps[2]");
     expect(body).toContain("dropped unknown ids 9999");
   });

@@ -1,7 +1,7 @@
 // Ingredient ids the resolver found by searching Monsieur Cuisine, and names it did not
-// find, keyed by the normalized name. A found id is kept for good; a miss is kept so the
-// same unknown name does not trigger a search on every job, and the resolver decides when
-// a miss is old enough to search again.
+// find, keyed by the resolver's cache key (a rules version and the normalized name). A
+// found id is kept for good; a miss is kept so the same unknown name does not trigger a
+// search on every job, and the resolver decides when a miss is old enough to search again.
 
 import type { Db } from "./db.js";
 

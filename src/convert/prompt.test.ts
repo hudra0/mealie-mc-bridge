@@ -9,7 +9,9 @@ import {
   SYSTEM_SECTIONS,
   MIN_FORMULA_R2,
   buildSystemPrompt,
+  MAX_CATALOG_NAMES_CHARS,
   buildUserMessage,
+  catalogNameLines,
   compactValues,
   documentBody,
   formatDuration,
@@ -305,5 +307,58 @@ describe("buildUserMessage", () => {
     `);
     expect(withFeedback(buildUserMessage(request, categories), feedback)).toBe(user);
     expect(withFeedback("plain")).toBe("plain");
+  });
+});
+
+describe("catalog names in the user message", () => {
+  const withNames: ConversionRequest = {
+    ...request,
+    ingredients: [food("Butternusskürbis"), food("Salz"), food("Zwiebeln (rot)")],
+    catalogNames: [
+      { index: 0, names: ["Butternutkürbis"] },
+      { index: 1, names: [" "] },
+      { index: 2, names: ["Zwiebeln, rot", "Zwiebeln"] },
+      { index: 9, names: ["Gibt es nicht"] },
+    ],
+  };
+
+  it("lists the names by source index after the recipe and asks for them verbatim", () => {
+    const user = buildUserMessage(withNames, categories);
+    expect(user).toContain(
+      "# Catalog names\n\nMonsieur Cuisine catalog names close to source ingredient lines, by index. When one names the same product, write it verbatim as the ingredient-list name",
+    );
+    expect(user).toContain(
+      "- [0] Butternusskürbis: Butternutkürbis\n- [2] Zwiebeln (rot): Zwiebeln, rot | Zwiebeln\n",
+    );
+    expect(user).not.toContain("[1] Salz");
+    expect(user).not.toContain("Gibt es nicht");
+    expect(user.indexOf("# Recipe")).toBeLessThan(user.indexOf("# Catalog names"));
+  });
+
+  it("leaves the section out without names", () => {
+    expect(buildUserMessage(request, categories)).not.toContain("# Catalog names");
+    expect(catalogNameLines({ ingredients: [food("Salz")] })).toEqual([]);
+  });
+
+  it("caps the section size", () => {
+    const many: ConversionRequest = {
+      ...request,
+      ingredients: Array.from({ length: 200 }, (_, i) => food(`Zutat ${i}`)),
+      catalogNames: Array.from({ length: 200 }, (_, index) => ({
+        index,
+        names: ["Ein ziemlich langer Katalogname", "Noch ein langer Katalogname"],
+      })),
+    };
+    const lines = catalogNameLines(many);
+    expect(lines.length).toBeGreaterThan(10);
+    expect(lines.length).toBeLessThan(200);
+    expect(lines.join("\n").length).toBeLessThanOrEqual(MAX_CATALOG_NAMES_CHARS);
+  });
+
+  it("asks for catalog names in the language rules of both packs", () => {
+    expect(system).toContain("When the user message lists catalog names for an ingredient line");
+    expect(buildSystemPrompt(english, limits)).toContain(
+      '"yeast, fresh", "tomatoes, chopped, from a tin/jar"',
+    );
   });
 });

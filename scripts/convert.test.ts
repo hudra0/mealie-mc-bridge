@@ -208,6 +208,8 @@ describe("runConvert", () => {
     expect(out[0]).toMatch(/^# Role and goal/);
     expect(out[2]).toContain("- 228: Suppen & Eintöpfe");
     expect(out[2]).toContain("# Kürbis-Linsen-Suppe");
+    // The same near catalog names the service sends.
+    expect(out[2]).toContain("# Catalog names");
     expect(factory).not.toHaveBeenCalled();
   });
 

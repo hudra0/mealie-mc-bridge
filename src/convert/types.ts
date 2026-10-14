@@ -20,6 +20,16 @@ export interface ConversionRequest {
   ingredients: NormalizedIngredient[];
   // Category names from Mealie, as hints for the category choice.
   categoryHints?: string[];
+  // Catalog names close to source ingredients, offered to the model so it writes names
+  // the Monsieur Cuisine catalog knows.
+  catalogNames?: CatalogNameHint[];
+}
+
+export interface CatalogNameHint {
+  // The index of the source ingredient in ingredients.
+  index: number;
+  // Catalog names, best first.
+  names: string[];
 }
 
 export interface TokenUsage {
@@ -58,8 +68,14 @@ export interface ConversionResult {
   model: string;
 }
 
+export interface ConvertOptions {
+  signal?: AbortSignal;
+  // The job the conversion belongs to, for the log lines.
+  jobId?: string;
+}
+
 export interface Converter {
-  convert(req: ConversionRequest, opts?: { signal?: AbortSignal }): Promise<ConversionResult>;
+  convert(req: ConversionRequest, opts?: ConvertOptions): Promise<ConversionResult>;
 }
 
 export interface GenerationFeedback {

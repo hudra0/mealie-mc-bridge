@@ -223,6 +223,27 @@
       "garbanzos": "chickpeas"
     }
   },
+  "qualifierSuffixes": [
+    "for garnish",
+    "to garnish",
+    "for garnishing",
+    "for serving",
+    "to serve",
+    "for thinning",
+    "for sprinkling",
+    "for drizzling",
+    "for decoration",
+    "as desired",
+    "(optional)",
+    "optional"
+  ],
+  "buyingFormSuffixes": {
+    "from a tin/jar": ["tin", "jar"],
+    "from a tin": ["tin"],
+    "from a can": ["can", "tin"],
+    "canned": ["canned", "tin", "can"],
+    "fresh": ["fresh"]
+  },
   "categoryMatching": {
     "stopwords": ["cuisine", "recipe", "recipes", "dish", "dishes", "food", "meal", "meals"],
     "joiners": ["and"],

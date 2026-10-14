@@ -223,6 +223,8 @@ export interface FakeMcOptions {
   upload?: Error | Error[];
   setStatus?: Error;
   user?: Error;
+  // What getRecipe answers: an error, or the status of the recipe (default private-publish).
+  existing?: Error | string;
   recipeId?: number;
   calls?: CallLog;
 }
@@ -251,6 +253,13 @@ export function fakeMc(options: FakeMcOptions = {}): FakeMc {
       return categories instanceof Error
         ? Promise.reject(categories)
         : Promise.resolve({ source: "proxy" as const, categories });
+    }),
+    getRecipe: vi.fn((recipeId: number) => {
+      calls.push("mc.getRecipe");
+      const existing = options.existing ?? "private-publish";
+      return existing instanceof Error
+        ? Promise.reject(existing)
+        : Promise.resolve({ id: recipeId, title: "Kürbis-Linsen-Suppe", status: existing });
     }),
     createRecipe: vi.fn((payload: McRecipePayload) => {
       calls.push("mc.createRecipe");

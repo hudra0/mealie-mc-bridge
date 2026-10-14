@@ -604,7 +604,41 @@ export function buildUserMessage(
   if (!indexed && request.ingredients.length > 0) {
     parts.push("# Source ingredient indices", "", ...ingredientIndexLines(request), "");
   }
+  const catalog = catalogNameLines(request);
+  if (catalog.length > 0) {
+    parts.push(
+      "# Catalog names",
+      "",
+      "Monsieur Cuisine catalog names close to source ingredient lines, by index. When one names the same product, write it verbatim as the ingredient-list name; catalog names link the ingredient in the app most reliably. When none does, write your own name.",
+      "",
+      ...catalog,
+      "",
+    );
+  }
   return withFeedback(parts.join("\n"), options.feedback);
+}
+
+// The catalog-name lines stop before they pass this many characters, so a long recipe
+// cannot blow up the prompt.
+export const MAX_CATALOG_NAMES_CHARS = 2048;
+
+// "- [3] Zwiebeln (rot): Zwiebeln, rot | Zwiebeln", one per source line with suggestions.
+export function catalogNameLines(
+  request: Pick<ConversionRequest, "ingredients" | "catalogNames">,
+): string[] {
+  const lines: string[] = [];
+  let size = 0;
+  for (const hint of request.catalogNames ?? []) {
+    const names = hint.names.map((name) => name.trim()).filter(Boolean);
+    const ingredient = request.ingredients[hint.index];
+    if (names.length === 0 || !ingredient) continue;
+    const source = (ingredient.food || ingredient.original).trim();
+    const line = `- [${hint.index}] ${source}: ${names.join(" | ")}`;
+    if (size + line.length + 1 > MAX_CATALOG_NAMES_CHARS) break;
+    lines.push(line);
+    size += line.length + 1;
+  }
+  return lines;
 }
 
 // Whether the rendered recipe numbers every source ingredient line ("- [3] 2 EL Öl"), as

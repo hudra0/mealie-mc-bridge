@@ -36,7 +36,10 @@ export interface StoredConversion {
 // How the ingredient names of the converted recipe got their systemIngredientId, counted
 // per distinct name. unresolvedNames go out without an id.
 export interface JobIngredientStats {
+  // Catalog hits, the relaxed ones included.
   catalog: number;
+  // Catalog hits found under a relaxed form of the name; absent on older jobs.
+  catalogRelaxed?: number;
   cache: number;
   search: number;
   unresolved: number;

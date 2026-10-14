@@ -16,6 +16,11 @@ export function shorten(text: string, max: number): string {
   return line.length > max ? `${line.slice(0, max)}...` : line;
 }
 
+// A number with at most one decimal in the style of an Intl locale: "13,5", "13.5".
+export function formatNumber(value: number, intlLocale: string): string {
+  return new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(value);
+}
+
 // A date and time in the style of an Intl locale.
 export function formatDate(iso: string, intlLocale: string): string {
   return new Intl.DateTimeFormat(intlLocale, { dateStyle: "medium", timeStyle: "short" }).format(

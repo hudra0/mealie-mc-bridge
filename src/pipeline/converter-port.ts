@@ -21,6 +21,8 @@ export interface ConversionRequest {
   // The live Monsieur Cuisine categories as "<id>: <name>", the ones matching the Mealie
   // categories and tags first.
   categoryHints?: string[];
+  // Catalog names close to source ingredients, by index into ingredients.
+  catalogNames?: { index: number; names: string[] }[];
 }
 
 export interface ConversionResult {
@@ -39,7 +41,10 @@ export interface ConversionResult {
 }
 
 export interface Converter {
-  convert(req: ConversionRequest, opts?: { signal?: AbortSignal }): Promise<ConversionResult>;
+  convert(
+    req: ConversionRequest,
+    opts?: { signal?: AbortSignal; jobId?: string },
+  ): Promise<ConversionResult>;
 }
 
 export class ConverterNotConfiguredError extends Error {

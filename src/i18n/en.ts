@@ -1,6 +1,6 @@
 // English texts for the timeline, mails and admin pages.
 
-import { escapeMarkdown, formatDate, shorten } from "./format.js";
+import { escapeMarkdown, formatDate, formatNumber, shorten } from "./format.js";
 import type { FailureStage, Messages } from "./index.js";
 
 const MAX_DETAIL = 400;
@@ -23,7 +23,10 @@ export const en: Messages = {
   language: "en",
   intlLocale: INTL,
   timeline: {
-    createdSubject: "Monsieur Cuisine: draft created",
+    createdSubject: (status) =>
+      status === "draft"
+        ? "Monsieur Cuisine: draft created"
+        : "Monsieur Cuisine: recipe saved to the device",
     created(text) {
       const status =
         text.status === "draft"
@@ -54,7 +57,8 @@ export const en: Messages = {
     },
     unchangedSubject: "Monsieur Cuisine: unchanged",
     unchanged(text) {
-      return `Unchanged, already sent on ${formatDate(text.sentAt, INTL)}: [Open the draft](${text.url})`;
+      const link = text.status === "draft" ? "Open the draft" : "Open the recipe";
+      return `Unchanged, already sent on ${formatDate(text.sentAt, INTL)}: [${link}](${text.url})`;
     },
     failedSubject(stage) {
       return `Monsieur Cuisine: error – ${FAILURE_REASONS[stage]}`;
@@ -71,6 +75,10 @@ export const en: Messages = {
       return "The bridge is not logged in to Monsieur Cuisine right now. The job waits and continues on its own as soon as a new session is saved on the admin page.";
     },
     failureReasons: FAILURE_REASONS,
+  },
+  jobEvents: {
+    converting: "Conversion started",
+    stillConverting: (seconds) => `Still converting, ${seconds} s`,
   },
   email: {
     subjectPrefix: "Monsieur Cuisine bridge",
@@ -174,7 +182,7 @@ export const en: Messages = {
       status: "Status",
       attempts: "Attempts",
       result: "Result",
-      draft: (id) => `draft ${id}`,
+      recipeLink: (id, status) => `${status === "draft" ? "draft" : "recipe"} ${id}`,
     },
     dashboard: {
       session: "Monsieur Cuisine session",
@@ -182,7 +190,13 @@ export const en: Messages = {
       lastCheck: "Last check",
       cookieAge: "Cookie age",
       noCookie: "no cookie",
-      hours: (count) => `${count} h`,
+      age: (hours, from) => {
+        const value =
+          hours < 48 ? `${formatNumber(hours, INTL)} h` : `${formatNumber(hours / 24, INTL)} days`;
+        return `${value} ${from === "login" ? "since the login" : "since it was stored in the bridge"}`;
+      },
+      cookieExpires: "Login expires",
+      expiresAt: (time, expired) => `${time}${expired ? " (expired)" : ""}`,
       lastError: "Last error",
       newRecipes: "New recipes",
       privatePublish: "saved on the device only",
@@ -215,7 +229,8 @@ export const en: Messages = {
       job: "Job",
       mealieRecipe: "Mealie recipe",
       monsieurCuisine: "Monsieur Cuisine",
-      openDraft: (id) => `open draft ${id} in the editor`,
+      openRecipe: (id, status) =>
+        `open ${status === "draft" ? "draft" : "recipe"} ${id} in the editor`,
       scale: "Scale",
       servings: (count) => ` (${count} servings)`,
       attempts: "Attempts",
@@ -229,9 +244,11 @@ export const en: Messages = {
         `${input} input${cached ? ` (${cached} cached)` : ""}, ${output} output tokens`,
       ingredientIds: "Ingredient ids",
       resolutionOff: (unresolved) => `resolution off (${unresolved} without id)`,
-      resolution: (catalog, cache, search, unresolved) =>
-        `${catalog} catalog, ${cache} cache, ${search} search, ${unresolved} without id`,
+      resolution: (catalog, relaxed, cache, search, unresolved) =>
+        `${catalog} catalog${relaxed > 0 ? ` (${relaxed} without qualifiers in the name)` : ""}, ${cache} cache, ${search} search, ${unresolved} without id`,
       withoutId: "Without id",
+      reviewHints: "Review hints",
+      warnings: "Converter warnings",
       error: "Error",
       runningLocked: "Running jobs cannot be changed.",
       retry: "Retry",
@@ -267,7 +284,7 @@ export const en: Messages = {
       converterInput: "Converter input (Markdown)",
       conversion: "Conversion",
       model: "Model",
-      attempts: (count) => `${count} attempt(s)`,
+      attempts: (count) => `${count} ${count === 1 ? "attempt" : "attempts"}`,
       usage: "Usage",
       tokens: (input, output) => `${input} input, ${output} output tokens`,
       title: "Title",
@@ -279,7 +296,7 @@ export const en: Messages = {
       droppedIds: (ids) => `· dropped unknown ids ${ids}`,
       validation: "Validation",
       passed: "passed",
-      errors: (count) => `${count} error(s)`,
+      errors: (count) => `${count} ${count === 1 ? "error" : "errors"}`,
       field: "Field",
       problem: "Problem",
       reviewHints: "Review hints",

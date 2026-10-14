@@ -21,6 +21,7 @@ import {
   fakeNotifier,
   fakePrepareImage,
   limits,
+  mealieRecipe,
   silentLogger,
   type FakeConverter,
   type FakeMc,
@@ -36,7 +37,7 @@ import { createIngredientCatalog } from "../ingredients/catalog.js";
 import type { McIngredientSuggestion } from "../mc/index.js";
 import { CATEGORY_CACHE_KEY, categoryCacheKey } from "./categories.js";
 import { ConverterNotConfiguredError, type Converter } from "./converter-port.js";
-import { IngredientResolver, type ResolveMode } from "./ingredient-resolver.js";
+import { IngredientResolver, cacheKey, type ResolveMode } from "./ingredient-resolver.js";
 import type { PipelineLocale } from "./locale.js";
 import { prepareRecipe } from "./prepare.js";
 import { isTransient, runJob, type PipelineConfig, type RunJobDeps } from "./run-job.js";
@@ -188,7 +189,7 @@ describe("runJob happy path", () => {
     // The timeline entry carries the link, servings, model and review hints.
     const entry = s.mealie.timeline[0];
     expect(entry?.recipeId).toBe(RECIPE_ID);
-    expect(entry?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
+    expect(entry?.event.subject).toBe("Monsieur Cuisine: Rezept privat gespeichert");
     expect(entry?.event.eventType).toBe("info");
     const message = entry?.event.eventMessage ?? "";
     expect(message).toContain(`[Im Editor öffnen](${url})`);
@@ -235,6 +236,7 @@ describe("runJob happy path", () => {
     expect(outcome.status).toBe("done");
     expect(s.calls.some((call) => call.startsWith("mc.setStatus"))).toBe(false);
     expect(s.mealie.timeline[0]?.event.eventMessage).toContain("Status: Entwurf");
+    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
   });
 
   it("scales servings and records them", async () => {
@@ -324,6 +326,124 @@ describe("runJob happy path", () => {
   });
 });
 
+describe("runJob progress and logs", () => {
+  it("says when the conversion starts and that it is still running", async () => {
+    let finish: () => void = () => undefined;
+    const converter = fakeConverter(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(conversionResult());
+        }),
+    );
+    const s = setup({ converter });
+    s.deps.heartbeatMs = 20;
+    const job = s.claim();
+    const running = runJob(job, s.deps);
+    await vi.waitFor(() => {
+      expect(messages(s, job)).toContain("Konvertierung läuft noch, 0 s");
+    });
+    finish();
+    expect((await running).status).toBe("done");
+    const lines = messages(s, job);
+    const started = lines.indexOf("Konvertierung gestartet");
+    expect(started).toBeGreaterThan(lines.findIndex((line) => line.startsWith("Categories:")));
+    expect(lines[started + 1]).toBe("Konvertierung läuft noch, 0 s");
+    // The heartbeat stops with the conversion.
+    const count = lines.length;
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(messages(s, job)).toHaveLength(count);
+    expect(converter.requests).toHaveLength(1);
+  });
+
+  it("counts the heartbeat in seconds and stops it when the conversion fails", async () => {
+    vi.useFakeTimers();
+    try {
+      let fail: (error: Error) => void = () => undefined;
+      const converter = fakeConverter(
+        () =>
+          new Promise((_, reject) => {
+            fail = reject;
+          }),
+      );
+      const s = setup({ converter, config: { UI_LANGUAGE: "en" } });
+      const job = s.claim();
+      const running = runJob(job, s.deps);
+      await vi.advanceTimersByTimeAsync(65_000);
+      fail(new Error("provider down"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect((await running).status).toBe("failed");
+      const lines = messages(s, job);
+      expect(lines).toContain("Conversion started");
+      expect(lines.filter((line) => line.startsWith("Still converting"))).toEqual([
+        "Still converting, 30 s",
+        "Still converting, 60 s",
+      ]);
+      const count = lines.length;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(messages(s, job)).toHaveLength(count);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("passes the job id to the converter and logs the finished job", async () => {
+    const s = setup();
+    const info = vi.spyOn(s.deps.logger, "info");
+    const job = s.claim();
+    await runJob(job, s.deps);
+    expect(s.converter.requests).toHaveLength(1);
+    expect(messages(s, job)).toContain(
+      "Converted with fake/fake-model in 1 attempt (1200 input, 800 output tokens, $0.0123)",
+    );
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jobId: job.id,
+        status: "done",
+        mcRecipeId: 4242,
+        costUsd: 0.0123,
+        durationMs: expect.any(Number) as number,
+      }),
+      "job finished",
+    );
+  });
+
+  it("logs a skipped job with its id", async () => {
+    const s = setup();
+    await runJob(s.claim(), s.deps);
+    const info = vi.spyOn(s.deps.logger, "info");
+    const second = s.claim();
+    await runJob(second, s.deps);
+    expect(info).toHaveBeenCalledWith(
+      { jobId: second.id, mcRecipeId: 4242 },
+      "job skipped, recipe unchanged",
+    );
+  });
+
+  it("writes attempts in the plural from two on", async () => {
+    const s = setup({ converter: fakeConverter(conversionResult({ attempts: 2 })) });
+    const job = s.claim();
+    await runJob(job, s.deps);
+    expect(messages(s, job).some((line) => line.includes(" in 2 attempts ("))).toBe(true);
+  });
+});
+
+describe("runJob converter input", () => {
+  it("keeps the bridge's own tag out of the converter input and in Mealie", async () => {
+    const recipe = mealieRecipe({
+      tags: [
+        { id: "00000000-0000-4000-8000-000000000301", name: "Vegetarisch", slug: "vegetarisch" },
+        { id: TAG.id, name: TAG.name, slug: TAG.slug },
+      ],
+    });
+    const s = setup({ mealie: { recipe } });
+    await runJob(s.claim({ force: true }), s.deps);
+    const rendered = s.converter.requests[0]?.rendered ?? "";
+    expect(rendered).toContain("Vegetarisch");
+    expect(rendered).not.toContain("Monsieur Cuisine");
+    expect(s.mealie.patches[0]?.patch.addTags).toEqual([TAG]);
+  });
+});
+
 describe("runJob idempotency", () => {
   it("skips an unchanged recipe and points to the existing draft", async () => {
     const s = setup();
@@ -333,20 +453,65 @@ describe("runJob idempotency", () => {
     const second = s.claim();
     const outcome = await runJob(second, s.deps);
     expect(outcome.status).toBe("skipped");
-    expect(s.calls).toEqual([
-      "mealie.getRecipe",
-      "mealie.getRecipeImage",
-      "mealie.addTimelineEvent",
-    ]);
+    // No image download: the skip check comes first and only asks Monsieur Cuisine.
+    expect(s.calls).toEqual(["mealie.getRecipe", "mc.getRecipe", "mealie.addTimelineEvent"]);
+    expect(messages(s, second)).toContain(
+      `Unchanged since ${s.store.mcRecipes.find(RECIPE_ID, 1, s.mealie.patches[0]?.patch.extras?.mc_source_hash ?? "")?.createdAt}; recipe 4242 still exists on Monsieur Cuisine (private-publish), skipping`,
+    );
     expect(s.converter.requests).toHaveLength(1);
     const entry = s.mealie.timeline.at(-1)?.event;
     expect(entry?.subject).toBe("Monsieur Cuisine: unverändert");
     expect(entry?.eventMessage).toMatch(
       new RegExp(
-        `^Unverändert, bereits gesendet am .+: \\[Entwurf öffnen\\]\\(${escapeRegExp(mcEditorUrl(4242))}\\)$`,
+        `^Unverändert, bereits gesendet am .+: \\[Rezept öffnen\\]\\(${escapeRegExp(mcEditorUrl(4242))}\\)$`,
       ),
     );
     expect(s.store.jobs.get(second.id)).toMatchObject({ status: "skipped", mcRecipeId: 4242 });
+  });
+
+  it("converts again when the recipe was deleted on Monsieur Cuisine", async () => {
+    const s = setup();
+    await runJob(s.claim(), s.deps);
+    (s.mc.getRecipe as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new McApiError({
+        status: 404,
+        code: null,
+        serverMessage: "Not found",
+        endpoint: "GET api/v3/auth/user/recipes/4242",
+        data: null,
+      }),
+    );
+    s.calls.length = 0;
+    const second = s.claim();
+    const outcome = await runJob(second, s.deps);
+    expect(outcome.status).toBe("done");
+    expect(vi.mocked(s.mc).getRecipe.mock.lastCall).toEqual([4242]);
+    expect(s.calls.slice(0, 2)).toEqual(["mealie.getRecipe", "mealie.getRecipeImage"]);
+    expect(s.converter.requests).toHaveLength(2);
+    const lines = messages(s, second);
+    expect(lines.filter((line) => line.includes("no longer exists"))).toEqual([
+      expect.stringMatching(
+        /, but recipe 4242 no longer exists on Monsieur Cuisine; converting again$/,
+      ),
+    ]);
+  });
+
+  it("skips anyway when Monsieur Cuisine cannot be asked, and says so", async () => {
+    const s = setup({ mc: { existing: networkError() } });
+    await runJob(s.claim(), s.deps);
+    const second = s.claim();
+    expect((await runJob(second, s.deps)).status).toBe("skipped");
+    expect(messages(s, second).some((line) => line.includes("could not check recipe 4242"))).toBe(
+      true,
+    );
+    expect(s.converter.requests).toHaveLength(1);
+  });
+
+  it("links a draft as a draft when Monsieur Cuisine still has it as one", async () => {
+    const s = setup({ mc: { existing: "draft" } });
+    await runJob(s.claim(), s.deps);
+    await runJob(s.claim(), s.deps);
+    expect(s.mealie.timeline.at(-1)?.event.eventMessage).toContain("[Entwurf öffnen]");
   });
 
   it("sends again when forced and remembers the new draft", async () => {
@@ -612,7 +777,7 @@ describe("runJob after the draft exists", () => {
     const job = s.claim();
     const outcome = await runJob(job, s.deps);
     expect(outcome.status).toBe("done");
-    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
+    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Rezept privat gespeichert");
     expect(messages(s, job)).toContain(
       "Mealie refused to update the recipe (403): the bridge user needs edit rights on it. The timeline entry is posted anyway.",
     );
@@ -648,6 +813,7 @@ describe("runJob after the draft exists", () => {
     expect(s.mealie.timeline[0]?.event.eventMessage).toContain(
       "das private Speichern ist fehlgeschlagen",
     );
+    expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Entwurf erstellt");
   });
 });
 
@@ -782,13 +948,38 @@ describe("runJob ingredient ids", () => {
     );
     expect(s.store.jobs.get(job.id)?.ingredients).toEqual({
       catalog: 1,
+      catalogRelaxed: 0,
       cache: 0,
       search: 1,
       unresolved: 0,
       unresolvedNames: [],
       enabled: true,
     });
-    expect(s.store.ingredientCache.get("rote linsen")?.systemIngredientId).toBe(9002);
+    expect(s.store.ingredientCache.get(cacheKey("rote linsen"))?.systemIngredientId).toBe(9002);
+  });
+
+  it("offers the converter catalog names for the source ingredients", async () => {
+    const suggest = vi.fn((names: readonly string[]) =>
+      names.map((_, index) => (index === 1 ? ["Kürbis"] : [])),
+    );
+    const s = setup({
+      ingredients: {
+        resolveAll: (names) =>
+          Promise.resolve({
+            ids: new Map(names.map((name) => [name.toLowerCase(), null])),
+            stats: { catalog: 0, catalogRelaxed: 0, cache: 0, search: 0, unresolved: names.length },
+            unresolvedNames: [...names],
+            enabled: true,
+          }),
+        suggest,
+      },
+    });
+    await runJob(s.claim(), s.deps);
+    const request = s.converter.requests[0];
+    expect(suggest.mock.calls[0]?.[0]).toEqual(
+      request?.ingredients.map((item) => item.food || item.original),
+    );
+    expect(request?.catalogNames).toEqual([{ index: 1, names: ["Kürbis"] }]);
   });
 
   it("sends unknown names without an id and keeps them out of the timeline", async () => {
@@ -845,7 +1036,7 @@ describe("runJob ingredient ids", () => {
           controller.abort();
           return Promise.resolve({
             ids: new Map(names.map((name) => [name.toLowerCase(), null])),
-            stats: { catalog: 0, cache: 0, search: 0, unresolved: names.length },
+            stats: { catalog: 0, catalogRelaxed: 0, cache: 0, search: 0, unresolved: names.length },
             unresolvedNames: [...names],
             enabled: true,
           });
@@ -909,7 +1100,7 @@ describe("runJob in another language", () => {
 
     // The timeline entry is English.
     const entry = s.mealie.timeline[0]?.event;
-    expect(entry?.subject).toBe("Monsieur Cuisine: draft created");
+    expect(entry?.subject).toBe("Monsieur Cuisine: recipe saved to the device");
     expect(entry?.eventMessage).toContain(`[Open in the editor](${mcEditorUrl(4242)})`);
     expect(entry?.eventMessage).toContain("- Servings: 4");
     expect(entry?.eventMessage).toContain("saved privately, visible on your device only");

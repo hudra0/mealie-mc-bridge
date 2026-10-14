@@ -2,7 +2,7 @@
 // routes. Every value from a recipe, a job or an error passes through html``, which
 // escapes it. The texts come from the message catalog of UI_LANGUAGE (src/i18n).
 
-import type { AdminMessages } from "../i18n/index.js";
+import type { AdminMessages, SavedStatus } from "../i18n/index.js";
 import type { ScaledIngredient } from "../ingredients/index.js";
 import type { CheckedRecipe, CategoryPlan, PreparedRecipe } from "../pipeline/prepare.js";
 import type { ConversionResult } from "../pipeline/converter-port.js";
@@ -14,11 +14,59 @@ import { JOB_STATUSES } from "../store/jobs.js";
 import type { SentRecipe } from "../store/mc-recipes.js";
 import { escapeHtml, html, safeHref, SafeHtml } from "./html.js";
 
-export function formatTime(iso: string | null | undefined): string {
+// The zone the admin pages show times in: TZ when it names a zone Intl knows, else the
+// zone of the system. The Mealie timeline entries use local time as well.
+export function adminTimeZone(env: NodeJS.ProcessEnv = process.env): string {
+  const zone = env.TZ?.trim();
+  if (zone) {
+    try {
+      return new Intl.DateTimeFormat("en-US", { timeZone: zone }).resolvedOptions().timeZone;
+    } catch {
+      // Not a zone name; fall back to the system zone.
+    }
+  }
+  return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+// The short name of a zone at a date: "CEST", "EDT", "UTC". en-US knows the American
+// abbreviations and en-GB the European ones; anything else stays "GMT+2" and the like.
+function zoneAbbreviation(date: Date, timeZone: string): string {
+  let fallback = "";
+  for (const locale of ["en-US", "en-GB"]) {
+    const name = new Intl.DateTimeFormat(locale, { timeZone, timeZoneName: "short" })
+      .formatToParts(date)
+      .find((part) => part.type === "timeZoneName")?.value;
+    if (!name) continue;
+    if (!/^GMT[+-]/.test(name)) return name;
+    fallback ||= name;
+  }
+  return fallback;
+}
+
+// "2026-10-14 01:29:27 CEST": the time in the admin zone with the zone's short name.
+export function formatTime(
+  iso: string | null | undefined,
+  timeZone: string = adminTimeZone(),
+): string {
   if (!iso) return "–";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return `${date.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  ) as Record<string, string>;
+  const time = `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${time} ${zoneAbbreviation(date, timeZone)}`.trim();
 }
 
 // Catalog text with `code` spans, escaped, the spans as <code>.
@@ -59,7 +107,7 @@ function jobTitle(job: Job): string {
   return job.title ?? job.mealieSlug ?? job.mealieRecipeId;
 }
 
-function jobsTable(jobs: readonly Job[], t: AdminMessages): SafeHtml {
+function jobsTable(jobs: readonly Job[], t: AdminMessages, status: SavedStatus): SafeHtml {
   const l = t.jobsTable;
   if (jobs.length === 0) return html`<p class="muted">${l.empty}</p>`;
   return html`<div class="scroll">
@@ -87,7 +135,7 @@ function jobsTable(jobs: readonly Job[], t: AdminMessages): SafeHtml {
                 ${
                   job.mcRecipeUrl
                     ? html`<a href="${safeHref(job.mcRecipeUrl)}" rel="noreferrer"
-                        >${l.draft(job.mcRecipeId ?? "")}</a
+                        >${l.recipeLink(job.mcRecipeId ?? "", status)}</a
                       >`
                     : job.error
                       ? html`<span class="bad">${truncate(job.error, 80)}</span>`
@@ -107,7 +155,9 @@ export interface DashboardData {
   worker: WorkerStatus | null;
   jobs: Job[];
   formToken: string;
-  recipeStatus: string;
+  recipeStatus: SavedStatus;
+  // For telling whether the login has expired.
+  now: Date;
 }
 
 export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
@@ -122,7 +172,24 @@ export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
         <dt>${d.lastCheck}</dt>
         <dd>${formatTime(session.checkedAt)}</dd>
         <dt>${d.cookieAge}</dt>
-        <dd>${session.cookieAgeHours === null ? d.noCookie : d.hours(session.cookieAgeHours)}</dd>
+        <dd>
+          ${
+            session.cookieAgeHours === null
+              ? d.noCookie
+              : d.age(session.cookieAgeHours, session.cookieAgeFrom ?? "stored")
+          }
+        </dd>
+        ${
+          session.cookieExpiresAt
+            ? html`<dt>${d.cookieExpires}</dt>
+                <dd>
+                  ${d.expiresAt(
+                    formatTime(session.cookieExpiresAt),
+                    Date.parse(session.cookieExpiresAt) <= data.now.getTime(),
+                  )}
+                </dd>`
+            : ""
+        }
         <dt>${d.lastError}</dt>
         <dd>${session.lastError ?? "–"}</dd>
         <dt>${d.newRecipes}</dt>
@@ -188,7 +255,7 @@ export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
     </section>
     <section>
       <h2>${d.recentJobs}</h2>
-      ${jobsTable(data.jobs, t)}
+      ${jobsTable(data.jobs, t, data.recipeStatus)}
       <p><a href="/admin/jobs">${t.links.allJobs}</a></p>
     </section>
     <section>
@@ -198,6 +265,7 @@ export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
 }
 
 export interface JobListData {
+  recipeStatus: SavedStatus;
   jobs: Job[];
   status: JobStatus | null;
   search: string;
@@ -237,7 +305,7 @@ export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
       </form>
     </section>
     <section>
-      ${jobsTable(data.jobs, t)}
+      ${jobsTable(data.jobs, t, data.recipeStatus)}
       <p>
         ${
           data.offset > 0
@@ -254,6 +322,7 @@ export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
 }
 
 export interface JobDetailData {
+  recipeStatus: SavedStatus;
   job: Job;
   events: JobEvent[];
   formToken: string;
@@ -296,7 +365,7 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
           ${
             job.mcRecipeUrl
               ? html`<a href="${safeHref(job.mcRecipeUrl)}" rel="noreferrer"
-                  >${l.openDraft(job.mcRecipeId ?? "")}</a
+                  >${l.openRecipe(job.mcRecipeId ?? "", data.recipeStatus)}</a
                 >`
               : "–"
           }
@@ -327,7 +396,11 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
         ${
           job.ingredients && job.ingredients.unresolvedNames.length > 0
             ? html`<dt>${l.withoutId}</dt>
-                <dd>${job.ingredients.unresolvedNames.join(", ")}</dd>`
+                <dd>
+                  <ul>
+                    ${job.ingredients.unresolvedNames.map((name) => html`<li>${name}</li>`)}
+                  </ul>
+                </dd>`
             : ""
         }
         <dt>${l.error}</dt>
@@ -338,8 +411,8 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
           job.status === "running"
             ? html`<span class="muted">${l.runningLocked}</span>`
             : [
-                action("retry", l.retry),
-                " ",
+                // A plain retry of a skipped job would only skip again.
+                job.status === "skipped" ? "" : [action("retry", l.retry), " "],
                 action(
                   "retry",
                   l.forceRebuild,
@@ -351,6 +424,7 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
         }
       </p>
     </section>
+    ${conversionNotes(job, t)}
     <section>
       <h2>${l.events}</h2>
       <div class="scroll">
@@ -381,12 +455,58 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
     </section>`;
 }
 
+// The review hints and converter warnings of the conversion stored on the job.
+export function storedNotes(job: Pick<Job, "conversion">): { hints: string[]; warnings: string[] } {
+  const result = job.conversion?.result;
+  if (!result || typeof result !== "object") return { hints: [], warnings: [] };
+  const record = result as { reviewHints?: unknown; warnings?: unknown; recipe?: unknown };
+  const recipe = record.recipe as { reviewHints?: unknown } | undefined;
+  const texts = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
+      : [];
+  return {
+    hints: [...new Set([...texts(record.reviewHints), ...texts(recipe?.reviewHints)])],
+    warnings: texts(record.warnings),
+  };
+}
+
+function conversionNotes(job: Job, t: AdminMessages): SafeHtml | string {
+  const { hints, warnings } = storedNotes(job);
+  if (hints.length === 0 && warnings.length === 0) return "";
+  const l = t.jobDetail;
+  return html`<section>
+    ${
+      hints.length > 0
+        ? html`<h2>${l.reviewHints}</h2>
+            <ul>
+              ${hints.map((hint) => html`<li>${hint}</li>`)}
+            </ul>`
+        : ""
+    }
+    ${
+      warnings.length > 0
+        ? html`<h2>${l.warnings}</h2>
+            <ul>
+              ${warnings.map((warning) => html`<li class="warn">${warning}</li>`)}
+            </ul>`
+        : ""
+    }
+  </section>`;
+}
+
 // Where the systemIngredientIds of the draft came from.
 function ingredientStats(job: Job, t: AdminMessages): string {
   const stats = job.ingredients;
   if (!stats) return "–";
   if (!stats.enabled) return t.jobDetail.resolutionOff(stats.unresolved);
-  return t.jobDetail.resolution(stats.catalog, stats.cache, stats.search, stats.unresolved);
+  return t.jobDetail.resolution(
+    stats.catalog,
+    stats.catalogRelaxed ?? 0,
+    stats.cache,
+    stats.search,
+    stats.unresolved,
+  );
 }
 
 export function dryRunForm(recipe: string, scale: number, t: AdminMessages): SafeHtml {
@@ -409,6 +529,7 @@ export function dryRunForm(recipe: string, scale: number, t: AdminMessages): Saf
 }
 
 export interface DryRunData {
+  recipeStatus: SavedStatus;
   recipeParam: string;
   scale: number;
   formToken: string;
@@ -447,7 +568,7 @@ export function dryRunView(data: DryRunData, t: AdminMessages): SafeHtml {
               data.sent
                 ? html`${l.sentAt(formatTime(data.sent.createdAt))}
                     <a href="${safeHref(data.sent.mcRecipeUrl)}" rel="noreferrer"
-                      >${t.jobsTable.draft(data.sent.mcRecipeId)}</a
+                      >${t.jobsTable.recipeLink(data.sent.mcRecipeId, data.recipeStatus)}</a
                     >
                     ${l.wouldSkip}`
                 : l.no

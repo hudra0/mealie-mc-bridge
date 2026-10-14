@@ -5,7 +5,8 @@
 //
 // A name matches only when it is the same after normalization: no fuzzy matching, no
 // stemming, no partial hits. A wrong id is worse than none, because the app would file the
-// ingredient under a different product.
+// ingredient under a different product. The careful second try with qualifiers removed and
+// the suggestions for the converter live in catalog-match.ts.
 
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

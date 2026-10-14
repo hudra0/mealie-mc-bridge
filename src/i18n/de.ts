@@ -1,6 +1,6 @@
 // German texts for the timeline, mails and admin pages.
 
-import { escapeMarkdown, formatDate, shorten } from "./format.js";
+import { escapeMarkdown, formatDate, formatNumber, shorten } from "./format.js";
 import type { FailureStage, Messages } from "./index.js";
 
 const MAX_DETAIL = 400;
@@ -21,7 +21,10 @@ export const de: Messages = {
   language: "de",
   intlLocale: INTL,
   timeline: {
-    createdSubject: "Monsieur Cuisine: Entwurf erstellt",
+    createdSubject: (status) =>
+      status === "draft"
+        ? "Monsieur Cuisine: Entwurf erstellt"
+        : "Monsieur Cuisine: Rezept privat gespeichert",
     created(text) {
       const status =
         text.status === "draft"
@@ -52,7 +55,8 @@ export const de: Messages = {
     },
     unchangedSubject: "Monsieur Cuisine: unverändert",
     unchanged(text) {
-      return `Unverändert, bereits gesendet am ${formatDate(text.sentAt, INTL)}: [Entwurf öffnen](${text.url})`;
+      const link = text.status === "draft" ? "Entwurf öffnen" : "Rezept öffnen";
+      return `Unverändert, bereits gesendet am ${formatDate(text.sentAt, INTL)}: [${link}](${text.url})`;
     },
     failedSubject(stage) {
       return `Monsieur Cuisine: Fehler – ${FAILURE_REASONS[stage]}`;
@@ -69,6 +73,10 @@ export const de: Messages = {
       return "Die Bridge ist gerade nicht bei Monsieur Cuisine angemeldet. Der Auftrag wartet und läuft automatisch weiter, sobald auf der Admin-Seite eine neue Sitzung hinterlegt ist.";
     },
     failureReasons: FAILURE_REASONS,
+  },
+  jobEvents: {
+    converting: "Konvertierung gestartet",
+    stillConverting: (seconds) => `Konvertierung läuft noch, ${seconds} s`,
   },
   email: {
     subjectPrefix: "Monsieur-Cuisine-Bridge",
@@ -176,7 +184,7 @@ export const de: Messages = {
       status: "Status",
       attempts: "Versuche",
       result: "Ergebnis",
-      draft: (id) => `Entwurf ${id}`,
+      recipeLink: (id, status) => `${status === "draft" ? "Entwurf" : "Rezept"} ${id}`,
     },
     dashboard: {
       session: "Monsieur-Cuisine-Sitzung",
@@ -184,7 +192,13 @@ export const de: Messages = {
       lastCheck: "Letzte Prüfung",
       cookieAge: "Alter des Cookies",
       noCookie: "kein Cookie",
-      hours: (count) => `${count} h`,
+      age: (hours, from) => {
+        const value =
+          hours < 48 ? `${formatNumber(hours, INTL)} h` : `${formatNumber(hours / 24, INTL)} Tage`;
+        return `${value} ${from === "login" ? "seit der Anmeldung" : "seit dem Speichern in der Bridge"}`;
+      },
+      cookieExpires: "Anmeldung läuft ab",
+      expiresAt: (time, expired) => `am ${time}${expired ? " (abgelaufen)" : ""}`,
       lastError: "Letzter Fehler",
       newRecipes: "Neue Rezepte",
       privatePublish: "nur auf dem Gerät gespeichert",
@@ -217,7 +231,8 @@ export const de: Messages = {
       job: "Auftrag",
       mealieRecipe: "Mealie-Rezept",
       monsieurCuisine: "Monsieur Cuisine",
-      openDraft: (id) => `Entwurf ${id} im Editor öffnen`,
+      openRecipe: (id, status) =>
+        `${status === "draft" ? "Entwurf" : "Rezept"} ${id} im Editor öffnen`,
       scale: "Faktor",
       servings: (count) => ` (${count} Portionen)`,
       attempts: "Versuche",
@@ -231,9 +246,11 @@ export const de: Messages = {
         `${input} Eingabe-Tokens${cached ? ` (${cached} aus dem Cache)` : ""}, ${output} Ausgabe-Tokens`,
       ingredientIds: "Zutaten-IDs",
       resolutionOff: (unresolved) => `Zuordnung ausgeschaltet (${unresolved} ohne ID)`,
-      resolution: (catalog, cache, search, unresolved) =>
-        `${catalog} aus dem Katalog, ${cache} aus dem Cache, ${search} aus der Suche, ${unresolved} ohne ID`,
+      resolution: (catalog, relaxed, cache, search, unresolved) =>
+        `${catalog} aus dem Katalog${relaxed > 0 ? ` (${relaxed} ohne Zusätze im Namen)` : ""}, ${cache} aus dem Cache, ${search} aus der Suche, ${unresolved} ohne ID`,
       withoutId: "Ohne ID",
+      reviewHints: "Prüfhinweise",
+      warnings: "Hinweise des Konverters",
       error: "Fehler",
       runningLocked: "Laufende Aufträge lassen sich nicht ändern.",
       retry: "Erneut versuchen",

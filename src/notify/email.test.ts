@@ -15,7 +15,10 @@ const status = (overrides: Partial<SessionStatus> = {}): SessionStatus => ({
   state: "expired",
   checkedAt: "2026-10-13T10:00:00.000Z",
   cookieSetAt: "2026-10-01T10:00:00.000Z",
+  cookieExpiresAt: null,
+  cookieIssuedAt: null,
   cookieAgeHours: 288,
+  cookieAgeFrom: "stored",
   lastError: "Monsieur Cuisine reported the session as expired",
   ...overrides,
 });

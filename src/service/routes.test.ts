@@ -250,7 +250,9 @@ describe("end to end with fake clients", () => {
     }
     expect(svc.mc.payloads).toHaveLength(1);
     expect(svc.mealie.patches[0]?.patch.addTags?.[0]?.name).toBe("Monsieur Cuisine");
-    expect(svc.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: draft created");
+    expect(svc.mealie.timeline[0]?.event.subject).toBe(
+      "Monsieur Cuisine: recipe saved to the device",
+    );
     const health = (await svc.app.inject({ method: "GET", url: "/health" })).json<{
       status: string;
     }>();
@@ -261,7 +263,7 @@ describe("end to end with fake clients", () => {
     const resolveAll = vi.fn(() =>
       Promise.resolve({
         ids: new Map<string, number | null>([["kürbis", 9001]]),
-        stats: { catalog: 1, cache: 0, search: 0, unresolved: 1 },
+        stats: { catalog: 1, catalogRelaxed: 0, cache: 0, search: 0, unresolved: 1 },
         unresolvedNames: ["Rote Linsen"],
         enabled: true,
       }),

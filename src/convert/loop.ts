@@ -117,6 +117,7 @@ export function createConverter(options: ConverterOptions): Converter {
   return {
     async convert(request: ConversionRequest, opts = {}): Promise<ConversionResult> {
       const { signal } = opts;
+      const job = opts.jobId ? { jobId: opts.jobId } : {};
       if (request.locale !== knowledge.locale) {
         throw new RangeError(
           `This converter writes ${knowledge.locale} recipes; the request asks for ${request.locale}`,
@@ -148,7 +149,7 @@ export function createConverter(options: ConverterOptions): Converter {
         } catch (error) {
           if (signal?.aborted) throw abortReason(signal);
           logger.warn(
-            { provider: generator.provider, model, attempt, usage },
+            { ...job, provider: generator.provider, model, attempt, usage },
             "conversion stopped by a provider error",
           );
           throw error;
@@ -187,6 +188,7 @@ export function createConverter(options: ConverterOptions): Converter {
             const total: TokenUsage = cost === undefined ? usage : { ...usage, costUsd: cost };
             logger.info(
               {
+                ...job,
                 provider: generator.provider,
                 model,
                 attempt,
@@ -210,7 +212,7 @@ export function createConverter(options: ConverterOptions): Converter {
         lastErrors = errors;
         corrections.push({ attempt, errors });
         logger.warn(
-          { provider: generator.provider, model, attempt, errors: errors.length },
+          { ...job, provider: generator.provider, model, attempt, errors: errors.length },
           attempt <= maxCorrections
             ? "recipe has errors, asking for a correction"
             : "recipe has errors, giving up",

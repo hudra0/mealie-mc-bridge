@@ -29,6 +29,7 @@ import {
   planCategories,
   prepareRecipe,
 } from "../pipeline/prepare.js";
+import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
 import type { PipelineLocale } from "../pipeline/locale.js";
 import type { MealiePort } from "../pipeline/run-job.js";
 import type { WorkerStatus } from "../pipeline/worker.js";
@@ -68,6 +69,10 @@ export interface AdminOptions {
   language?: UiLanguage;
   logger: AppLogger;
   recipeStatus: "draft" | "private-publish";
+  // TAG_NAME, left out of the dry run's converter input as the job leaves it out.
+  tagName?: string;
+  // Offers the converter catalog names in the dry run, as the job does.
+  ingredients?: Pick<IngredientResolverPort, "suggest">;
   worker?: { status(): WorkerStatus; nudge?(): void };
   // The link to a recipe in Mealie, or null when the public URL is unknown.
   mealieRecipeUrl?: (slug: string) => string | null;
@@ -199,6 +204,7 @@ export function admin(
           jobs: options.store.jobs.listRecent({ limit: 20 }),
           formToken,
           recipeStatus: options.recipeStatus,
+          now: options.now?.() ?? new Date(),
         },
         t,
       ),
@@ -252,9 +258,14 @@ export function admin(
       ...(status ? { status } : {}),
       ...(search ? { search } : {}),
     });
-    return render(reply, t.titles.jobs, jobListView({ jobs, status, search, offset, limit }, t), {
-      notice: notice(request),
-    });
+    return render(
+      reply,
+      t.titles.jobs,
+      jobListView({ jobs, status, search, offset, limit, recipeStatus: options.recipeStatus }, t),
+      {
+        notice: notice(request),
+      },
+    );
   });
 
   app.get<{ Params: { id: string } }>("/admin/jobs/:id", (request, reply) => {
@@ -272,6 +283,7 @@ export function admin(
           events: found.events,
           formToken,
           mealieUrl: slug && options.mealieRecipeUrl ? options.mealieRecipeUrl(slug) : null,
+          recipeStatus: options.recipeStatus,
         },
         t,
       ),
@@ -324,7 +336,7 @@ export function admin(
     const recipeParam = typeof query.recipe === "string" ? query.recipe.trim().slice(0, 200) : "";
     const scaleRaw = typeof query.scale === "string" ? Number(query.scale) : 1;
     const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 && scaleRaw <= MAX_SCALE ? scaleRaw : 1;
-    const data: DryRunData = { recipeParam, scale, formToken };
+    const data: DryRunData = { recipeParam, scale, formToken, recipeStatus: options.recipeStatus };
     if (!recipeParam) return render(reply, t.titles.dryRun, dryRunView(data, t));
 
     let recipe;
@@ -334,7 +346,9 @@ export function admin(
       data.loadError = t.errors.recipeNotLoaded(errorMessage(error));
       return render(reply, t.titles.dryRun, dryRunView(data, t), { status: 502 });
     }
-    const prepared = prepareRecipe(recipe, scale, options.limits, options.locale);
+    const prepared = prepareRecipe(recipe, scale, options.limits, options.locale, {
+      ...(options.tagName ? { excludeTags: [options.tagName] } : {}),
+    });
     data.title = recipe.name;
     data.prepared = prepared;
     data.sent = options.store.mcRecipes.find(recipe.id, scale, prepared.hash);
@@ -355,7 +369,9 @@ export function admin(
             },
           );
           const result = await options.converter.convert(
-            conversionRequest(recipe, prepared, plan, options.locale.pack.locale),
+            conversionRequest(recipe, prepared, plan, options.locale.pack.locale, {
+              ingredients: options.ingredients,
+            }),
           );
           data.conversion = { plan, result, checked: checkConverted(result, plan, options.limits) };
         } catch (error) {

@@ -29,6 +29,9 @@ export interface RenderOptions {
   servings: number;
   ingredients: readonly ScaledIngredient[];
   labels: RenderLabels;
+  // Tags left out of the meta line, compared without case: the bridge's own TAG_NAME,
+  // which says nothing about the dish.
+  excludeTags?: readonly string[];
 }
 
 function unitText(item: ScaledIngredient): string {
@@ -157,7 +160,10 @@ function metaLine(recipe: MealieRecipe, options: RenderOptions): string {
   }
   const categories = recipe.recipeCategory.map((category) => category.name).filter(Boolean);
   if (categories.length > 0) parts.push(`${labels.categories}: ${categories.join(", ")}`);
-  const tags = recipe.tags.map((tag) => tag.name).filter(Boolean);
+  const excluded = new Set((options.excludeTags ?? []).map((tag) => tag.trim().toLowerCase()));
+  const tags = recipe.tags
+    .map((tag) => tag.name)
+    .filter((name) => name && !excluded.has(name.trim().toLowerCase()));
   if (tags.length > 0) parts.push(`${labels.tags}: ${tags.join(", ")}`);
   return parts.join(" · ");
 }

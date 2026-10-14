@@ -247,6 +247,25 @@
       "paniermehl": "semmelbrösel"
     }
   },
+  "qualifierSuffixes": [
+    "zum Garnieren",
+    "zum Servieren",
+    "zum Verdünnen",
+    "zum Bestreuen",
+    "zum Beträufeln",
+    "zum Dekorieren",
+    "zur Dekoration",
+    "nach Belieben",
+    "nach Geschmack",
+    "(optional)",
+    "optional"
+  ],
+  "buyingFormSuffixes": {
+    "aus der Dose/Glas": ["dose", "glas"],
+    "aus der Dose": ["dose"],
+    "aus dem Glas": ["glas"],
+    "frisch": ["frisch"]
+  },
   "categoryMatching": {
     "stopwords": ["küche", "rezept", "rezepte", "gericht", "gerichte", "essen"],
     "joiners": ["und"],

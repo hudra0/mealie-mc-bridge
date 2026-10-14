@@ -135,6 +135,7 @@ export function buildService(parts: ServiceParts): Service {
     language: config.UI_LANGUAGE,
     logger,
     recipeStatus: config.MC_RECIPE_STATUS,
+    tagName: config.TAG_NAME,
     ...(parts.ingredients ? { ingredients: parts.ingredients } : {}),
     worker: activeWorker,
     mealieRecipeUrl: (slug) => mealieRecipeLink(config, slug),

@@ -197,7 +197,9 @@ class JobRun {
     this.#event("info", `Loaded recipe "${recipe.name}" (${recipe.slug})`);
 
     const prepared = await this.#stage("prepare", () =>
-      prepareRecipe(recipe, job.scale, deps.limits, deps.locale),
+      prepareRecipe(recipe, job.scale, deps.limits, deps.locale, {
+        excludeTags: [deps.config.TAG_NAME],
+      }),
     );
     this.#jobs.update(job.id, { servings: prepared.servings });
     const unparsed = prepared.normalized.filter((item) => item.source === "unparsed").length;

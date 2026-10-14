@@ -411,8 +411,8 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
           job.status === "running"
             ? html`<span class="muted">${l.runningLocked}</span>`
             : [
-                action("retry", l.retry),
-                " ",
+                // A plain retry of a skipped job would only skip again.
+                job.status === "skipped" ? "" : [action("retry", l.retry), " "],
                 action(
                   "retry",
                   l.forceRebuild,

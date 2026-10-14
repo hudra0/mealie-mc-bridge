@@ -21,6 +21,7 @@ import {
   fakeNotifier,
   fakePrepareImage,
   limits,
+  mealieRecipe,
   silentLogger,
   type FakeConverter,
   type FakeMc,
@@ -423,6 +424,23 @@ describe("runJob progress and logs", () => {
     const job = s.claim();
     await runJob(job, s.deps);
     expect(messages(s, job).some((line) => line.includes(" in 2 attempts ("))).toBe(true);
+  });
+});
+
+describe("runJob converter input", () => {
+  it("keeps the bridge's own tag out of the converter input and in Mealie", async () => {
+    const recipe = mealieRecipe({
+      tags: [
+        { id: "00000000-0000-4000-8000-000000000301", name: "Vegetarisch", slug: "vegetarisch" },
+        { id: TAG.id, name: TAG.name, slug: TAG.slug },
+      ],
+    });
+    const s = setup({ mealie: { recipe } });
+    await runJob(s.claim({ force: true }), s.deps);
+    const rendered = s.converter.requests[0]?.rendered ?? "";
+    expect(rendered).toContain("Vegetarisch");
+    expect(rendered).not.toContain("Monsieur Cuisine");
+    expect(s.mealie.patches[0]?.patch.addTags).toEqual([TAG]);
   });
 });
 

@@ -286,3 +286,29 @@ describe("plainText", () => {
     expect(plainText(undefined)).toBe("");
   });
 });
+
+describe("excluded tags", () => {
+  const tag = (name: string) => ({
+    id: `00000000-0000-4000-8000-0000000003${name.length}`,
+    name,
+    slug: name.toLowerCase().replace(/ /g, "-"),
+  });
+  const recipe = minimal({ tags: [tag("Vegetarisch"), tag("Monsieur Cuisine")] });
+  const options = { scale: 1, servings: 4, ingredients: [], labels: deLabels };
+
+  it("leaves the bridge's own tag out of the meta line, whatever its case", () => {
+    expect(renderRecipeForLlm(recipe, options)).toContain("Tags: Vegetarisch, Monsieur Cuisine");
+    const rendered = renderRecipeForLlm(recipe, {
+      ...options,
+      excludeTags: [" monsieur cuisine "],
+    });
+    expect(rendered).toContain("Tags: Vegetarisch");
+    expect(rendered).not.toContain("Monsieur Cuisine");
+  });
+
+  it("drops the tags label when no tag is left", () => {
+    const only = minimal({ tags: [tag("Monsieur Cuisine")] });
+    const rendered = renderRecipeForLlm(only, { ...options, excludeTags: ["Monsieur Cuisine"] });
+    expect(rendered).not.toContain("Tags:");
+  });
+});

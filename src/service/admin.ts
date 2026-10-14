@@ -69,6 +69,8 @@ export interface AdminOptions {
   language?: UiLanguage;
   logger: AppLogger;
   recipeStatus: "draft" | "private-publish";
+  // TAG_NAME, left out of the dry run's converter input as the job leaves it out.
+  tagName?: string;
   // Offers the converter catalog names in the dry run, as the job does.
   ingredients?: Pick<IngredientResolverPort, "suggest">;
   worker?: { status(): WorkerStatus; nudge?(): void };
@@ -344,7 +346,9 @@ export function admin(
       data.loadError = t.errors.recipeNotLoaded(errorMessage(error));
       return render(reply, t.titles.dryRun, dryRunView(data, t), { status: 502 });
     }
-    const prepared = prepareRecipe(recipe, scale, options.limits, options.locale);
+    const prepared = prepareRecipe(recipe, scale, options.limits, options.locale, {
+      ...(options.tagName ? { excludeTags: [options.tagName] } : {}),
+    });
     data.title = recipe.name;
     data.prepared = prepared;
     data.sent = options.store.mcRecipes.find(recipe.id, scale, prepared.hash);

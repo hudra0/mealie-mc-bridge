@@ -42,6 +42,8 @@ export function prepareRecipe(
   scale: number,
   limits: DeviceLimits,
   locale: Pick<PipelineLocale, "labels" | "pack">,
+  // The bridge's own tag (TAG_NAME), kept out of the converter input.
+  options: { excludeTags?: readonly string[] } = {},
 ): PreparedRecipe {
   const normalized = normalizeIngredients(recipe);
   const scaled = scaleIngredients(normalized, scale);
@@ -51,6 +53,7 @@ export function prepareRecipe(
     servings,
     ingredients: scaled,
     labels: locale.labels,
+    ...(options.excludeTags ? { excludeTags: options.excludeTags } : {}),
   });
   const hash = sourceHash(recipe, normalized, scale, locale.pack.locale);
   return { normalized, scaled, servings, rendered, hash };

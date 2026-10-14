@@ -416,6 +416,20 @@ describe("jobs", () => {
     expect(body).toContain('<li class="warn">Fill level close to the limit</li>');
   });
 
+  it("offers only the forced rebuild for a skipped job", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    svc.store.jobs.finish(job.id, "skipped", {
+      mcRecipeId: 4242,
+      mcRecipeUrl: "https://example.com/r",
+    });
+    const body = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(body).toContain(">Force rebuild<");
+    expect(body).not.toContain(">Retry<");
+    svc.store.jobs.update(job.id, { status: "failed" });
+    expect((await get(`/admin/jobs/${job.id}`)).body).toContain(">Retry<");
+  });
+
   it("answers 404 for an unknown job", async () => {
     svc = testService();
     expect((await get("/admin/jobs/unknown")).statusCode).toBe(404);
@@ -478,6 +492,20 @@ describe("dry run", () => {
     expect(body).toContain('<input type="hidden" name="convert" value="1" />');
     expect(converter.requests).toEqual([]);
     expect(svc.mc.calls).toEqual([]);
+  });
+
+  it("leaves the bridge's own tag out of the converter input", async () => {
+    const recipe = mealieRecipe({
+      tags: [
+        { id: "00000000-0000-4000-8000-000000000301", name: "Vegetarisch", slug: "vegetarisch" },
+        { id: "tag-1", name: "Monsieur Cuisine", slug: "monsieur-cuisine" },
+      ],
+    });
+    svc = testService({ mealie: { recipe } });
+    const body = (await get("/admin/dry-run?recipe=kurbis-linsen-suppe")).body;
+    const input = body.slice(body.indexOf("<pre>"), body.indexOf("</pre>"));
+    expect(input).toContain("Tags: Vegetarisch");
+    expect(input).not.toContain("Monsieur Cuisine");
   });
 
   it("escapes a recipe title with markup", async () => {

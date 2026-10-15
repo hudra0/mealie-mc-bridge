@@ -2,7 +2,7 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
-## Unreleased
+## 0.3.0 (2026-10-15)
 
 Security hardening after an audit of 0.2.0; it applies to 0.2.1 and 0.2.2 as well. Read "What to do" before you upgrade: the bridge refuses to start until the admin credentials are set.
 

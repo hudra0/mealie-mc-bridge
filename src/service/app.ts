@@ -48,6 +48,8 @@ export interface ServiceParts {
   server?: FastifyServerOptions;
   workerBackoffMs?: (retry: number) => number;
   formToken?: string;
+  // Signs the admin login cookie: SETTINGS_KEY. Random when left out.
+  adminSessionKey?: Buffer;
 }
 
 export interface Service {
@@ -128,6 +130,7 @@ export function buildService(parts: ServiceParts): Service {
         ? { user: config.ADMIN_USER, password: config.ADMIN_PASSWORD }
         : null,
     ...(config.ADMIN_HOSTS ? { allowedHosts: config.ADMIN_HOSTS } : {}),
+    ...(parts.adminSessionKey ? { sessionKey: parts.adminSessionKey } : {}),
     store,
     session: parts.session,
     mealie: parts.mealie,

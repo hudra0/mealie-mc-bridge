@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import type { McUser } from "../mc/index.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
+import { ADMIN_COOKIE, adminSessions } from "../service/admin-auth.js";
 import { buildService, type Service, type ServiceConfig } from "../service/app.js";
 import { SessionManager } from "../session/manager.js";
 import {
@@ -25,6 +26,7 @@ import { tempStore, type TempStore } from "./temp.js";
 export const WEBHOOK_TOKEN = "t".repeat(48);
 export const FORM_TOKEN = "f".repeat(64);
 export const ADMIN = { user: "admin", password: "correct horse" };
+export const ADMIN_SESSION_KEY = Buffer.alloc(32, 7);
 
 export interface TestService extends Service {
   store: TempStore;
@@ -90,6 +92,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     notifier,
     logger: silentLogger(),
     formToken: FORM_TOKEN,
+    adminSessionKey: ADMIN_SESSION_KEY,
     workerBackoffMs: () => 1,
     ...(options.ingredients ? { ingredients: options.ingredients } : {}),
     ...(options.logger ? { server: options.logger } : {}),
@@ -113,6 +116,11 @@ export function testService(options: TestServiceOptions = {}): TestService {
 
 export function basicAuth(user = ADMIN.user, password = ADMIN.password): string {
   return `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`;
+}
+
+// A Cookie header with a valid admin login, as the login form would set it.
+export function adminCookie(now = new Date()): string {
+  return `${ADMIN_COOKIE}=${adminSessions(ADMIN_SESSION_KEY, ADMIN).issue(now)}`;
 }
 
 export function form(fields: Record<string, string>): string {

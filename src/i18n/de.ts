@@ -117,7 +117,27 @@ export const de: Messages = {
   },
   admin: {
     htmlLang: "de",
-    nav: { dashboard: "Übersicht", jobs: "Aufträge", dryRun: "Probelauf" },
+    nav: {
+      dashboard: "Übersicht",
+      jobs: "Aufträge",
+      dryRun: "Probelauf",
+      settings: "Einstellungen",
+      logout: "Abmelden",
+    },
+    header: {
+      mcSession: "MC-Sitzung",
+      signedIn: (user) => `angemeldet als ${user}`,
+      noPassword: "ohne Passwort",
+    },
+    login: {
+      title: "Anmelden",
+      intro: "Melde dich mit ADMIN_USER und ADMIN_PASSWORD an. Die Anmeldung gilt 12 Stunden.",
+      user: "Benutzer",
+      password: "Passwort",
+      submit: "Anmelden",
+      wrongCredentials: "Benutzer oder Passwort stimmen nicht.",
+    },
+    autoRefresh: "Die Seite lädt alle 5 Sekunden neu, solange ein Auftrag wartet oder läuft.",
     authBanner: "Die Admin-Seiten haben kein Passwort. Setze ADMIN_USER und ADMIN_PASSWORD.",
     notices: {
       "session-saved":
@@ -127,6 +147,7 @@ export const de: Messages = {
       "job-forced":
         "Der Auftrag steht wieder in der Warteschlange und wird gesendet, auch wenn sich das Rezept nicht geändert hat.",
       "job-cancelled": "Auftrag abgebrochen.",
+      "logged-out": "Abgemeldet.",
     },
     plain: {
       unknownHost: "Unbekannter Hostname. Trage ihn in ADMIN_HOSTS ein oder nutze die IP-Adresse.",
@@ -266,6 +287,7 @@ export const de: Messages = {
       recipePlaceholder: "ID oder Slug",
       scale: "Faktor",
       preview: "Vorschau",
+      alsoConvert: "Gleich umwandeln (ruft das Sprachmodell auf und kostet Geld)",
       servings: "Ergibt",
       servingsEstimated:
         "Vorgabe, im Rezept nicht angegeben; das Modell schätzt und meldet es als Prüfhinweis",

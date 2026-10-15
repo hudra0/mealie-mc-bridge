@@ -117,7 +117,27 @@ export const en: Messages = {
   },
   admin: {
     htmlLang: "en",
-    nav: { dashboard: "Dashboard", jobs: "Jobs", dryRun: "Dry run" },
+    nav: {
+      dashboard: "Dashboard",
+      jobs: "Jobs",
+      dryRun: "Dry run",
+      settings: "Settings",
+      logout: "Log out",
+    },
+    header: {
+      mcSession: "MC session",
+      signedIn: (user) => `signed in as ${user}`,
+      noPassword: "no password",
+    },
+    login: {
+      title: "Log in",
+      intro: "Log in with ADMIN_USER and ADMIN_PASSWORD. The login lasts 12 hours.",
+      user: "User",
+      password: "Password",
+      submit: "Log in",
+      wrongCredentials: "User or password is wrong.",
+    },
+    autoRefresh: "This page reloads every 5 seconds while a job is queued or running.",
     authBanner: "The admin pages have no password. Set ADMIN_USER and ADMIN_PASSWORD.",
     notices: {
       "session-saved": "Session saved. Jobs that were waiting for it are queued again.",
@@ -125,6 +145,7 @@ export const en: Messages = {
       "job-queued": "Job queued again.",
       "job-forced": "Job queued again; it will be sent even if the recipe is unchanged.",
       "job-cancelled": "Job cancelled.",
+      "logged-out": "Logged out.",
     },
     plain: {
       unknownHost: "Unknown host name. Add it to ADMIN_HOSTS or use the IP address.",
@@ -264,6 +285,7 @@ export const en: Messages = {
       recipePlaceholder: "id or slug",
       scale: "Scale",
       preview: "Preview",
+      alsoConvert: "Convert right away (calls the language model; this costs money)",
       servings: "Serving size",
       servingsEstimated:
         "default, not stated in the recipe; the model estimates it and flags it as a review hint",

@@ -119,6 +119,7 @@ async function main(): Promise<void> {
     notifier,
     ingredients,
     logger,
+    adminSessionKey: settingsKey,
     server: { loggerInstance: logger },
   });
 

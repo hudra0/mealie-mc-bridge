@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { McNetworkError, McSessionError } from "../mc/index.js";
 import { ConverterNotConfiguredError } from "../pipeline/converter-port.js";
+import { relativeTime } from "./admin-views.js";
 import {
   RECIPE_ID,
   conversionResult,
@@ -8,7 +9,15 @@ import {
   fakeConverter,
   mealieRecipe,
 } from "../testing/fakes.js";
-import { FORM_TOKEN, basicAuth, form, testService, type TestService } from "../testing/service.js";
+import {
+  ADMIN,
+  FORM_TOKEN,
+  adminCookie,
+  basicAuth,
+  form,
+  testService,
+  type TestService,
+} from "../testing/service.js";
 
 let svc: TestService | null = null;
 afterEach(async () => {
@@ -16,7 +25,7 @@ afterEach(async () => {
   svc = null;
 });
 
-const auth = { authorization: basicAuth() };
+const auth = { cookie: adminCookie() };
 const formHeaders = { ...auth, "content-type": "application/x-www-form-urlencoded" };
 
 function get(url: string, headers: Record<string, string> = auth) {
@@ -32,23 +41,132 @@ function post(
 }
 
 describe("admin authentication", () => {
-  it("asks for credentials", async () => {
+  it("sends visitors without a login to the login form", async () => {
     svc = testService();
-    const response = await get("/admin", {});
-    expect(response.statusCode).toBe(401);
-    expect(response.headers["www-authenticate"]).toBe(
-      'Basic realm="mc-bridge admin", charset="UTF-8"',
+    const response = await get("/admin/jobs?status=failed", {});
+    expect(response.statusCode).toBe(303);
+    expect(response.headers.location).toBe(
+      `/admin/login?next=${encodeURIComponent("/admin/jobs?status=failed")}`,
     );
-    expect((await get("/admin", { authorization: basicAuth("admin", "wrong") })).statusCode).toBe(
-      401,
+    // Basic Auth no longer opens the pages.
+    expect((await get("/admin", { authorization: basicAuth() })).statusCode).toBe(303);
+    const posted = await post(
+      "/admin/session",
+      { _csrf: FORM_TOKEN, cookie: "a=1" },
+      {
+        "content-type": "application/x-www-form-urlencoded",
+      },
     );
-    expect(
-      (await get("/admin", { authorization: basicAuth("root", "correct horse") })).statusCode,
-    ).toBe(401);
-    expect((await get("/admin/jobs", {})).statusCode).toBe(401);
-    expect(
-      (await post("/admin/session", { _csrf: FORM_TOKEN, cookie: "a=1" }, {})).statusCode,
-    ).toBe(401);
+    expect(posted.statusCode).toBe(303);
+    expect(posted.headers.location).toBe("/admin/login");
+    expect(svc.validate).not.toHaveBeenCalled();
+    const login = await get("/admin/login", {});
+    expect(login.statusCode).toBe(200);
+    expect(login.body).toContain('name="password"');
+    expect(login.body).toContain(`name="_csrf" value="${FORM_TOKEN}"`);
+    expect(login.body).not.toContain('action="/admin/logout"');
+  });
+
+  it("logs in with the right credentials and sets a signed session cookie", async () => {
+    svc = testService();
+    const response = await post(
+      "/admin/login",
+      { _csrf: FORM_TOKEN, user: ADMIN.user, password: ADMIN.password, next: "/admin/jobs" },
+      { "content-type": "application/x-www-form-urlencoded" },
+    );
+    expect(response.statusCode).toBe(303);
+    expect(response.headers.location).toBe("/admin/jobs");
+    const setCookie = String(response.headers["set-cookie"]);
+    expect(setCookie).toMatch(/^mcb_admin=v1\.\d+\.[\w-]+\.[\w-]+; Path=\/admin; Max-Age=43200;/);
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+    expect(setCookie).not.toContain("Secure");
+    const cookie = setCookie.split(";")[0] ?? "";
+    const page = await get("/admin", { cookie });
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain("signed in as admin");
+    expect(page.body).toContain('action="/admin/logout"');
+    // Already signed in: the login form sends you on.
+    expect((await get("/admin/login", { cookie })).headers.location).toBe("/admin");
+  });
+
+  it("marks the cookie Secure behind an HTTPS proxy and ignores foreign next targets", async () => {
+    svc = testService();
+    const response = await post(
+      "/admin/login",
+      {
+        _csrf: FORM_TOKEN,
+        user: ADMIN.user,
+        password: ADMIN.password,
+        next: "//evil.example.com/admin",
+      },
+      { "content-type": "application/x-www-form-urlencoded", "x-forwarded-proto": "https" },
+    );
+    expect(response.headers.location).toBe("/admin");
+    expect(String(response.headers["set-cookie"])).toContain("Secure");
+  });
+
+  it("refuses a wrong password or user without setting a cookie", async () => {
+    svc = testService();
+    for (const [user, password] of [
+      [ADMIN.user, "wrong"],
+      ["root", ADMIN.password],
+      ["", ""],
+    ] as const) {
+      const response = await post(
+        "/admin/login",
+        { _csrf: FORM_TOKEN, user, password },
+        { "content-type": "application/x-www-form-urlencoded" },
+      );
+      expect(response.statusCode).toBe(401);
+      expect(response.headers["set-cookie"]).toBeUndefined();
+      expect(response.body).toContain("User or password is wrong.");
+      expect(response.body).not.toContain(ADMIN.password);
+    }
+  });
+
+  it("needs the form token on the login form", async () => {
+    svc = testService();
+    const response = await post(
+      "/admin/login",
+      { user: ADMIN.user, password: ADMIN.password },
+      { "content-type": "application/x-www-form-urlencoded" },
+    );
+    expect(response.statusCode).toBe(403);
+    expect(response.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it("logs out and clears the cookie", async () => {
+    svc = testService();
+    const response = await post("/admin/logout", { _csrf: FORM_TOKEN });
+    expect(response.statusCode).toBe(303);
+    expect(response.headers.location).toBe("/admin/login?notice=logged-out");
+    expect(String(response.headers["set-cookie"])).toMatch(/^mcb_admin=; Path=\/admin; Max-Age=0;/);
+    expect((await get("/admin/login?notice=logged-out", {})).body).toContain("Logged out.");
+    const viaGet = await get("/admin/logout");
+    expect(viaGet.statusCode).toBe(303);
+    expect(String(viaGet.headers["set-cookie"])).toContain("Max-Age=0");
+    // The logout button needs the form token like every other form.
+    expect((await post("/admin/logout", {})).statusCode).toBe(403);
+  });
+
+  it("rejects a tampered, foreign or expired session cookie", async () => {
+    svc = testService();
+    const value = adminCookie().slice("mcb_admin=".length);
+    const [version, expiry, nonce, signature] = value.split(".");
+    const later = String(Number(expiry) + 86_400);
+    const status = async (cookie: string) => (await get("/admin", { cookie })).statusCode;
+    expect(await status(`mcb_admin=${version}.${later}.${nonce}.${signature}`)).toBe(303);
+    expect(await status(`mcb_admin=${version}.${expiry}.${nonce}.${"A".repeat(43)}`)).toBe(303);
+    expect(await status(`mcb_admin=${version}.${expiry}.${nonce}`)).toBe(303);
+    expect(await status("mcb_admin=garbage")).toBe(303);
+    expect(await status(`mcb_admin=${value}`)).toBe(200);
+    // Issued 13 hours ago: past the 12-hour lifetime.
+    expect(await status(adminCookie(new Date(Date.now() - 13 * 3_600_000)))).toBe(303);
+    // A new password ends every session.
+    await svc.dispose();
+    svc = testService({ config: { ADMIN_PASSWORD: "another password" } });
+    expect(await status(`mcb_admin=${value}`)).toBe(303);
   });
 
   it("lets the right credentials in", async () => {
@@ -624,5 +742,135 @@ describe("dry run", () => {
     });
     const second = (await get("/admin/dry-run?recipe=kurbis-linsen-suppe")).body;
     expect(second).toContain("a job would be skipped unless forced");
+  });
+});
+
+describe("session API", () => {
+  const json = (body: unknown, headers: Record<string, string>) =>
+    svc!.app.inject({
+      method: "POST",
+      url: "/admin/api/session",
+      headers: { "content-type": "application/json", ...headers },
+      payload: JSON.stringify(body),
+    });
+
+  it("stores a cookie sent with Basic Auth and answers with the session state", async () => {
+    svc = testService();
+    const response = await json({ cookie: "Cookie: a=1; b=2" }, { authorization: basicAuth() });
+    expect(response.statusCode).toBe(200);
+    const body = response.json<{ saved: boolean; session: Record<string, unknown> }>();
+    expect(body.saved).toBe(true);
+    expect(body.session.state).toBe("valid");
+    expect(JSON.stringify(body)).not.toContain("a=1");
+    expect(svc.validate).toHaveBeenCalledWith("a=1; b=2");
+    expect(response.headers["cache-control"]).toBe("no-store");
+  });
+
+  it("takes the admin session cookie as well", async () => {
+    svc = testService();
+    expect((await json({ cookie: "a=1" }, auth)).statusCode).toBe(200);
+    const state = await svc.app.inject({ method: "GET", url: "/admin/api/session", headers: auth });
+    expect(state.json<{ session: { state: string } }>().session.state).toBe("valid");
+  });
+
+  it("asks for credentials and refuses wrong ones", async () => {
+    svc = testService();
+    const missing = await json({ cookie: "a=1" }, {});
+    expect(missing.statusCode).toBe(401);
+    expect(missing.headers["www-authenticate"]).toContain("Basic");
+    expect(
+      (await json({ cookie: "a=1" }, { authorization: basicAuth("admin", "wrong") })).statusCode,
+    ).toBe(401);
+    expect(svc.validate).not.toHaveBeenCalled();
+  });
+
+  it("refuses bodies that are not JSON and posts from another origin", async () => {
+    svc = testService();
+    const formPost = await svc.app.inject({
+      method: "POST",
+      url: "/admin/api/session",
+      headers: { ...auth, "content-type": "text/plain" },
+      payload: '{"cookie":"a=1"}',
+    });
+    expect(formPost.statusCode).toBe(415);
+    const foreign = await json({ cookie: "a=1" }, { ...auth, origin: "https://evil.example.com" });
+    expect(foreign.statusCode).toBe(403);
+    expect(svc.validate).not.toHaveBeenCalled();
+  });
+
+  it("reports an empty, a rejected and an unchecked cookie", async () => {
+    svc = testService();
+    const headers = { authorization: basicAuth() };
+    expect((await json({}, headers)).statusCode).toBe(400);
+    svc.validate.mockRejectedValueOnce(
+      new McSessionError({
+        status: 401,
+        code: 110002,
+        serverMessage: "ExpiredAuthCookieException",
+        endpoint: "api/v1/users",
+        kind: "expired",
+      }),
+    );
+    const rejected = await json({ cookie: "a=secret" }, headers);
+    expect(rejected.statusCode).toBe(422);
+    expect(rejected.body).not.toContain("secret");
+    svc.validate.mockRejectedValueOnce(
+      new McNetworkError({ endpoint: "api/v1/users", timedOut: true, reason: "timeout" }),
+    );
+    const unchecked = await json({ cookie: "a=1" }, headers);
+    expect(unchecked.statusCode).toBe(502);
+    expect(unchecked.json<{ saved: boolean }>().saved).toBe(false);
+  });
+});
+
+describe("page layout", () => {
+  it("shows the Monsieur Cuisine session state in the header", async () => {
+    svc = testService({ seedCookie: "a=1" });
+    await svc.session.check();
+    const body = (await get("/admin/jobs")).body;
+    expect(body).toMatch(/MC session\s*<span class="badge ok"\s*>valid<\/span/);
+    expect(body).toContain('href="/admin/settings"');
+  });
+
+  it("reloads the job list and a job page while a job is queued or running", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    const list = (await get("/admin/jobs?status=queued&notice=job-queued")).body;
+    expect(list).toContain('http-equiv="refresh"');
+    expect(list).toContain('content="5; url=/admin/jobs?status=queued"');
+    expect(list).toContain("reloads every 5 seconds");
+    const detail = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(detail).toContain(`content="5; url=/admin/jobs/${job.id}"`);
+    svc.store.jobs.finish(job.id, "done", {});
+    expect((await get(`/admin/jobs/${job.id}`)).body).not.toContain('http-equiv="refresh"');
+    expect((await get("/admin/jobs")).body).not.toContain('http-equiv="refresh"');
+  });
+
+  it("shows event times relative and absolute", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    const body = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(body).toContain('<ol class="timeline">');
+    expect(body).toMatch(/<time datetime="[^"]+">(now|\d+ seconds? ago)<\/time>/);
+    expect(body).toMatch(/class="abs muted">\d{4}-\d\d-\d\d \d\d:\d\d:\d\d/);
+  });
+
+  it("offers scale and an immediate conversion in the dry-run form", async () => {
+    svc = testService();
+    const body = (await get("/admin/dry-run")).body;
+    expect(body).toContain('name="scale"');
+    expect(body).toContain('type="checkbox" name="convert" value="1"');
+    expect(body).toContain(`name="_csrf" value="${FORM_TOKEN}"`);
+  });
+});
+
+describe("relativeTime", () => {
+  it("picks seconds, minutes, hours or days", () => {
+    const now = new Date("2026-10-15T12:00:00.000Z");
+    expect(relativeTime("2026-10-15T11:59:30.000Z", now, "en")).toBe("30 seconds ago");
+    expect(relativeTime("2026-10-15T11:57:00.000Z", now, "en")).toBe("3 minutes ago");
+    expect(relativeTime("2026-10-15T09:00:00.000Z", now, "de")).toBe("vor 3 Stunden");
+    expect(relativeTime("2026-10-13T12:00:00.000Z", now, "en")).toBe("2 days ago");
+    expect(relativeTime("not a date", now, "en")).toBe("not a date");
   });
 });

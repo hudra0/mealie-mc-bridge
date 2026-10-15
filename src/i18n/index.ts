@@ -94,8 +94,19 @@ export interface EmailMessages {
 // The admin pages. Text in backticks is shown as code.
 export interface AdminMessages {
   htmlLang: string;
-  nav: { dashboard: string; jobs: string; dryRun: string };
+  nav: { dashboard: string; jobs: string; dryRun: string; settings: string; logout: string };
+  header: { mcSession: string; signedIn(user: string): string; noPassword: string };
   authBanner: string;
+  login: {
+    title: string;
+    intro: string;
+    user: string;
+    password: string;
+    submit: string;
+    wrongCredentials: string;
+  };
+  // Under the job list and a running job: the page reloads on its own.
+  autoRefresh: string;
   notices: Readonly<Record<string, string>>;
   plain: { unknownHost: string; authRequired: string; crossOrigin: string };
   titles: {
@@ -210,6 +221,7 @@ export interface AdminMessages {
     recipePlaceholder: string;
     scale: string;
     preview: string;
+    alsoConvert: string;
     servings: string;
     servingsEstimated: string;
     sourceHash: string;

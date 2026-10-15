@@ -8,7 +8,8 @@
 // - after a failure the next automatic attempt waits 1 hour, after two in a row 4 hours,
 //   after three or more 24 hours;
 // - a manual "Test login now" skips the waiting times, but never runs next to another
-//   attempt.
+//   attempt and at most every 3 minutes; manual attempts count neither toward the daily
+//   limit nor toward the backoff.
 // A failed attempt keeps a screenshot of the page (the last five stay) and its reason, so
 // the admin page can show what got in the way: a captcha, a second factor, a changed page.
 
@@ -30,6 +31,7 @@ export const AUTO_LOGIN_KEYS = {
   last: "autologin.last_attempt",
   attempts: "autologin.attempts",
   failures: "autologin.failures",
+  lastManual: "autologin.last_manual",
 } as const;
 
 const HOUR_MS = 60 * 60_000;
@@ -38,6 +40,7 @@ export const BACKOFF_MS = [HOUR_MS, 4 * HOUR_MS, 24 * HOUR_MS] as const;
 export const MAX_ATTEMPTS_PER_DAY = 3;
 export const KEEP_SCREENSHOTS = 5;
 export const LOGIN_TIMEOUT_MS = 120_000;
+export const MANUAL_COOLDOWN_MS = 3 * 60_000;
 
 // Why an attempt failed: a browser login failure, or the cookie it produced was refused
 // when the bridge checked it against the account.
@@ -54,7 +57,8 @@ export interface LoginAttempt {
   screenshot: string | null;
 }
 
-export type SkipReason = "no_credentials" | "running" | "too_soon" | "backoff" | "daily_limit";
+export type SkipReason =
+  "no_credentials" | "running" | "too_soon" | "backoff" | "daily_limit" | "cooldown";
 
 export type AutoLoginRun =
   | { status: "ok"; attempt: LoginAttempt }
@@ -68,6 +72,8 @@ export interface AutoLoginStatus {
   last: LoginAttempt | null;
   // When the next automatic attempt may run; null when nothing holds it back.
   nextAttemptAt: string | null;
+  // When the next manual test may run; null when it may run now.
+  manualAvailableAt: string | null;
   failures: number;
 }
 
@@ -143,11 +149,14 @@ export class AutoLogin {
     this.#options.logger.info({}, "Lidl account for the automatic login saved");
   }
 
+  // Removes the account and what it left behind: the browser profile with the Lidl
+  // session (unless a login is using it right now) and the screenshots.
   deleteCredentials(): void {
-    this.#settings.delete(AUTO_LOGIN_KEYS.email);
-    this.#settings.delete(AUTO_LOGIN_KEYS.password);
-    this.#settings.delete(AUTO_LOGIN_KEYS.failures);
-    this.#settings.delete(AUTO_LOGIN_KEYS.attempts);
+    for (const key of Object.values(AUTO_LOGIN_KEYS)) this.#settings.delete(key);
+    rmSync(this.#options.screenshotDir, { recursive: true, force: true });
+    if (this.#running === null) {
+      rmSync(this.#options.profileDir, { recursive: true, force: true });
+    }
     this.#options.logger.info({}, "Lidl account for the automatic login deleted");
   }
 
@@ -160,6 +169,7 @@ export class AutoLogin {
       running: this.#running !== null,
       last: this.#settings.getJson<LoginAttempt>(AUTO_LOGIN_KEYS.last),
       nextAttemptAt: configured && gate !== null ? gate.until : null,
+      manualAvailableAt: this.#manualCooldown(this.#now()),
       failures: this.#failures(),
     };
   }
@@ -173,7 +183,10 @@ export class AutoLogin {
     if (this.#running) return Promise.resolve({ status: "skipped", reason: "running" });
     if (!this.hasCredentials())
       return Promise.resolve({ status: "skipped", reason: "no_credentials" });
-    if (!options.manual) {
+    if (options.manual) {
+      const until = this.#manualCooldown(this.#now());
+      if (until) return Promise.resolve({ status: "skipped", reason: "cooldown", until });
+    } else {
       const gate = this.#gate(this.#now());
       if (gate) return Promise.resolve({ status: "skipped", ...gate });
     }
@@ -192,6 +205,12 @@ export class AutoLogin {
   screenshotFile(name: string): string | null {
     if (!SCREENSHOT_NAME.test(name)) return null;
     return this.#screenshots().includes(name) ? join(this.#options.screenshotDir, name) : null;
+  }
+
+  #manualCooldown(now: Date): string | null {
+    const last = Date.parse(this.#settings.get(AUTO_LOGIN_KEYS.lastManual) ?? "");
+    if (!Number.isFinite(last) || now.getTime() >= last + MANUAL_COOLDOWN_MS) return null;
+    return new Date(last + MANUAL_COOLDOWN_MS).toISOString();
   }
 
   // Why an automatic attempt may not run now, and until when.
@@ -222,7 +241,8 @@ export class AutoLogin {
     accept: (cookie: string) => Promise<void>;
   }): Promise<AutoLoginRun> {
     const started = this.#now();
-    this.#recordStart(started);
+    if (options.manual) this.#settings.set(AUTO_LOGIN_KEYS.lastManual, started.toISOString());
+    else this.#recordStart(started);
     const logger = this.#options.logger;
     logger.info({ manual: options.manual }, "automatic Monsieur Cuisine login started");
     let result: BrowserLoginResult;
@@ -247,7 +267,8 @@ export class AutoLogin {
     }
     let screenshot: string | null = null;
     try {
-      mkdirSync(this.#options.profileDir, { recursive: true });
+      // The profile holds the Lidl session: only the bridge user may read it.
+      mkdirSync(this.#options.profileDir, { recursive: true, mode: 0o700 });
       result = await (this.#options.login ?? browserLogin)({
         browser: this.#options.browser,
         profileDir: this.#options.profileDir,
@@ -299,12 +320,13 @@ export class AutoLogin {
     };
     this.#settings.setJson(AUTO_LOGIN_KEYS.last, attempt);
     const logger = this.#options.logger;
+    // Manual tests leave the backoff alone.
     if (failure === null) {
-      this.#settings.set(AUTO_LOGIN_KEYS.failures, "0");
+      if (!manual) this.#settings.set(AUTO_LOGIN_KEYS.failures, "0");
       logger.info({ manual }, "automatic Monsieur Cuisine login succeeded");
       return { status: "ok", attempt };
     }
-    const failures = this.#failures() + 1;
+    const failures = this.#failures() + (manual ? 0 : 1);
     this.#settings.set(AUTO_LOGIN_KEYS.failures, String(failures));
     logger.warn(
       { manual, code: failure.code, detail: failure.detail, failures },

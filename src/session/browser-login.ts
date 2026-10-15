@@ -136,6 +136,20 @@ function hostOf(url: string): string {
   }
 }
 
+export const CLOSE_TIMEOUT_MS = 10_000;
+
+export async function closeWithin(context: Pick<LoginContext, "close">, ms: number): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([
+    context.close().catch(() => undefined),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ms);
+      timer.unref();
+    }),
+  ]);
+  clearTimeout(timer);
+}
+
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export async function browserLogin(options: BrowserLoginOptions): Promise<BrowserLoginResult> {
@@ -220,6 +234,7 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
   } catch (error) {
     return await fail("error", error instanceof Error ? error.message : String(error));
   } finally {
-    await context?.close().catch(() => undefined);
+    // A browser that hangs on close must not keep the login marked as running.
+    if (context) await closeWithin(context, CLOSE_TIMEOUT_MS);
   }
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { McNetworkError, McSessionError } from "../mc/index.js";
 import { ConverterNotConfiguredError } from "../pipeline/converter-port.js";
+import { LoginThrottle } from "./admin-auth.js";
 import { relativeTime } from "./admin-views.js";
 import {
   RECIPE_ID,
@@ -12,6 +13,8 @@ import {
 import {
   ADMIN,
   FORM_TOKEN,
+  LOGIN_CSRF,
+  SESSION_CSRF,
   adminCookie,
   basicAuth,
   form,
@@ -52,7 +55,7 @@ describe("admin authentication", () => {
     expect((await get("/admin", { authorization: basicAuth() })).statusCode).toBe(303);
     const posted = await post(
       "/admin/session",
-      { _csrf: FORM_TOKEN, cookie: "a=1" },
+      { _csrf: SESSION_CSRF, cookie: "a=1" },
       {
         "content-type": "application/x-www-form-urlencoded",
       },
@@ -63,7 +66,10 @@ describe("admin authentication", () => {
     const login = await get("/admin/login", {});
     expect(login.statusCode).toBe(200);
     expect(login.body).toContain('name="password"');
-    expect(login.body).toContain(`name="_csrf" value="${FORM_TOKEN}"`);
+    // The login page carries its own token, never the one of a session or the secret.
+    expect(login.body).toContain(`name="_csrf" value="${LOGIN_CSRF}"`);
+    expect(login.body).not.toContain(SESSION_CSRF);
+    expect(login.body).not.toContain(FORM_TOKEN);
     expect(login.body).not.toContain('action="/admin/logout"');
   });
 
@@ -71,13 +77,13 @@ describe("admin authentication", () => {
     svc = testService();
     const response = await post(
       "/admin/login",
-      { _csrf: FORM_TOKEN, user: ADMIN.user, password: ADMIN.password, next: "/admin/jobs" },
+      { _csrf: LOGIN_CSRF, user: ADMIN.user, password: ADMIN.password, next: "/admin/jobs" },
       { "content-type": "application/x-www-form-urlencoded" },
     );
     expect(response.statusCode).toBe(303);
     expect(response.headers.location).toBe("/admin/jobs");
     const setCookie = String(response.headers["set-cookie"]);
-    expect(setCookie).toMatch(/^mcb_admin=v1\.\d+\.[\w-]+\.[\w-]+; Path=\/admin; Max-Age=43200;/);
+    expect(setCookie).toMatch(/^mcb_admin=v2\.\d+\.[\w-]+\.[\w-]+; Path=\/admin; Max-Age=43200;/);
     expect(setCookie).toContain("HttpOnly");
     expect(setCookie).toContain("SameSite=Lax");
     expect(setCookie).not.toContain("Secure");
@@ -95,7 +101,7 @@ describe("admin authentication", () => {
     const response = await post(
       "/admin/login",
       {
-        _csrf: FORM_TOKEN,
+        _csrf: LOGIN_CSRF,
         user: ADMIN.user,
         password: ADMIN.password,
         next: "//evil.example.com/admin",
@@ -115,7 +121,7 @@ describe("admin authentication", () => {
     ] as const) {
       const response = await post(
         "/admin/login",
-        { _csrf: FORM_TOKEN, user, password },
+        { _csrf: LOGIN_CSRF, user, password },
         { "content-type": "application/x-www-form-urlencoded" },
       );
       expect(response.statusCode).toBe(401);
@@ -125,36 +131,97 @@ describe("admin authentication", () => {
     }
   });
 
-  it("needs the form token on the login form", async () => {
+  it("needs the login form's own token on the login form", async () => {
     svc = testService();
-    const response = await post(
-      "/admin/login",
-      { user: ADMIN.user, password: ADMIN.password },
-      { "content-type": "application/x-www-form-urlencoded" },
-    );
-    expect(response.statusCode).toBe(403);
-    expect(response.headers["set-cookie"]).toBeUndefined();
+    for (const fields of [{}, { _csrf: SESSION_CSRF }, { _csrf: FORM_TOKEN }]) {
+      const response = await post(
+        "/admin/login",
+        { ...fields, user: ADMIN.user, password: ADMIN.password },
+        { "content-type": "application/x-www-form-urlencoded" },
+      );
+      expect(response.statusCode).toBe(403);
+      expect(response.headers["set-cookie"]).toBeUndefined();
+    }
   });
 
-  it("logs out and clears the cookie", async () => {
+  it("binds the form token to the login session", async () => {
     svc = testService();
-    const response = await post("/admin/logout", { _csrf: FORM_TOKEN });
+    // Another session's token, the bare secret and the login token open no form.
+    for (const token of [FORM_TOKEN, LOGIN_CSRF, "x".repeat(64)]) {
+      expect((await post("/admin/session/check", { _csrf: token })).statusCode).toBe(403);
+    }
+    expect((await post("/admin/session/check", { _csrf: SESSION_CSRF })).statusCode).toBe(303);
+    expect((await get("/admin")).body).toContain(`name="_csrf" value="${SESSION_CSRF}"`);
+  });
+
+  it("locks an address out after five failed logins in 15 minutes", async () => {
+    let now = Date.parse("2026-10-15T10:00:00.000Z");
+    const clock = () => now;
+    svc = testService({ throttle: new LoginThrottle({ now: clock }) });
+    const attempt = (password: string) =>
+      post(
+        "/admin/login",
+        { _csrf: LOGIN_CSRF, user: ADMIN.user, password },
+        { "content-type": "application/x-www-form-urlencoded" },
+      );
+    for (let round = 0; round < 5; round++) expect((await attempt("wrong")).statusCode).toBe(401);
+    const locked = await attempt(ADMIN.password);
+    expect(locked.statusCode).toBe(429);
+    expect(locked.body).toContain("Too many failed logins");
+    expect(locked.headers["set-cookie"]).toBeUndefined();
+    // Basic Auth on the API counts and is refused the same way.
+    const api = await svc.app.inject({
+      method: "GET",
+      url: "/admin/api/session",
+      headers: { authorization: basicAuth() },
+    });
+    expect(api.statusCode).toBe(429);
+    expect(api.headers["retry-after"]).toBeDefined();
+    now += 15 * 60_000 + 1000;
+    expect((await attempt(ADMIN.password)).statusCode).toBe(303);
+  });
+
+  it("counts wrong Basic Auth on the API as failed logins", async () => {
+    svc = testService({ throttle: new LoginThrottle({ max: 2 }) });
+    const call = (password: string) =>
+      svc!.app.inject({
+        method: "GET",
+        url: "/admin/api/session",
+        headers: { authorization: basicAuth(ADMIN.user, password) },
+      });
+    expect((await call("wrong")).statusCode).toBe(401);
+    expect((await call("wrong")).statusCode).toBe(401);
+    expect((await call(ADMIN.password)).statusCode).toBe(429);
+  });
+
+  it("logs out with a POST only, clears the cookie and ends the session on the server", async () => {
+    svc = testService();
+    // The logout button needs the form token like every other form.
+    expect((await post("/admin/logout", {})).statusCode).toBe(403);
+    // There is no GET logout that a link or an image could trigger.
+    expect((await get("/admin/logout")).statusCode).toBe(404);
+    const response = await post("/admin/logout", { _csrf: SESSION_CSRF });
     expect(response.statusCode).toBe(303);
     expect(response.headers.location).toBe("/admin/login?notice=logged-out");
     expect(String(response.headers["set-cookie"])).toMatch(/^mcb_admin=; Path=\/admin; Max-Age=0;/);
     expect((await get("/admin/login?notice=logged-out", {})).body).toContain("Logged out.");
-    const viaGet = await get("/admin/logout");
-    expect(viaGet.statusCode).toBe(303);
-    expect(String(viaGet.headers["set-cookie"])).toContain("Max-Age=0");
-    // The logout button needs the form token like every other form.
-    expect((await post("/admin/logout", {})).statusCode).toBe(403);
+    // The old cookie, copied before the logout, no longer opens anything.
+    expect((await get("/admin")).statusCode).toBe(303);
+    // A new login works again.
+    const login = await post(
+      "/admin/login",
+      { _csrf: LOGIN_CSRF, user: ADMIN.user, password: ADMIN.password },
+      { "content-type": "application/x-www-form-urlencoded" },
+    );
+    const cookie = String(login.headers["set-cookie"]).split(";")[0] ?? "";
+    expect((await get("/admin", { cookie })).statusCode).toBe(200);
   });
 
   it("rejects a tampered, foreign or expired session cookie", async () => {
     svc = testService();
     const value = adminCookie().slice("mcb_admin=".length);
     const [version, expiry, nonce, signature] = value.split(".");
-    const later = String(Number(expiry) + 86_400);
+    const later = String(Number(expiry) + 86_400_000);
     const status = async (cookie: string) => (await get("/admin", { cookie })).statusCode;
     expect(await status(`mcb_admin=${version}.${later}.${nonce}.${signature}`)).toBe(303);
     expect(await status(`mcb_admin=${version}.${expiry}.${nonce}.${"A".repeat(43)}`)).toBe(303);
@@ -229,19 +296,19 @@ describe("admin authentication", () => {
     svc = testService();
     const response = await post(
       "/admin/session",
-      { cookie: "a=1", _csrf: FORM_TOKEN },
+      { cookie: "a=1", _csrf: SESSION_CSRF },
       { ...formHeaders, origin: "https://evil.example.com" },
     );
     expect(response.statusCode).toBe(403);
     const same = await post(
       "/admin/session/check",
-      { _csrf: FORM_TOKEN },
+      { _csrf: SESSION_CSRF },
       { ...formHeaders, origin: "http://localhost:80", host: "localhost:80" },
     );
     expect(same.statusCode).toBe(303);
     const garbage = await post(
       "/admin/session/check",
-      { _csrf: FORM_TOKEN },
+      { _csrf: SESSION_CSRF },
       { ...formHeaders, origin: "::" },
     );
     expect(garbage.statusCode).toBe(403);
@@ -263,7 +330,7 @@ describe("dashboard", () => {
     expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(body).not.toContain("<script>alert(1)</script>");
     expect(body).toContain("boom &quot;quoted&quot; &lt;b&gt;");
-    expect(body).toContain(`name="_csrf" value="${FORM_TOKEN}"`);
+    expect(body).toContain(`name="_csrf" value="${SESSION_CSRF}"`);
     expect(body).toContain('href="/admin/jobs?status=failed">1</a>');
     expect(body).toContain("saved on the device only");
   });
@@ -362,7 +429,7 @@ describe("session form", () => {
   it("validates and stores a pasted cookie, then redirects", async () => {
     svc = testService();
     const response = await post("/admin/session", {
-      _csrf: FORM_TOKEN,
+      _csrf: SESSION_CSRF,
       cookie: "Cookie: a=1; b=2",
     });
     expect(response.statusCode).toBe(303);
@@ -373,7 +440,7 @@ describe("session form", () => {
 
   it("refuses an empty cookie", async () => {
     svc = testService();
-    const response = await post("/admin/session", { _csrf: FORM_TOKEN, cookie: "  " });
+    const response = await post("/admin/session", { _csrf: SESSION_CSRF, cookie: "  " });
     expect(response.statusCode).toBe(400);
     expect(response.body).toContain("The cookie field is empty.");
   });
@@ -390,7 +457,7 @@ describe("session form", () => {
       }),
     );
     const response = await post("/admin/session", {
-      _csrf: FORM_TOKEN,
+      _csrf: SESSION_CSRF,
       cookie: "a=very-secret-value",
     });
     expect(response.statusCode).toBe(422);
@@ -403,14 +470,14 @@ describe("session form", () => {
     svc.validate.mockRejectedValueOnce(
       new McNetworkError({ endpoint: "GET api/v1/users", timedOut: true, reason: "slow" }),
     );
-    const response = await post("/admin/session", { _csrf: FORM_TOKEN, cookie: "a=1" });
+    const response = await post("/admin/session", { _csrf: SESSION_CSRF, cookie: "a=1" });
     expect(response.statusCode).toBe(502);
     expect(response.body).toContain("could not be checked");
   });
 
   it("runs the session check on request", async () => {
     svc = testService({ seedCookie: "a=1" });
-    const response = await post("/admin/session/check", { _csrf: FORM_TOKEN });
+    const response = await post("/admin/session/check", { _csrf: SESSION_CSRF });
     expect(response.statusCode).toBe(303);
     expect(response.headers.location).toBe("/admin?notice=session-checked");
     expect(svc.validate).toHaveBeenCalledTimes(1);
@@ -561,20 +628,20 @@ describe("jobs", () => {
   it("answers 404 for an unknown job", async () => {
     svc = testService();
     expect((await get("/admin/jobs/unknown")).statusCode).toBe(404);
-    expect((await post("/admin/jobs/unknown/retry", { _csrf: FORM_TOKEN })).statusCode).toBe(404);
+    expect((await post("/admin/jobs/unknown/retry", { _csrf: SESSION_CSRF })).statusCode).toBe(404);
   });
 
   it("retries and force-rebuilds a finished job", async () => {
     svc = testService();
     const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
     svc.store.jobs.finish(job.id, "failed", { error: "boom" });
-    const retry = await post(`/admin/jobs/${job.id}/retry`, { _csrf: FORM_TOKEN });
+    const retry = await post(`/admin/jobs/${job.id}/retry`, { _csrf: SESSION_CSRF });
     expect(retry.statusCode).toBe(303);
     expect(retry.headers.location).toBe(`/admin/jobs/${job.id}?notice=job-queued`);
     expect(svc.store.jobs.get(job.id)).toMatchObject({ status: "queued", force: false });
 
     svc.store.jobs.finish(job.id, "skipped");
-    const forced = await post(`/admin/jobs/${job.id}/retry`, { _csrf: FORM_TOKEN, force: "1" });
+    const forced = await post(`/admin/jobs/${job.id}/retry`, { _csrf: SESSION_CSRF, force: "1" });
     expect(forced.headers.location).toBe(`/admin/jobs/${job.id}?notice=job-forced`);
     expect(svc.store.jobs.get(job.id)).toMatchObject({ status: "queued", force: true });
   });
@@ -583,7 +650,7 @@ describe("jobs", () => {
     svc = testService();
     const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
     svc.store.jobs.claimNext();
-    const response = await post(`/admin/jobs/${job.id}/retry`, { _csrf: FORM_TOKEN });
+    const response = await post(`/admin/jobs/${job.id}/retry`, { _csrf: SESSION_CSRF });
     expect(response.statusCode).toBe(409);
     expect(response.body).toContain("The job is running");
     expect((await get(`/admin/jobs/${job.id}`)).body).toContain("Running jobs cannot be changed.");
@@ -593,10 +660,10 @@ describe("jobs", () => {
     svc = testService();
     const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
     expect((await get(`/admin/jobs/${job.id}`)).body).toContain(">Cancel<");
-    const cancelled = await post(`/admin/jobs/${job.id}/cancel`, { _csrf: FORM_TOKEN });
+    const cancelled = await post(`/admin/jobs/${job.id}/cancel`, { _csrf: SESSION_CSRF });
     expect(cancelled.statusCode).toBe(303);
     expect(svc.store.jobs.get(job.id)?.status).toBe("cancelled");
-    const again = await post(`/admin/jobs/${job.id}/cancel`, { _csrf: FORM_TOKEN });
+    const again = await post(`/admin/jobs/${job.id}/cancel`, { _csrf: SESSION_CSRF });
     expect(again.statusCode).toBe(409);
   });
 });
@@ -667,7 +734,7 @@ describe("dry run", () => {
     );
     svc = testService({ converter });
     const response = await get(
-      `/admin/dry-run?recipe=kurbis-linsen-suppe&scale=1&convert=1&_csrf=${FORM_TOKEN}`,
+      `/admin/dry-run?recipe=kurbis-linsen-suppe&scale=1&convert=1&_csrf=${SESSION_CSRF}`,
     );
     expect(response.statusCode).toBe(200);
     const body = response.body;
@@ -693,7 +760,7 @@ describe("dry run", () => {
         suggest: (names) => names.map((_, index) => (index === 0 ? ["Kürbis"] : [])),
       },
     });
-    await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${FORM_TOKEN}`);
+    await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${SESSION_CSRF}`);
     expect(converter.requests[0]?.catalogNames).toEqual([{ index: 0, names: ["Kürbis"] }]);
   });
 
@@ -707,7 +774,7 @@ describe("dry run", () => {
     });
     svc = testService({ converter: fakeConverter(conversionResult({ recipe: broken })) });
     const body = (
-      await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${FORM_TOKEN}`)
+      await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${SESSION_CSRF}`)
     ).body;
     expect(body).toMatch(/[0-9]+ errors?</);
     expect(body).toContain("servingSize.steps[2]");
@@ -717,7 +784,7 @@ describe("dry run", () => {
   it("shows a converter failure", async () => {
     svc = testService({ converter: fakeConverter(new ConverterNotConfiguredError()) });
     const body = (
-      await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${FORM_TOKEN}`)
+      await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${SESSION_CSRF}`)
     ).body;
     expect(body).toContain("The conversion failed: converter not configured");
   });
@@ -860,7 +927,7 @@ describe("page layout", () => {
     const body = (await get("/admin/dry-run")).body;
     expect(body).toContain('name="scale"');
     expect(body).toContain('type="checkbox" name="convert" value="1"');
-    expect(body).toContain(`name="_csrf" value="${FORM_TOKEN}"`);
+    expect(body).toContain(`name="_csrf" value="${SESSION_CSRF}"`);
   });
 });
 
@@ -885,7 +952,7 @@ describe("settings page", () => {
     expect(empty.body).toContain("No account stored.");
     expect(empty.body).toContain("headless Chromium available");
     const saved = await post("/admin/settings/credentials", {
-      _csrf: FORM_TOKEN,
+      _csrf: SESSION_CSRF,
       email: "cook@example.com",
       password: PASSWORD,
     });
@@ -903,7 +970,7 @@ describe("settings page", () => {
   it("refuses an invalid address and needs the form token", async () => {
     svc = testService();
     const invalid = await post("/admin/settings/credentials", {
-      _csrf: FORM_TOKEN,
+      _csrf: SESSION_CSRF,
       email: "nope",
       password: PASSWORD,
     });
@@ -920,18 +987,18 @@ describe("settings page", () => {
   it("deletes the account", async () => {
     svc = testService();
     svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
-    const response = await post("/admin/settings/credentials/delete", { _csrf: FORM_TOKEN });
+    const response = await post("/admin/settings/credentials/delete", { _csrf: SESSION_CSRF });
     expect(response.headers.location).toBe("/admin/settings?notice=credentials-deleted");
     expect(svc.autoLogin.hasCredentials()).toBe(false);
   });
 
   it("tests the login in the background and stores the new session", async () => {
     svc = testService();
-    expect((await post("/admin/settings/login", { _csrf: FORM_TOKEN })).headers.location).toBe(
+    expect((await post("/admin/settings/login", { _csrf: SESSION_CSRF })).headers.location).toBe(
       "/admin/settings?notice=login-no-credentials",
     );
     svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
-    const response = await post("/admin/settings/login", { _csrf: FORM_TOKEN });
+    const response = await post("/admin/settings/login", { _csrf: SESSION_CSRF });
     expect(response.headers.location).toBe("/admin/settings?notice=login-started");
     await vi.waitFor(() => expect(svc?.session.status().state).toBe("valid"));
     expect(svc.validate).toHaveBeenCalledWith(
@@ -940,6 +1007,10 @@ describe("settings page", () => {
     const body = (await get("/admin/settings")).body;
     expect(body).toMatch(/succeeded \(manual test\)/);
     expect(body).not.toContain('http-equiv="refresh"');
+    // The next manual test waits three minutes.
+    expect(body).toContain("Next manual test from");
+    const again = await post("/admin/settings/login", { _csrf: SESSION_CSRF });
+    expect(again.headers.location).toBe("/admin/settings?notice=login-cooldown");
   });
 
   it("shows a failed attempt with its reason and serves the screenshot", async () => {

@@ -100,6 +100,8 @@ export const en: Messages = {
       "2. Run the login helper on your computer: npm run mc:login -- --bridge <bridge address> (see the README, section “Monsieur Cuisine session”).",
       "3. Log in on www.monsieur-cuisine.com, copy the cookie from the browser's developer tools and paste it on the admin page (/admin).",
     ],
+    autoLoginWaiting: (time) =>
+      `The automatic login with the stored Lidl account tries again after ${time}; it waits that long after earlier attempts. To continue sooner, use "Test login now" on the settings page, the login helper or the cookie form.`,
     autoLoginFailed: (reason) =>
       `The automatic login with the stored Lidl account did not work (${reason}). Please log in by hand once: with the login helper or by pasting the cookie.`,
     lastChecked: (when) => `Last checked: ${when}`,
@@ -138,6 +140,8 @@ export const en: Messages = {
       password: "Password",
       submit: "Log in",
       wrongCredentials: "User or password is wrong.",
+      tooMany: (minutes) =>
+        `Too many failed logins from this address. Try again in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`,
     },
     autoRefresh: "This page reloads every 5 seconds while a job is queued or running.",
     authBanner: "The admin pages have no password. Set ADMIN_USER and ADMIN_PASSWORD.",
@@ -153,6 +157,7 @@ export const en: Messages = {
       "login-started": "Login started. This page reloads until it is done.",
       "login-running": "A login is already running.",
       "login-no-credentials": "Store the Lidl account first.",
+      "login-cooldown": "A manual test runs at most every 3 minutes. Try again shortly.",
     },
     plain: {
       unknownHost: "Unknown host name. Add it to ADMIN_HOSTS or use the IP address.",
@@ -323,6 +328,7 @@ export const en: Messages = {
       screenshot: "Screenshot of the page",
       nextAttempt: "Next automatic attempt not before",
       running: "A login is running.",
+      manualCooldown: (time) => `Next manual test from ${time}`,
       otherWays:
         "Other ways to renew the session: the login helper on your computer (npm run mc:login) or pasting the cookie on the dashboard.",
     },

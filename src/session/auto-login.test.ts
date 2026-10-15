@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser, type FakeBrowserScript } from "../testing/browser.js";
@@ -9,6 +9,7 @@ import {
   AutoLogin,
   InvalidCredentialsError,
   KEEP_SCREENSHOTS,
+  MANUAL_COOLDOWN_MS,
   type AutoLoginOptions,
 } from "./auto-login.js";
 import type { BrowserLoginOptions, BrowserLoginResult } from "./browser-login.js";
@@ -228,4 +229,66 @@ describe("limits", () => {
     expect(await autoLogin.browserUnavailable()).toBe("Playwright is not installed");
     expect(existsSync(join(dir, "login-screenshots"))).toBe(false);
   });
+});
+
+describe("manual tests", () => {
+  it("run at most every three minutes", async () => {
+    const { autoLogin, accept, clock } = setup();
+    expect((await autoLogin.run({ manual: true, accept })).status).toBe("ok");
+    clock.advance(60_000);
+    expect(await autoLogin.run({ manual: true, accept })).toMatchObject({
+      status: "skipped",
+      reason: "cooldown",
+    });
+    expect(autoLogin.status().manualAvailableAt).not.toBeNull();
+    clock.advance(2 * 60_000);
+    expect(autoLogin.status().manualAvailableAt).toBeNull();
+    expect((await autoLogin.run({ manual: true, accept })).status).toBe("ok");
+  });
+
+  it("count neither toward the daily limit nor toward the backoff", async () => {
+    const { autoLogin, accept, clock } = setup({ login: failing });
+    for (let round = 0; round < 4; round++) {
+      expect((await autoLogin.run({ manual: true, accept })).status).toBe("failed");
+      clock.advance(MANUAL_COOLDOWN_MS + 1000);
+    }
+    expect(autoLogin.status()).toMatchObject({ failures: 0, nextAttemptAt: null });
+    expect((await autoLogin.run({ manual: false, accept })).status).toBe("failed");
+  });
+});
+
+describe("deleting the account", () => {
+  it("removes the browser profile and the screenshots", async () => {
+    const { autoLogin, accept, dir } = setup({ login: failing });
+    await autoLogin.run({ manual: true, accept });
+    const profile = join(dir, "browser-profile");
+    writeFileSync(join(profile, "Cookies"), "lidl session");
+    autoLogin.deleteCredentials();
+    expect(existsSync(profile)).toBe(false);
+    expect(existsSync(join(dir, "login-screenshots"))).toBe(false);
+    expect(autoLogin.status()).toMatchObject({ configured: false, last: null });
+  });
+
+  it("keeps the profile while a login is using it", async () => {
+    let release: () => void = () => undefined;
+    const slow = () =>
+      new Promise<BrowserLoginResult>((resolve) => {
+        release = () => resolve({ ok: false, code: "error", detail: "stopped", screenshot: null });
+      });
+    const { autoLogin, accept, dir } = setup({ login: slow });
+    const running = autoLogin.run({ manual: false, accept });
+    autoLogin.deleteCredentials();
+    expect(existsSync(join(dir, "browser-profile"))).toBe(true);
+    release();
+    await running;
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "creates the profile for the bridge user only",
+    async () => {
+      const { autoLogin, accept, dir } = setup();
+      await autoLogin.run({ manual: false, accept });
+      expect(statSync(join(dir, "browser-profile")).mode & 0o777).toBe(0o700);
+    },
+  );
 });

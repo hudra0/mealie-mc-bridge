@@ -181,11 +181,11 @@ Whichever way, the bridge checks the cookie with a separate request before it st
 
 ### Automatic login with your Lidl account
 
-On Settings ("Einstellungen") the bridge stores the e-mail address and password of your Lidl account, encrypted with `SETTINGS_KEY` like the cookie. The password is never shown again or logged; leave the field empty to keep it when you change the address. "Delete account" ("Konto löschen") removes both.
+On Settings ("Einstellungen") the bridge stores the e-mail address and password of your Lidl account, encrypted with `SETTINGS_KEY` like the cookie. The password is never shown again or logged; leave the field empty to keep it when you change the address. "Delete account" ("Konto löschen") removes both, the browser profile with the Lidl session and the screenshots of failed logins (the profile stays while a login is running).
 
 When Monsieur Cuisine rejects the session, the bridge opens the site's login in a headless Chromium inside the container, fills in the Lidl form, waits for the login cookies and checks them against your account. The waiting jobs then continue, and no mail goes out. The browser profile lives in `browser-profile/` in the data directory, so a later login often gets through on the Lidl session alone.
 
-A login on a third-party site should stay rare, so the bridge limits it: one at a time, an automatic attempt at most once per hour and three times in 24 hours, and after a failure it waits 1 hour, after two failures in a row 4 hours, after three 24 hours. "Test login now" skips these waiting times, but not a login that is already running.
+A login on a third-party site should stay rare, so the bridge limits it: one at a time, an automatic attempt at most once per hour and three times in 24 hours, and after a failure it waits 1 hour, after two failures in a row 4 hours, after three 24 hours. When the session breaks while the automatic login has to wait, you get the session mail with the time of the next attempt. "Test login now" skips these waiting times, but not a login that is already running, and it runs at most every 3 minutes; manual tests count neither toward the daily limit nor toward the waiting times after failures.
 
 A captcha, a second factor or a changed page stops the login. The settings page then shows the time, the reason and a screenshot of the page (the last five stay in `login-screenshots/` in the data directory), and the session mail says that a manual login is needed: use the login helper or paste the cookie.
 
@@ -286,7 +286,7 @@ The dashboard shows the session, the queue and recent jobs. The job list shows e
 
 "Dry run" ("Probelauf") shows what the converter would get for a Mealie recipe and, on request, runs the conversion without uploading anything. That conversion is a paid model call.
 
-The pages need a login with `ADMIN_USER` and `ADMIN_PASSWORD`. A correct login sets a session cookie for 12 hours (HttpOnly, SameSite=Lax, signed with a key derived from `SETTINGS_KEY`); "Log out" ("Abmelden") on every page ends it, and a new `ADMIN_PASSWORD` ends every session. The job list and a job page reload every 5 seconds while a job is queued or running.
+The pages need a login with `ADMIN_USER` and `ADMIN_PASSWORD`. A correct login sets a session cookie for 12 hours (HttpOnly, SameSite=Lax, signed with a key derived from `SETTINGS_KEY`); "Log out" ("Abmelden") on every page ends every session issued until then, on every device, and a new `ADMIN_PASSWORD` does the same. Five failed logins from one address within 15 minutes, on the form or with Basic Auth on the API, lock that address out for the rest of those 15 minutes. The job list and a job page reload every 5 seconds while a job is queued or running.
 
 Without `ADMIN_USER` and `ADMIN_PASSWORD` the admin pages are open to anyone who reaches the port, and they answer only to an IP address, `localhost` or a host name listed in `ADMIN_HOSTS`.
 

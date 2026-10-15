@@ -4,7 +4,8 @@
 // In the Docker image the headless Chromium lives in PLAYWRIGHT_BROWSERS_PATH. On a desktop,
 // `channel: "chrome"` uses an installed Google Chrome instead of a downloaded Chromium.
 
-import { existsSync } from "node:fs";
+import { rmSync } from "node:fs";
+import { join } from "node:path";
 import type { BrowserCookie, LoginBrowser, LoginContext, LoginPage } from "./browser-login.js";
 
 // The parts of Playwright the adapter uses, so the bridge compiles without its types.
@@ -34,7 +35,7 @@ interface PwContext {
 }
 
 interface PwChromium {
-  executablePath(): string;
+  launch(options: Record<string, unknown>): Promise<{ close(): Promise<void> }>;
   launchPersistentContext(
     userDataDir: string,
     options: Record<string, unknown>,
@@ -48,9 +49,17 @@ export interface PlaywrightBrowserOptions {
   load?: () => Promise<{ chromium: PwChromium }>;
   // Per-action timeout in ms.
   actionTimeoutMs?: number;
+  now?: () => number;
 }
 
 const ACTION_TIMEOUT_MS = 5000;
+// A failed probe is repeated after this long, so a browser installed later is found.
+const PROBE_RETRY_MS = 10 * 60_000;
+// Docker gives /dev/shm only 64 MB, too little for Chromium's shared memory.
+const LAUNCH_ARGS = ["--disable-dev-shm-usage"];
+// Lock files a Chromium that was killed leaves in its profile. Logins run one at a time, so
+// a lock found before a launch is always stale.
+export const PROFILE_LOCKS = ["SingletonLock", "SingletonCookie", "SingletonSocket"] as const;
 
 async function loadPlaywright(): Promise<{ chromium: PwChromium }> {
   // A variable module name keeps TypeScript from requiring Playwright's types at build time.
@@ -58,40 +67,68 @@ async function loadPlaywright(): Promise<{ chromium: PwChromium }> {
   return (await import(name)) as { chromium: PwChromium };
 }
 
+// The first line of a launch error, in words for the settings page.
+export function launchProblem(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Executable doesn't exist|executable.*not found|playwright install/i.test(message)) {
+    return "Chromium for Playwright is not installed";
+  }
+  const first = message.split("\n").find((line) => line.trim() !== "") ?? message;
+  return `Chromium does not start: ${first.trim().slice(0, 200)}`;
+}
+
 export class PlaywrightBrowser implements LoginBrowser {
   readonly #channel: string | undefined;
   readonly #load: () => Promise<{ chromium: PwChromium }>;
   readonly #timeout: number;
+  readonly #now: () => number;
+  #probe: { result: string | null; at: number } | null = null;
 
   constructor(options: PlaywrightBrowserOptions = {}) {
     this.#channel = options.channel;
     this.#load = options.load ?? loadPlaywright;
     this.#timeout = options.actionTimeoutMs ?? ACTION_TIMEOUT_MS;
+    this.#now = options.now ?? Date.now;
   }
 
+  // Starts the headless browser once and closes it again. A file check would not do: the
+  // image carries only the headless shell, which lives elsewhere than the full Chromium
+  // that executablePath() names. A success is remembered; a failure for ten minutes.
   async unavailable(): Promise<string | null> {
-    let chromium: PwChromium;
-    try {
-      chromium = (await this.#load()).chromium;
-    } catch {
-      return "Playwright is not installed";
+    const cached = this.#probe;
+    if (cached && (cached.result === null || this.#now() - cached.at < PROBE_RETRY_MS)) {
+      return cached.result;
     }
-    if (this.#channel) return null;
+    let result: string | null;
     try {
-      const path = chromium.executablePath();
-      return path && existsSync(path) ? null : "Chromium for Playwright is not installed";
+      const { chromium } = await this.#load();
+      try {
+        const browser = await chromium.launch({
+          headless: true,
+          args: LAUNCH_ARGS,
+          ...(this.#channel ? { channel: this.#channel } : {}),
+        });
+        await browser.close();
+        result = null;
+      } catch (error) {
+        result = launchProblem(error);
+      }
     } catch {
-      return "Chromium for Playwright is not installed";
+      result = "Playwright is not installed";
     }
+    this.#probe = { result, at: this.#now() };
+    return result;
   }
 
   async open(options: { profileDir: string; headless: boolean }): Promise<LoginContext> {
     const { chromium } = await this.#load();
+    for (const lock of PROFILE_LOCKS) {
+      rmSync(join(options.profileDir, lock), { force: true });
+    }
     const context = await chromium.launchPersistentContext(options.profileDir, {
       headless: options.headless,
       ...(this.#channel ? { channel: this.#channel } : {}),
-      // Docker gives /dev/shm only 64 MB, too little for Chromium's shared memory.
-      args: ["--disable-dev-shm-usage"],
+      args: LAUNCH_ARGS,
       viewport: options.headless ? { width: 1280, height: 900 } : null,
     });
     const page = context.pages()[0] ?? (await context.newPage());

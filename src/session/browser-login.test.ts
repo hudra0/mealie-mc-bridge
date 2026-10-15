@@ -1,10 +1,11 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fakeBrowser, loopClock, type FakeBrowserScript } from "../testing/browser.js";
 import { tempDir } from "../testing/temp.js";
 import {
   browserLogin,
+  closeWithin,
   buildCookieHeader,
   hasLoginCookies,
   readSessionCookie,
@@ -179,5 +180,26 @@ describe("browserLogin", () => {
   it("reports a browser that fails to start", async () => {
     const { result } = login({ openError: new Error("Executable doesn't exist") });
     expect(await result).toMatchObject({ ok: false, code: "error", screenshot: null });
+  });
+});
+
+describe("closeWithin", () => {
+  it("gives up on a browser that never closes", async () => {
+    vi.useFakeTimers();
+    try {
+      const hanging = { close: () => new Promise<void>(() => undefined) };
+      const done = closeWithin(hanging, 10_000);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(done).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns as soon as the browser closed, and ignores a failing close", async () => {
+    await expect(closeWithin({ close: () => Promise.resolve() }, 60_000)).resolves.toBeUndefined();
+    await expect(
+      closeWithin({ close: () => Promise.reject(new Error("gone")) }, 60_000),
+    ).resolves.toBeUndefined();
   });
 });

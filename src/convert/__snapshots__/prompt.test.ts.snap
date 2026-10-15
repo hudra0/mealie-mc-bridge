@@ -230,7 +230,7 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - Put one or two text or scale steps before every working step. They say what goes in, how much, how it is cut and which accessory changes. Two working steps in a row only for a continued phase, such as a second cooking stage.
 - Working steps carry no description. Give them a short action title of one to three words that says what the step does, for example "Zerkleinern", "Andünsten", "Köcheln", "Pürieren". A turbo step's title names the seconds: "Turbo-Taste für 2 Sekunden".
 - A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "und", never with a semicolon.
-- Give every text step a title that sums the step up as a short imperative of at most 60 characters, for example "Zwiebel vorbereiten", "Kartoffeln schälen", "Messbecher einsetzen", "Abschmecken". Never copy the first words or the first sentence of the description into the title; the description keeps the full instruction with its amounts.
+- Give every text step a title that sums the step up as a short imperative (the Output contract gives its length), for example "Zwiebel vorbereiten", "Kartoffeln schälen", "Messbecher einsetzen", "Abschmecken". Never copy the first words or the first sentence of the description into the title; the description keeps the full instruction with its amounts.
 - Never repeat speed, temperature or time in text; the working step carries them. Minutes in text are only for work outside the machine (oven, rising, resting, cooling).
 - Each ingredient that goes into the bowl by weight gets its own scale step titled "<n> g <Zutat>" and described "<n> g <Zutat> in den Mixbehälter geben.", for example "200 g Wasser". Amounts under 5 g go into a text step in Tl, Prise or Msp.
 - Weigh in the Mixbehälter only what stays in it. Ingredients for outside the machine (brushing, coating, garnish, food cooked on the stove or in the oven) stay in a text step with their amount, or a scale step weighs them in a container on top: "Eine Schüssel auf den Mixbehälter stellen und darin 50 g Milch abwiegen." Never weigh on a plate.
@@ -348,7 +348,7 @@ Rules for the German text of the recipe, derived from the de-DE corpus. They add
 - Never write "Deckel schließen" (the lid is always closed) or "auf einem Teller abwiegen".
 - Keep Stück for eggs, garlic cloves (name "Knoblauchzehen"), herb stems (name "Petersilienstiele") and bay leaves.
 - Write units as the Units section spells them: g, Tl, El, Prise or Prisen, Msp. and Stück.
-- Text step titles are short imperatives with the verb last, at most 60 characters: "Zwiebel vorbereiten" over the description "Zwiebel schälen, halbieren und in den Mixbehälter geben.", "Abschmecken" over "Mit Salz und Pfeffer abschmecken.".
+- Text step titles are short imperatives with the verb last: "Zwiebel vorbereiten" over the description "Zwiebel schälen, halbieren und in den Mixbehälter geben.", "Abschmecken" over "Mit Salz und Pfeffer abschmecken.".
 
 ## Ingredient names
 
@@ -366,6 +366,7 @@ Rules for the German text of the recipe, derived from the de-DE corpus. They add
 - reviewHints: short German notes, at most 200 characters each and 20 in total, for everything guessed, converted with uncertainty or left out. Leave the list empty when nothing is uncertain.
 - ingredientMapping: one entry per ingredient-list name, written exactly as in the list, with the index [i] of the source ingredient line it comes from (the recipe in the user message numbers them), or null for an ingredient the source does not have. Every source line appears at least once.
 - Every step has a "kind" from the program list and only the fields of that kind. Set accessory to "butterfly_whisk" on every manual step that runs while the whisk is fitted.
+- A text step title is a short imperative of at most 60 characters that sums the step up; it never repeats the start of the description.
 - Do not set a status, ids or images; the bridge sets them.
 - When the user message lists errors in a previous answer, fix every one of them and return the complete corrected recipe, not only the changed parts."
 `;
@@ -391,7 +392,7 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - Put one or two text or scale steps before every working step. They say what goes in, how much, how it is cut and which accessory changes. Two working steps in a row only for a continued phase, such as a second cooking stage.
 - Working steps carry no description. Give them a short action title of one to three words that says what the step does, for example "Chop", "Sauté", "Simmer", "Purée". A turbo step's title names the seconds: "Hold down the turbo button for 2 seconds.".
 - A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "and", never with a semicolon.
-- Give every text step a title that sums the step up as a short imperative of at most 60 characters, for example "Prepare the onion", "Peel the potatoes", "Insert the measuring beaker", "Season". Never copy the first words or the first sentence of the description into the title; the description keeps the full instruction with its amounts.
+- Give every text step a title that sums the step up as a short imperative (the Output contract gives its length), for example "Prepare the onion", "Peel the potatoes", "Insert the measuring beaker", "Season". Never copy the first words or the first sentence of the description into the title; the description keeps the full instruction with its amounts.
 - Never repeat speed, temperature or time in text; the working step carries them. Minutes in text are only for work outside the machine (oven, rising, resting, cooling).
 - Each ingredient that goes into the bowl by weight gets its own scale step titled "<n> g <ingredient>" and described "Put <n> g <ingredient> into the blender jug.", for example "200 g water". Amounts under 5 g go into a text step in tsp, pinch or big pinch.
 - Weigh in the blender jug only what stays in it. Ingredients for outside the machine (brushing, coating, garnish, food cooked on the stove or in the oven) stay in a text step with their amount, or a scale step weighs them in a container on top: "Place a bowl on the blender jug and weigh 50 g milk into it." Never weigh on a plate.
@@ -509,7 +510,7 @@ Rules for the English text of the recipe, written from the en-US corpus of offic
 - Text steps are full sentences in the imperative: "Put 200 g water into the blender jug.", "Season to taste with salt and pepper."
 - Count eggs, garlic cloves, herb sprigs and bay leaves without a unit: the amount field holds the count and the unit stays empty, with the item in the name ("garlic cloves", "parsley sprigs", "eggs (medium)").
 - Write units as the Units section spells them: g, tsp, tbsp, pinch or pinches, big pinch or big pinches. Never write cups, ounces or pounds; convert them to g.
-- Text step titles are short imperatives of at most 60 characters: "Prepare the onion" over the description "Peel the onion, halve it and put it into the blender jug.", "Season" over "Season to taste with salt and pepper.".
+- Text step titles are short imperatives: "Prepare the onion" over the description "Peel the onion, halve it and put it into the blender jug.", "Season" over "Season to taste with salt and pepper.".
 
 ## Ingredient names
 
@@ -527,6 +528,7 @@ Rules for the English text of the recipe, written from the en-US corpus of offic
 - reviewHints: short English notes, at most 200 characters each and 20 in total, for everything guessed, converted with uncertainty or left out. Leave the list empty when nothing is uncertain.
 - ingredientMapping: one entry per ingredient-list name, written exactly as in the list, with the index [i] of the source ingredient line it comes from (the recipe in the user message numbers them), or null for an ingredient the source does not have. Every source line appears at least once.
 - Every step has a "kind" from the program list and only the fields of that kind. Set accessory to "butterfly_whisk" on every manual step that runs while the whisk is fitted.
+- A text step title is a short imperative of at most 60 characters that sums the step up; it never repeats the start of the description.
 - Do not set a status, ids or images; the bridge sets them.
 - When the user message lists errors in a previous answer, fix every one of them and return the complete corrected recipe, not only the changed parts."
 `;

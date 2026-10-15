@@ -66,9 +66,7 @@ export const TextStepSchema = z
     kind: z.literal("text"),
     title: z
       .string()
-      .describe(
-        "A short imperative summary of the step, at most 60 characters, not the start of the description",
-      ),
+      .describe("A short imperative summary of the step, not the start of the description"),
     description: stepDescription.describe("Instruction shown on the device, with quantities"),
   })
   .describe("Instruction without a program");

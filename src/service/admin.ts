@@ -9,10 +9,16 @@
 // - The JSON endpoints under /admin/api/ also take HTTP Basic Auth with the same
 //   credentials, for scripts such as `npm run mc:login`. They need a JSON body, which a
 //   form on another site cannot send.
-// - Forms carry a random token created when the process starts. A page on another site
-//   cannot read it (same-origin policy), so it cannot forge a POST. The dry-run conversion,
-//   which costs money, needs the token as well. After a restart, reload the page before
-//   submitting a form.
+// - Forms carry a token: an HMAC of the login session's nonce under a secret created when
+//   the process starts (admin-auth.ts), or that secret itself while the pages have no
+//   password. A page on another site cannot read it (same-origin policy), so it cannot forge
+//   a POST, and a token is worth nothing without its session cookie. The login form has a
+//   token of its own. The dry-run conversion, which costs money, needs the token as well.
+//   After a restart, reload the page before submitting a form.
+// - Five failed logins from one address within 15 minutes lock that address out for the
+//   rest of the window, on the form and on Basic Auth alike.
+// - Logging out (POST only) ends every session issued before it, not just the cookie in the
+//   browser.
 // - A POST whose Origin header names another host is refused.
 // - Without credentials, only requests for an IP address, localhost or a name in
 //   ADMIN_HOSTS get through. A malicious site could otherwise rebind its own name to the
@@ -49,7 +55,11 @@ import type { McRecipeStore } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
 import {
   ADMIN_COOKIE,
+  LoginThrottle,
+  SESSIONS_VALID_AFTER_KEY,
   adminSessions,
+  formTokenFor,
+  loginTokenFor,
   clearedSessionCookie,
   isHttps,
   parseCookieHeader,
@@ -97,8 +107,10 @@ export interface AdminOptions {
   mealieRecipeUrl?: (slug: string) => string | null;
   // More pages inside the same protection (login, form token, host check).
   extend?: (context: AdminContext) => void;
-  // Fixed in tests; random otherwise.
+  // The secret behind the form tokens. Fixed in tests; random otherwise.
   formToken?: string;
+  // Failed-login counter; tests pass one with their own clock.
+  throttle?: LoginThrottle;
   now?: () => Date;
 }
 
@@ -128,7 +140,8 @@ export interface RenderExtra {
 export interface AdminContext {
   app: FastifyInstance;
   t: AdminMessages;
-  formToken: string;
+  // The form token for the session of a request.
+  csrf: (request: FastifyRequest) => string;
   render: (reply: FastifyReply, title: string, body: SafeHtml, extra?: RenderExtra) => FastifyReply;
   notice: (request: FastifyRequest) => string | null;
 }
@@ -154,10 +167,16 @@ export function admin(
   options: AdminOptions,
   done: (error?: Error) => void,
 ): void {
-  const formToken = options.formToken ?? randomBytes(32).toString("hex");
+  const secret = options.formToken ?? randomBytes(32).toString("hex");
+  const loginToken = loginTokenFor(secret);
   const auth = options.auth;
   const authDisabled = auth === null;
-  const sessions = auth ? adminSessions(options.sessionKey ?? randomBytes(32), auth) : null;
+  const settings = options.store.settings;
+  const sessions = auth
+    ? adminSessions(options.sessionKey ?? randomBytes(32), auth, {
+        validAfter: () => Number(settings.get(SESSIONS_VALID_AFTER_KEY) ?? "0") || 0,
+      })
+    : null;
   const t: AdminMessages = messages(options.language ?? "en").admin;
   const now = () => options.now?.() ?? new Date();
   if (authDisabled) {
@@ -167,9 +186,18 @@ export function admin(
     );
   }
 
-  const signedIn = (request: FastifyRequest): boolean =>
-    sessions !== null &&
-    sessions.verify(parseCookieHeader(request.headers.cookie)[ADMIN_COOKIE], now());
+  const throttle = options.throttle ?? new LoginThrottle({ now: () => now().getTime() });
+
+  const sessionNonce = (request: FastifyRequest): string | null =>
+    sessions?.verify(parseCookieHeader(request.headers.cookie)[ADMIN_COOKIE], now()) ?? null;
+  const signedIn = (request: FastifyRequest): boolean => sessionNonce(request) !== null;
+  // The form token of a request: bound to its login session, or the secret itself while the
+  // pages have no password. Empty without a session, which no form token matches.
+  const csrf = (request: FastifyRequest): string => {
+    if (authDisabled) return secret;
+    const nonce = sessionNonce(request);
+    return nonce === null ? "" : formTokenFor(secret, nonce);
+  };
 
   const securityHeaders = (reply: FastifyReply) =>
     reply
@@ -206,7 +234,7 @@ export function admin(
             : {
                 session: { label: t.sessionState[state], className: SESSION_CLASS[state] },
                 user: auth?.user ?? null,
-                formToken,
+                formToken: csrf(reply.request),
               },
         }),
       );
@@ -217,8 +245,15 @@ export function admin(
     return typeof key === "string" ? (t.notices[key] ?? null) : null;
   };
 
-  const tokenValid = (value: unknown): boolean =>
-    typeof value === "string" && safeEqual(value, formToken);
+  const tokenValid = (value: unknown, expected: string): boolean =>
+    typeof value === "string" && expected !== "" && safeEqual(value, expected);
+
+  const tooMany = (reply: FastifyReply, waitMs: number) =>
+    void securityHeaders(reply)
+      .code(429)
+      .header("retry-after", String(Math.ceil(waitMs / 1000)))
+      .header("content-type", "text/plain; charset=utf-8")
+      .send(t.login.tooMany(Math.ceil(waitMs / 60_000)));
 
   // The page itself without the notice, for the automatic reload.
   const refreshUrl = (request: FastifyRequest): string => {
@@ -248,7 +283,15 @@ export function admin(
     const path = requestPath(request);
     if (auth && path !== "/admin/login" && !signedIn(request)) {
       if (path.startsWith("/admin/api/")) {
-        if (!credentialsMatch(parseBasicAuth(request.headers.authorization), auth)) {
+        const wait = throttle.blockedFor(request.ip);
+        if (wait > 0) {
+          tooMany(reply, wait);
+          return;
+        }
+        const given = parseBasicAuth(request.headers.authorization);
+        if (!credentialsMatch(given, auth)) {
+          // A request without credentials is a question, not a guess.
+          if (given !== null) throttle.fail(request.ip);
           void securityHeaders(reply)
             .code(401)
             .header("www-authenticate", 'Basic realm="mc-bridge admin", charset="UTF-8"')
@@ -257,7 +300,7 @@ export function admin(
         }
       } else {
         const target =
-          request.method === "GET" && path !== "/admin/logout"
+          request.method === "GET"
             ? `/admin/login?next=${encodeURIComponent(request.url)}`
             : "/admin/login";
         void securityHeaders(reply).redirect(target, 303);
@@ -285,7 +328,8 @@ export function admin(
       return next();
     }
     const body = (request.body ?? {}) as FormBody;
-    if (!tokenValid(body._csrf)) {
+    const expected = requestPath(request) === "/admin/login" ? loginToken : csrf(request);
+    if (!tokenValid(body._csrf, expected)) {
       void render(
         reply,
         t.titles.formExpired,
@@ -303,7 +347,7 @@ export function admin(
     return render(
       reply,
       t.login.title,
-      loginView({ formToken, next: safeNext(query.next), user: "" }, t),
+      loginView({ formToken: loginToken, next: safeNext(query.next), user: "" }, t),
       { bare: true, notice: notice(request) },
     );
   });
@@ -316,28 +360,43 @@ export function admin(
       password: typeof body.password === "string" ? body.password : "",
     };
     const next = safeNext(body.next);
+    const wait = throttle.blockedFor(request.ip);
+    if (wait > 0) {
+      options.logger.warn({ ip: request.ip }, "admin login refused: too many failures");
+      return render(
+        reply,
+        t.login.title,
+        loginView({ formToken: loginToken, next, user: given.user.slice(0, 200) }, t),
+        { status: 429, bare: true, error: t.login.tooMany(Math.ceil(wait / 60_000)) },
+      );
+    }
     if (!credentialsMatch(given, auth)) {
+      throttle.fail(request.ip);
       options.logger.warn({ ip: request.ip }, "admin login with wrong credentials");
       return render(
         reply,
         t.login.title,
-        loginView({ formToken, next, user: given.user.slice(0, 200) }, t),
+        loginView({ formToken: loginToken, next, user: given.user.slice(0, 200) }, t),
         { status: 401, bare: true, error: t.login.wrongCredentials },
       );
     }
+    throttle.succeed(request.ip);
     options.logger.info({ ip: request.ip }, "admin logged in");
     return securityHeaders(reply)
       .header("set-cookie", sessionCookie(sessions.issue(now()), isHttps(request)))
       .redirect(next, 303);
   });
 
-  const logout = (request: FastifyRequest, reply: FastifyReply) =>
-    securityHeaders(reply)
+  // Ends every session issued so far, on every device: the cookie alone could be copied.
+  app.post("/admin/logout", (request, reply) => {
+    if (!authDisabled) {
+      settings.set(SESSIONS_VALID_AFTER_KEY, String(now().getTime()));
+      options.logger.info({ ip: request.ip }, "admin logged out");
+    }
+    return securityHeaders(reply)
       .header("set-cookie", clearedSessionCookie(isHttps(request)))
       .redirect(authDisabled ? "/admin" : "/admin/login?notice=logged-out", 303);
-
-  app.get("/admin/logout", logout);
-  app.post("/admin/logout", logout);
+  });
 
   const dashboard = (reply: FastifyReply, extra: RenderExtra = {}) =>
     render(
@@ -349,7 +408,7 @@ export function admin(
           stats: options.store.jobs.stats(),
           worker: options.worker?.status() ?? null,
           jobs: options.store.jobs.listRecent({ limit: 20 }),
-          formToken,
+          formToken: csrf(reply.request),
           recipeStatus: options.recipeStatus,
           now: now(),
         },
@@ -467,7 +526,7 @@ export function admin(
         {
           job: found.job,
           events: found.events,
-          formToken,
+          formToken: csrf(request),
           mealieUrl: slug && options.mealieRecipeUrl ? options.mealieRecipeUrl(slug) : null,
           recipeStatus: options.recipeStatus,
           now: now(),
@@ -527,6 +586,7 @@ export function admin(
     const recipeParam = typeof query.recipe === "string" ? query.recipe.trim().slice(0, 200) : "";
     const scaleRaw = typeof query.scale === "string" ? Number(query.scale) : 1;
     const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 && scaleRaw <= MAX_SCALE ? scaleRaw : 1;
+    const formToken = csrf(request);
     const data: DryRunData = { recipeParam, scale, formToken, recipeStatus: options.recipeStatus };
     if (!recipeParam) return render(reply, t.titles.dryRun, dryRunView(data, t));
 
@@ -545,7 +605,7 @@ export function admin(
     data.sent = options.store.mcRecipes.find(recipe.id, scale, prepared.hash);
 
     if (query.convert === "1") {
-      if (!tokenValid(query._csrf)) {
+      if (!tokenValid(query._csrf, formToken)) {
         data.conversionError = t.errors.conversionLinkExpired;
       } else {
         try {
@@ -573,7 +633,7 @@ export function admin(
     return render(reply, t.titles.dryRun, dryRunView(data, t));
   });
 
-  options.extend?.({ app, t, formToken, render, notice });
+  options.extend?.({ app, t, csrf, render, notice });
 
   done();
 }

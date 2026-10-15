@@ -98,6 +98,8 @@ export const de: Messages = {
       "2. Am Rechner den Anmelde-Helfer starten: npm run mc:login -- --bridge <Adresse der Bridge> (siehe README, Abschnitt „Monsieur Cuisine session“).",
       "3. Auf www.monsieur-cuisine.com anmelden, das Cookie aus den Entwicklerwerkzeugen kopieren und auf der Admin-Seite (/admin) einfügen.",
     ],
+    autoLoginWaiting: (time) =>
+      `Die automatische Anmeldung mit dem hinterlegten Lidl-Konto versucht es ab ${time} wieder; so lange wartet sie nach früheren Versuchen. Schneller geht es mit „Anmeldung jetzt testen“ in den Einstellungen, dem Anmelde-Helfer oder dem Cookie-Formular.`,
     autoLoginFailed: (reason) =>
       `Die automatische Anmeldung mit dem hinterlegten Lidl-Konto hat nicht geklappt (${reason}). Bitte einmal von Hand anmelden: mit dem Anmelde-Helfer oder per Cookie.`,
     lastChecked: (when) => `Zuletzt geprüft: ${when}`,
@@ -138,6 +140,8 @@ export const de: Messages = {
       password: "Passwort",
       submit: "Anmelden",
       wrongCredentials: "Benutzer oder Passwort stimmen nicht.",
+      tooMany: (minutes) =>
+        `Zu viele fehlgeschlagene Anmeldungen von dieser Adresse. Versuche es in ${minutes} ${minutes === 1 ? "Minute" : "Minuten"} wieder.`,
     },
     autoRefresh: "Die Seite lädt alle 5 Sekunden neu, solange ein Auftrag wartet oder läuft.",
     authBanner: "Die Admin-Seiten haben kein Passwort. Setze ADMIN_USER und ADMIN_PASSWORD.",
@@ -155,6 +159,8 @@ export const de: Messages = {
       "login-started": "Anmeldung gestartet. Die Seite lädt neu, bis sie fertig ist.",
       "login-running": "Es läuft schon eine Anmeldung.",
       "login-no-credentials": "Bitte zuerst das Lidl-Konto hinterlegen.",
+      "login-cooldown":
+        "Ein manueller Test läuft höchstens alle 3 Minuten. Bitte gleich noch einmal versuchen.",
     },
     plain: {
       unknownHost: "Unbekannter Hostname. Trage ihn in ADMIN_HOSTS ein oder nutze die IP-Adresse.",
@@ -325,6 +331,7 @@ export const de: Messages = {
       screenshot: "Bildschirmfoto der Seite",
       nextAttempt: "Nächster automatischer Versuch frühestens",
       running: "Eine Anmeldung läuft.",
+      manualCooldown: (time) => `Nächster manueller Test ab ${time}`,
       otherWays:
         "Andere Wege, die Sitzung zu erneuern: der Anmelde-Helfer am Rechner (npm run mc:login) oder das Cookie auf der Übersicht einfügen.",
     },

@@ -279,6 +279,15 @@ describe("Docker healthcheck", () => {
     expect(await healthcheckExit(200)).toBe(0);
     expect(await healthcheckExit(503)).toBe(1);
   });
+
+  it("installs the browser libraries of the Playwright version the lock file pins", () => {
+    const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
+    const lock = JSON.parse(
+      readFileSync(new URL("../../package-lock.json", import.meta.url), "utf8"),
+    ) as { packages: Record<string, { version?: string }> };
+    const pinned = /playwright@(\d+\.\d+\.\d+) install-deps/.exec(dockerfile)?.[1];
+    expect(pinned).toBe(lock.packages["node_modules/playwright"]?.version);
+  });
 });
 
 describe("end to end with fake clients", () => {

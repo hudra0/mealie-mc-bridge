@@ -107,6 +107,20 @@ describe("EmailNotifier", () => {
     expect(text).toContain("/admin/settings");
   });
 
+  it("says when the automatic login tries again, once", async () => {
+    const transport = stub();
+    const n = notifier(transport);
+    await n.sessionExpired(status(), { autoLoginNextAttempt: "2026-10-13T12:00:00.000Z" });
+    await n.sessionExpired(status(), { autoLoginNextAttempt: "2026-10-13T13:00:00.000Z" });
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent[0]?.text).toContain(
+      "Die automatische Anmeldung mit dem hinterlegten Lidl-Konto versucht es ab",
+    );
+    // A failed attempt later is news and gets its own mail.
+    await n.sessionExpired(status(), { autoLoginFailed: "no login form showed up" });
+    expect(transport.sent).toHaveLength(2);
+  });
+
   it("says when the session was never checked", async () => {
     const transport = stub();
     await notifier(transport).sessionExpired(

@@ -426,6 +426,30 @@ describe("automatic login", () => {
     await vi.waitFor(() => expect(autoLogin.run.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 
+  it("mails when the automatic login has to wait, with the time of the next attempt", async () => {
+    store = tempStore();
+    const until = "2026-10-13T12:00:00.000Z";
+    const autoLogin = autoLoginStub({ status: "skipped", reason: "backoff", until });
+    const { manager, validate, notifier } = build({ seedCookie: COOKIE, autoLogin });
+    validate.mockRejectedValue(rejected("expired"));
+    await manager.check();
+    await vi.waitFor(() => expect(notifier.sent).toHaveLength(1));
+    expect(notifier.sent[0]).toMatchObject({
+      kind: "session",
+      extra: { autoLoginNextAttempt: until },
+    });
+  });
+
+  it("stays silent while another login runs", async () => {
+    store = tempStore();
+    const autoLogin = autoLoginStub({ status: "skipped", reason: "running" });
+    const { manager, validate, notifier } = build({ seedCookie: COOKIE, autoLogin });
+    validate.mockRejectedValue(rejected("expired"));
+    await manager.check();
+    await vi.waitFor(() => expect(autoLogin.run).toHaveBeenCalled());
+    expect(notifier.sent).toEqual([]);
+  });
+
   it("runs a manual login on request", async () => {
     store = tempStore();
     const autoLogin = autoLoginStub({ status: "ok", attempt: attempt(true) });

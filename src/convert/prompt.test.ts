@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { loadDeviceLimits } from "../recipe/limits.js";
 import { STEP_KINDS } from "../recipe/schema.js";
 import { testKnowledge } from "../testing/locale.js";
-import { loadKnowledge, selectTechniques, techniqueById } from "./knowledge.js";
+import { loadKnowledge, ruleValue, selectTechniques, techniqueById } from "./knowledge.js";
 import {
   SYSTEM_SECTIONS,
   MIN_FORMULA_R2,
@@ -174,6 +174,10 @@ describe("prompts per locale", () => {
     expect(languageSections(englishSystem)).toMatchSnapshot();
     expect(englishSystem).not.toMatch(/Mixbehälter|Messbecher|Rühraufsatz|German/);
     expect(englishSystem).toContain('locale is "en-US"');
+    // The title length comes from the text_step_title rule of the knowledge base.
+    expect(englishSystem).toContain(
+      `A text step title is a short imperative of at most ${ruleValue(knowledge, "text_step_title")} characters`,
+    );
   });
 
   it("keeps the en-US user message", () => {

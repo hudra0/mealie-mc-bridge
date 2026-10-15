@@ -123,8 +123,20 @@ export function settingsView(data: SettingsViewData, t: AdminMessages): SafeHtml
           ? html`<div>
               <form class="inline" method="post" action="/admin/settings/login">
                 ${csrfField(data.formToken)}
-                <button type="submit" ${status.running ? html`disabled` : ""}>${l.testNow}</button>
+                <button
+                  type="submit"
+                  ${status.running || status.manualAvailableAt ? html`disabled` : ""}
+                >
+                  ${l.testNow}
+                </button>
               </form>
+              ${
+                status.manualAvailableAt
+                  ? html`<span class="muted"
+                      >${l.manualCooldown(formatTime(status.manualAvailableAt))}</span
+                    >`
+                  : ""
+              }
               <form class="inline" method="post" action="/admin/settings/credentials/delete">
                 ${csrfField(data.formToken)}
                 <button type="submit">${l.remove}</button>
@@ -137,7 +149,7 @@ export function settingsView(data: SettingsViewData, t: AdminMessages): SafeHtml
 }
 
 export function registerSettings(context: AdminContext, deps: SettingsDeps): void {
-  const { app, t, formToken, render, notice } = context;
+  const { app, t, csrf, render, notice } = context;
 
   const show = async (
     reply: FastifyReply,
@@ -148,7 +160,11 @@ export function registerSettings(context: AdminContext, deps: SettingsDeps): voi
       reply,
       t.settings.title,
       settingsView(
-        { status, browserUnavailable: await deps.autoLogin.browserUnavailable(), formToken },
+        {
+          status,
+          browserUnavailable: await deps.autoLogin.browserUnavailable(),
+          formToken: csrf(reply.request),
+        },
         t,
       ),
       {
@@ -186,8 +202,12 @@ export function registerSettings(context: AdminContext, deps: SettingsDeps): voi
     if (!deps.autoLogin.hasCredentials()) {
       return reply.redirect("/admin/settings?notice=login-no-credentials", 303);
     }
-    if (deps.autoLogin.status().running) {
+    const status = deps.autoLogin.status();
+    if (status.running) {
       return reply.redirect("/admin/settings?notice=login-running", 303);
+    }
+    if (status.manualAvailableAt) {
+      return reply.redirect("/admin/settings?notice=login-cooldown", 303);
     }
     void deps.session.loginNow().catch(() => undefined);
     return reply.redirect("/admin/settings?notice=login-started", 303);

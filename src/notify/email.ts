@@ -12,8 +12,10 @@ import type { Job } from "../store/jobs.js";
 
 // autoLoginFailed: why the automatic login with the stored Lidl account did not work; the
 // mail then says that a manual login is needed.
+// autoLoginNextAttempt: the automatic login has to wait until this time (ISO).
 export interface SessionMailDetails {
   autoLoginFailed?: string;
+  autoLoginNextAttempt?: string;
 }
 
 export interface Notifier {
@@ -83,7 +85,8 @@ export class EmailNotifier implements Notifier {
   // One mail per state change: the same state for the same cookie is reported once.
   async sessionExpired(status: SessionStatus, details: SessionMailDetails = {}): Promise<void> {
     const manual = details.autoLoginFailed !== undefined;
-    const key = `${status.state}:${status.cookieSetAt ?? "none"}${manual ? ":manual" : ""}`;
+    const waiting = details.autoLoginNextAttempt !== undefined;
+    const key = `${status.state}:${status.cookieSetAt ?? "none"}${manual ? ":manual" : waiting ? ":waiting" : ""}`;
     if (key === this.#lastSessionKey) return;
     this.#lastSessionKey = key;
     this.#lastHealthError = null;
@@ -94,6 +97,9 @@ export class EmailNotifier implements Notifier {
       ...(details.autoLoginFailed === undefined
         ? []
         : ["", t.autoLoginFailed(errorMessage(details.autoLoginFailed))]),
+      ...(details.autoLoginNextAttempt === undefined
+        ? []
+        : ["", t.autoLoginWaiting(this.#date(details.autoLoginNextAttempt))]),
       "",
       t.sessionWaiting,
       "",

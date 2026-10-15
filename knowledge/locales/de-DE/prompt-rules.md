@@ -6,7 +6,7 @@ Rules for the German text of the recipe, derived from the de-DE corpus. They add
 - Never write "Deckel schließen" (the lid is always closed) or "auf einem Teller abwiegen".
 - Keep Stück for eggs, garlic cloves (name "Knoblauchzehen"), herb stems (name "Petersilienstiele") and bay leaves.
 - Write units as the Units section spells them: g, Tl, El, Prise or Prisen, Msp. and Stück.
-- Text step titles are short imperatives with the verb last, at most 60 characters: "Zwiebel vorbereiten" over the description "Zwiebel schälen, halbieren und in den Mixbehälter geben.", "Abschmecken" over "Mit Salz und Pfeffer abschmecken.".
+- Text step titles are short imperatives with the verb last: "Zwiebel vorbereiten" over the description "Zwiebel schälen, halbieren und in den Mixbehälter geben.", "Abschmecken" over "Mit Salz und Pfeffer abschmecken.".
 
 ## Ingredient names
 

@@ -134,6 +134,9 @@ export interface SessionManagerOptions {
   autoLogin?: Pick<AutoLogin, "hasCredentials" | "run"> | undefined;
 }
 
+// Skip reasons after which the automatic login runs again by itself, later.
+const WAITING: ReadonlySet<string> = new Set(["too_soon", "backoff", "daily_limit"]);
+
 const STATES: readonly SessionState[] = ["valid", "invalid", "expired", "unknown"];
 
 export class SessionManager implements SessionProvider {
@@ -277,6 +280,13 @@ export class SessionManager implements SessionProvider {
         const reason = run.attempt.detail ?? run.attempt.code ?? "unknown";
         await this.#safely(() =>
           this.#notifier.sessionExpired(this.status(), { autoLoginFailed: reason }),
+        );
+      } else if (run.status === "skipped" && run.until && WAITING.has(run.reason)) {
+        // The automatic login has to wait: say so now rather than stay silent until then.
+        // The notifier sends this once per state.
+        const until = run.until;
+        await this.#safely(() =>
+          this.#notifier.sessionExpired(this.status(), { autoLoginNextAttempt: until }),
         );
       }
     } catch (error) {

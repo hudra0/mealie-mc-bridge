@@ -81,6 +81,7 @@ export interface EmailMessages {
   sessionWaiting: string;
   sessionNextSteps: readonly string[];
   autoLoginFailed(reason: string): string;
+  autoLoginWaiting(time: string): string;
   lastChecked(when: string): string;
   never: string;
   lastMessage(message: string): string;
@@ -109,6 +110,7 @@ export interface AdminMessages {
     password: string;
     submit: string;
     wrongCredentials: string;
+    tooMany(minutes: number): string;
   };
   // Under the job list and a running job: the page reloads on its own.
   autoRefresh: string;
@@ -244,6 +246,7 @@ export interface AdminMessages {
     screenshot: string;
     nextAttempt: string;
     running: string;
+    manualCooldown(time: string): string;
     otherWays: string;
   };
   dryRun: {

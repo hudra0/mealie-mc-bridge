@@ -17,6 +17,7 @@ import type { SessionManager } from "../session/manager.js";
 import type { Store } from "../store/index.js";
 import type { AutoLogin } from "../session/auto-login.js";
 import { admin } from "./admin.js";
+import type { LoginThrottle } from "./admin-auth.js";
 import { registerSettings } from "./admin-settings.js";
 import { healthReport } from "./health.js";
 import { routes } from "./routes.js";
@@ -52,6 +53,8 @@ export interface ServiceParts {
   formToken?: string;
   // Signs the admin login cookie: SETTINGS_KEY. Random when left out.
   adminSessionKey?: Buffer;
+  // Counts failed admin logins; tests pass one with their own clock.
+  adminThrottle?: LoginThrottle;
   // The automatic login and its settings page; without it the page is missing.
   autoLogin?: AutoLogin;
 }
@@ -135,6 +138,7 @@ export function buildService(parts: ServiceParts): Service {
         : null,
     ...(config.ADMIN_HOSTS ? { allowedHosts: config.ADMIN_HOSTS } : {}),
     ...(parts.adminSessionKey ? { sessionKey: parts.adminSessionKey } : {}),
+    ...(parts.adminThrottle ? { throttle: parts.adminThrottle } : {}),
     store,
     session: parts.session,
     mealie: parts.mealie,

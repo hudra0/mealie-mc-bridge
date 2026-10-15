@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { PlaywrightBrowser } from "./playwright-browser.js";
+import { readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tempDir } from "../testing/temp.js";
+import { PROFILE_LOCKS, PlaywrightBrowser } from "./playwright-browser.js";
 
 // A stand-in for Playwright's chromium with one page that has the given elements.
 function fakeChromium(
   elements: Record<string, { visible: boolean; text?: string }[]>,
-  executable = process.execPath,
+  launchError: Error | null = null,
 ) {
   const actions: string[] = [];
   const locator = (selector: string) => {
@@ -44,7 +47,11 @@ function fakeChromium(
     close: vi.fn(() => Promise.resolve()),
   };
   const chromium = {
-    executablePath: () => executable,
+    launch: vi.fn(() =>
+      launchError
+        ? Promise.reject(launchError)
+        : Promise.resolve({ close: () => Promise.resolve() }),
+    ),
     launchPersistentContext: vi.fn(() => Promise.resolve(context)),
   };
   return { chromium, actions, page, context };
@@ -57,14 +64,59 @@ describe("PlaywrightBrowser", () => {
   it("reports a missing Playwright or Chromium", async () => {
     const missing = new PlaywrightBrowser({ load: () => Promise.reject(new Error("not found")) });
     expect(await missing.unavailable()).toBe("Playwright is not installed");
-    const { chromium } = fakeChromium({}, "/nowhere/chrome");
+    const { chromium } = fakeChromium(
+      {},
+      new Error("browserType.launch: Executable doesn't exist at /ms-playwright/x\nRun it"),
+    );
     const noBrowser = new PlaywrightBrowser({ load: loader(chromium) });
-    expect(await noBrowser.unavailable()).toMatch(/Chromium for Playwright is not installed/);
-    const channel = new PlaywrightBrowser({
-      channel: "chrome",
-      load: loader(chromium),
-    });
-    expect(await channel.unavailable()).toBeNull();
+    expect(await noBrowser.unavailable()).toBe("Chromium for Playwright is not installed");
+    const broken = fakeChromium({}, new Error("\nbrowserType.launch: Target page crashed\nmore"));
+    expect(await new PlaywrightBrowser({ load: loader(broken.chromium) }).unavailable()).toBe(
+      "Chromium does not start: browserType.launch: Target page crashed",
+    );
+  });
+
+  it("probes with a real headless launch, remembers a success and retries a failure later", async () => {
+    let now = 0;
+    const working = fakeChromium({});
+    const browser = new PlaywrightBrowser({ load: loader(working.chromium), now: () => now });
+    expect(await browser.unavailable()).toBeNull();
+    expect(await browser.unavailable()).toBeNull();
+    expect(working.chromium.launch).toHaveBeenCalledTimes(1);
+    expect(working.chromium.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ headless: true, args: ["--disable-dev-shm-usage"] }),
+    );
+
+    const failing = fakeChromium({}, new Error("Executable doesn't exist"));
+    const later = new PlaywrightBrowser({ load: loader(failing.chromium), now: () => now });
+    await later.unavailable();
+    now = 5 * 60_000;
+    await later.unavailable();
+    expect(failing.chromium.launch).toHaveBeenCalledTimes(1);
+    now = 11 * 60_000;
+    await later.unavailable();
+    expect(failing.chromium.launch).toHaveBeenCalledTimes(2);
+    const chrome = fakeChromium({});
+    await new PlaywrightBrowser({ channel: "chrome", load: loader(chrome.chromium) }).unavailable();
+    expect(chrome.chromium.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: "chrome" }),
+    );
+  });
+
+  it("removes stale profile locks before it starts", async () => {
+    const temp = tempDir();
+    try {
+      for (const lock of PROFILE_LOCKS) writeFileSync(join(temp.dir, lock), "stale");
+      writeFileSync(join(temp.dir, "Preferences"), "{}");
+      const fake = fakeChromium({});
+      await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+        profileDir: temp.dir,
+        headless: true,
+      });
+      expect(readdirSync(temp.dir)).toEqual(["Preferences"]);
+    } finally {
+      temp.cleanup();
+    }
   });
 
   it("drives the page through the login actions", async () => {

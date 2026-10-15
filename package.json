@@ -1,6 +1,6 @@
 {
   "name": "mealie-mc-bridge",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Send Mealie recipes to a Monsieur Cuisine Smart as guided-cooking drafts",
   "license": "MIT",

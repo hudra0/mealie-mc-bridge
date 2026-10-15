@@ -182,6 +182,13 @@ export const packUnitsSchema = z.looseObject({
   // Words for liquids. A cup of anything else is a volume of a solid, whose weight the
   // amount check cannot know. Read on the source recipe, so the words of every pack count.
   liquidWords: textList.min(1),
+  // The serving size of the recipe: the word for portions, used when the Mealie recipe
+  // gives a number of servings but no yield text, and how official recipes of the language
+  // write the first letter of a serving unit ("Scheiben" in German, "slices" in English).
+  servings: z.looseObject({
+    portion: z.strictObject({ singular: text, plural: text }),
+    unitCase: z.enum(["capitalize", "lower"]),
+  }),
 });
 
 const sectionLabelShape = Object.fromEntries(

@@ -29,6 +29,9 @@ export interface RenderOptions {
   servings: number;
   ingredients: readonly ScaledIngredient[];
   labels: RenderLabels;
+  // The unit of the serving size and where it came from (src/pipeline/serving-size.ts).
+  // A yield with a text puts the unit into the meta line: "Portionen: 5 → 10 Scheiben".
+  servingSize?: { unit: string; source: "yield" | "servings" | "estimate" };
   // Tags left out of the meta line, compared without case: the bridge's own TAG_NAME,
   // which says nothing about the dish.
   excludeTags?: readonly string[];
@@ -129,16 +132,19 @@ function metaLine(recipe: MealieRecipe, options: RenderOptions): string {
   const { labels } = options;
   const number = (value: number) => formatNumber(value, labels.decimalSeparator);
   const parts: string[] = [];
-  // The same base as Mealie's servings scaler: servings, else the yield quantity.
-  const base = scalerBase(recipe);
-  const fromYield = base !== null && !(recipe.recipeServings > 0);
+  const yieldUnit = options.servingSize?.source === "yield" ? options.servingSize.unit : null;
+  // The same base as Mealie's servings scaler: servings, else the yield quantity. A yield
+  // with a text is the serving size itself.
+  const base = yieldUnit !== null ? recipe.recipeYieldQuantity : scalerBase(recipe);
+  const fromYield = base !== null && (yieldUnit !== null || !(recipe.recipeServings > 0));
   const source = fromYield ? ` (${labels.fromYield})` : "";
+  const target = yieldUnit === null ? String(options.servings) : `${options.servings} ${yieldUnit}`;
   if (base === null) {
-    parts.push(`${labels.servings}: ${options.servings} (${labels.servingsNotGiven})`);
+    parts.push(`${labels.servings}: ${target} (${labels.servingsNotGiven})`);
   } else if (base !== options.servings) {
-    parts.push(`${labels.servings}: ${number(base)} → ${options.servings}${source}`);
+    parts.push(`${labels.servings}: ${number(base)} → ${target}${source}`);
   } else {
-    parts.push(`${labels.servings}: ${options.servings}${source}`);
+    parts.push(`${labels.servings}: ${target}${source}`);
   }
   if (options.scale !== 1) parts.push(`${labels.factor}: ${number(options.scale)}`);
   const yieldText = [

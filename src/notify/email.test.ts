@@ -30,6 +30,7 @@ const job = (overrides: Partial<Job> = {}): Job => ({
   title: "Kürbis-Linsen-Suppe",
   scale: 1,
   servings: 4,
+  servingUnit: "Portionen",
   status: "failed",
   attempts: 2,
   error: "boom",

@@ -37,7 +37,7 @@ export const en: Messages = {
       const lines = [
         `The recipe is in your Monsieur Cuisine account: [Open in the editor](${text.url})`,
         "",
-        `- Servings: ${text.servings}`,
+        `- Serving size: ${text.servings} ${escapeMarkdown(text.servingUnit)}`,
         `- Status: ${status}`,
         `- Converted with: ${escapeMarkdown(text.provider)}, ${escapeMarkdown(text.model)}`,
       ];
@@ -232,7 +232,7 @@ export const en: Messages = {
       openRecipe: (id, status) =>
         `open ${status === "draft" ? "draft" : "recipe"} ${id} in the editor`,
       scale: "Scale",
-      servings: (count) => ` (${count} servings)`,
+      servingSize: (amount, unit) => ` (${amount} ${unit ?? "servings"})`,
       attempts: "Attempts",
       forced: " · forced",
       created: "Created",
@@ -264,7 +264,9 @@ export const en: Messages = {
       recipePlaceholder: "id or slug",
       scale: "Scale",
       preview: "Preview",
-      servings: "Servings",
+      servings: "Serving size",
+      servingsEstimated:
+        "default, not stated in the recipe; the model estimates it and flags it as a review hint",
       sourceHash: "Source hash",
       alreadySent: "Already sent",
       sentAt: (time) => `yes, ${time}:`,

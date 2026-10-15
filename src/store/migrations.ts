@@ -100,6 +100,13 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE jobs ADD COLUMN ingredients_json TEXT;
     `,
   },
+  {
+    version: 4,
+    name: "serving unit of a job",
+    sql: `
+      ALTER TABLE jobs ADD COLUMN serving_unit TEXT;
+    `,
+  },
 ];
 
 export interface MigrationResult {

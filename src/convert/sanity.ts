@@ -58,9 +58,14 @@ export interface Finding {
   message: string;
 }
 
+export type SanityRequest = Pick<
+  ConversionRequest,
+  "servings" | "ingredients" | "servingUnit" | "servingsSource"
+>;
+
 export interface SanityContext {
   recipe: RecipeInput;
-  request: Pick<ConversionRequest, "servings" | "ingredients">;
+  request: SanityRequest;
   knowledge: Knowledge;
   limits: DeviceLimits;
   traces: StepTrace[];
@@ -911,14 +916,18 @@ export const duplicateAdditionRule: SanityRule = {
 
 export const servingsRule: SanityRule = {
   id: "servings_changed",
-  description: "The recipe keeps the servings the amounts were scaled to.",
+  description:
+    "The recipe keeps the serving size the amounts were scaled to, when the source states one.",
   check({ recipe, request }) {
+    // Without servings or a yield in the source, the model estimates the serving size.
+    if (request.servingsSource === "estimate") return [];
     const amount = recipe.servingSize.amount;
     if (amount === request.servings) return [];
+    const unit = request.servingUnit?.trim() || "servings";
     return [
       warning(
         "servingSize.amount",
-        `the recipe is for ${amount} servings, but the amounts were scaled to ${request.servings}; check the amounts`,
+        `the recipe is for ${amount} ${recipe.servingSize.unit}, but the amounts were scaled to ${request.servings} ${unit}; check the amounts`,
       ),
     ];
   },
@@ -944,7 +953,7 @@ export const SANITY_RULES: readonly SanityRule[] = [
 
 export function checkSanity(
   recipe: RecipeInput,
-  request: Pick<ConversionRequest, "servings" | "ingredients">,
+  request: SanityRequest,
   knowledge: Knowledge,
   limits: DeviceLimits,
   rules: readonly SanityRule[] = SANITY_RULES,

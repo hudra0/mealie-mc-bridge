@@ -5,6 +5,7 @@
 import type { AdminMessages, SavedStatus } from "../i18n/index.js";
 import type { ScaledIngredient } from "../ingredients/index.js";
 import type { CheckedRecipe, CategoryPlan, PreparedRecipe } from "../pipeline/prepare.js";
+import { formatServingSize } from "../pipeline/serving-size.js";
 import type { ConversionResult } from "../pipeline/converter-port.js";
 import type { WorkerStatus } from "../pipeline/worker.js";
 import type { RecipeStep } from "../recipe/schema.js";
@@ -371,7 +372,9 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
           }
         </dd>
         <dt>${l.scale}</dt>
-        <dd>${job.scale}${job.servings === null ? "" : l.servings(job.servings)}</dd>
+        <dd>
+          ${job.scale}${job.servings === null ? "" : l.servingSize(job.servings, job.servingUnit)}
+        </dd>
         <dt>${l.attempts}</dt>
         <dd>${job.attempts}${job.force ? l.forced : ""}</dd>
         <dt>${l.created}</dt>
@@ -559,7 +562,14 @@ export function dryRunView(data: DryRunData, t: AdminMessages): SafeHtml {
         <h2>${data.title ?? ""}</h2>
         <dl>
           <dt>${l.servings}</dt>
-          <dd>${prepared.servings}</dd>
+          <dd>
+            ${formatServingSize(prepared.servingSize)}
+            ${
+              prepared.servingSize.source === "estimate"
+                ? html`<span class="muted">(${l.servingsEstimated})</span>`
+                : ""
+            }
+          </dd>
           <dt>${l.sourceHash}</dt>
           <dd><code>${prepared.hash.slice(0, 16)}</code></dd>
           <dt>${l.alreadySent}</dt>

@@ -61,7 +61,7 @@ Pick categoryIds only from this list (id: name):
 
 # Servings
 
-The amounts below are scaled to 4 servings. Set servingSize.amount to 4.
+The serving size is 4 servings; the amounts below are scaled to it. Set servingSize.amount to 4.
 
 # Mealie categories
 
@@ -358,7 +358,7 @@ Rules for the German text of the recipe, derived from the de-DE corpus. They add
 
 - Answer with exactly one JSON object that matches the response schema: no prose, no Markdown, no code fences.
 - locale is "de-DE". complexity is easy, medium or hard.
-- servingSize.amount is the servings from the user message. Only when a device limit forces a smaller batch, scale the whole recipe down and say so in reviewHints.
+- servingSize.amount and servingSize.unit are the serving size from the user message, for example 4 portions or 10 slices, with the unit written exactly as given. Only when a device limit forces a smaller batch, scale the whole recipe down and say so in reviewHints. When the user message says the recipe states no serving size, estimate amount and unit and add a review hint that the serving size is estimated.
 - categoryIds: 1-8 ids, only from the category list in the user message; prefer categories that match the Mealie category hints.
 - servingSize.instruction (optional): the whole recipe as plain German text for reading without the device.
 - reviewHints: short German notes, at most 200 characters each and 20 in total, for everything guessed, converted with uncertainty or left out. Leave the list empty when nothing is uncertain.
@@ -517,7 +517,7 @@ Rules for the English text of the recipe, written from the en-US corpus of offic
 
 - Answer with exactly one JSON object that matches the response schema: no prose, no Markdown, no code fences.
 - locale is "en-US". complexity is easy, medium or hard.
-- servingSize.amount is the servings from the user message. Only when a device limit forces a smaller batch, scale the whole recipe down and say so in reviewHints.
+- servingSize.amount and servingSize.unit are the serving size from the user message, for example 4 portions or 10 slices, with the unit written exactly as given. Only when a device limit forces a smaller batch, scale the whole recipe down and say so in reviewHints. When the user message says the recipe states no serving size, estimate amount and unit and add a review hint that the serving size is estimated.
 - categoryIds: 1-8 ids, only from the category list in the user message; prefer categories that match the Mealie category hints.
 - servingSize.instruction (optional): the whole recipe as plain English text for reading without the device.
 - reviewHints: short English notes, at most 200 characters each and 20 in total, for everything guessed, converted with uncertainty or left out. Leave the list empty when nothing is uncertain.

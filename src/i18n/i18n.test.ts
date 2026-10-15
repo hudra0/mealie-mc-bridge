@@ -22,6 +22,7 @@ function keys(value: unknown, prefix = ""): string[] {
 const created: CreatedText = {
   url: "https://www.monsieur-cuisine.com/x",
   servings: 4,
+  servingUnit: "Portionen",
   status: "private-publish",
   statusFailed: false,
   provider: "openai",
@@ -110,7 +111,7 @@ describe("message catalogs", () => {
       expect(admin.dashboard.lastWorkerError("t")).toContain("t");
       expect(admin.dashboard.cookieLabel).toContain("`Cookie`");
       expect(admin.jobDetail.openRecipe(7, "private-publish")).toContain("7");
-      expect(admin.jobDetail.servings(4)).toContain("4");
+      expect(admin.jobDetail.servingSize(10, "Scheiben")).toContain("10 Scheiben");
       expect(admin.jobDetail.tokens(100, 20, 50)).toContain("20");
       expect(admin.jobDetail.tokens(100, null, 50)).not.toContain("(");
       expect(admin.jobDetail.resolutionOff(3)).toContain("3");

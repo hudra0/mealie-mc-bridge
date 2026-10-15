@@ -28,6 +28,7 @@ export interface PublicJob {
   title: string | null;
   scale: number;
   servings: number | null;
+  servingUnit: string | null;
   attempts: number;
   error: string | null;
   mcRecipeId: number | null;
@@ -103,6 +104,7 @@ export function publicJob(job: Job, events: readonly JobEvent[]): PublicJob {
     title: job.title,
     scale: job.scale,
     servings: job.servings,
+    servingUnit: job.servingUnit,
     attempts: job.attempts,
     error: job.error,
     mcRecipeId: job.mcRecipeId,

@@ -136,6 +136,8 @@ function run(
     list?: ListEntry[];
     mapping?: IngredientMapping[] | null;
     servings?: number;
+    servingUnit?: string;
+    servingsSource?: "yield" | "servings" | "estimate";
     knowledge?: Knowledge;
   } = {},
 ) {
@@ -151,7 +153,12 @@ function run(
   const k = options.knowledge ?? knowledge;
   return checkSanity(
     recipeWith(steps, list, mapping, k.locale),
-    { servings: options.servings ?? 4, ingredients },
+    {
+      servings: options.servings ?? 4,
+      ingredients,
+      ...(options.servingUnit ? { servingUnit: options.servingUnit } : {}),
+      ...(options.servingsSource ? { servingsSource: options.servingsSource } : {}),
+    },
     k,
     limits,
     [rule],
@@ -917,6 +924,21 @@ describe("servings_changed", () => {
   it("warns when the servings differ from the scaled amounts", () => {
     expect(run(servingsRule, [text("x")], [], { servings: 6 }).warnings).toHaveLength(1);
     expect(run(servingsRule, [text("x")], [], { servings: 4 }).warnings).toEqual([]);
+  });
+
+  it("names the unit of a known serving size", () => {
+    const { warnings } = run(servingsRule, [text("x")], [], {
+      servings: 10,
+      servingUnit: "Scheiben",
+      servingsSource: "yield",
+    });
+    expect(warnings[0]).toContain("scaled to 10 Scheiben");
+  });
+
+  it("stays quiet when the model estimated the serving size", () => {
+    expect(
+      run(servingsRule, [text("x")], [], { servings: 6, servingsSource: "estimate" }).warnings,
+    ).toEqual([]);
   });
 });
 

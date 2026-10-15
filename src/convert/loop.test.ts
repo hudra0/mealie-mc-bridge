@@ -114,6 +114,17 @@ describe("createConverter", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it("sets the serving unit the source states, but not over an estimate", async () => {
+    const yieldRequest = { ...request, servingUnit: "Scheiben", servingsSource: "yield" as const };
+    const known = await converter(fakeGenerator([soup]).generator).convert(yieldRequest);
+    expect(known.recipe.servingSize.unit).toBe("Scheiben");
+    const estimated = await converter(fakeGenerator([soup]).generator).convert({
+      ...yieldRequest,
+      servingsSource: "estimate",
+    });
+    expect(estimated.recipe.servingSize.unit).toBe("Portionen");
+  });
+
   it("feeds the errors back and accepts the corrected recipe", async () => {
     const wrong = soupWith((_, step) => {
       step(4).speed = 5;

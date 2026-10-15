@@ -19,6 +19,7 @@ import {
   hasIngredientIndices,
   ingredientIndexLines,
   promptText,
+  servingsLines,
   stepFields,
   techniqueDetail,
   usableModes,
@@ -267,9 +268,33 @@ describe("buildUserMessage", () => {
     expect(user).toContain("- 228: Suppen & Eintöpfe");
     const ids = [...user.matchAll(/^- (\d+): /gm)].map((match) => Number(match[1]));
     expect(ids).toEqual([...ids].sort((a, b) => a - b));
-    expect(user).toContain("scaled to 4 servings. Set servingSize.amount to 4.");
+    expect(user).toContain(
+      "The serving size is 4 servings; the amounts below are scaled to it. Set servingSize.amount to 4.",
+    );
     expect(user).toContain("# Mealie categories\n\nSuppe\n");
     expect(user.trimEnd().endsWith(request.rendered.trim())).toBe(true);
+  });
+
+  it("states the serving size with its unit", () => {
+    const user = buildUserMessage(
+      { ...request, servings: 10, servingUnit: "Scheiben", servingsSource: "yield" },
+      categories,
+    );
+    expect(user).toContain(
+      'The serving size is 10 Scheiben; the amounts below are scaled to it. Set servingSize.amount to 10 and servingSize.unit to "Scheiben".',
+    );
+  });
+
+  it("asks for an estimate flagged in a review hint when the recipe states no serving size", () => {
+    const lines = servingsLines({
+      servings: 4,
+      servingUnit: "Portionen",
+      servingsSource: "estimate",
+    });
+    expect(lines.join("\n")).toContain("states neither servings nor a yield");
+    expect(lines.join("\n")).toContain("keep 4 Portionen when nothing points elsewhere");
+    expect(lines.join("\n")).toContain("add a review hint that says the serving size is estimated");
+    expect(lines.join("\n")).not.toContain("Set servingSize.amount to");
   });
 
   it("refuses to ask for category ids without a list", () => {

@@ -5,7 +5,6 @@
 import {
   normalizeIngredients,
   scaleIngredients,
-  servingsFor,
   type NormalizedIngredient,
   type ScaledIngredient,
 } from "../ingredients/index.js";
@@ -27,12 +26,15 @@ import {
 import type { ConversionRequest, ConversionResult } from "./converter-port.js";
 import type { IngredientResolverPort } from "./ingredient-resolver.js";
 import type { PipelineLocale } from "./locale.js";
+import { servingSizeFor, type ServingSize } from "./serving-size.js";
 import { sourceHash } from "./source-hash.js";
 
 export interface PreparedRecipe {
   normalized: NormalizedIngredient[];
   scaled: ScaledIngredient[];
+  // The amount of the serving size, servingSize.amount.
   servings: number;
+  servingSize: ServingSize;
   rendered: string;
   hash: string;
 }
@@ -47,16 +49,23 @@ export function prepareRecipe(
 ): PreparedRecipe {
   const normalized = normalizeIngredients(recipe);
   const scaled = scaleIngredients(normalized, scale);
-  const servings = servingsFor(recipe, scale, limits.recipe.servings);
+  const servingSize = servingSizeFor(
+    recipe,
+    scale,
+    limits.recipe.servings,
+    locale.pack.units.servings,
+  );
+  const servings = servingSize.amount;
   const rendered = renderRecipeForLlm(recipe, {
     scale,
     servings,
+    servingSize,
     ingredients: scaled,
     labels: locale.labels,
     ...(options.excludeTags ? { excludeTags: options.excludeTags } : {}),
   });
   const hash = sourceHash(recipe, normalized, scale, locale.pack.locale);
-  return { normalized, scaled, servings, rendered, hash };
+  return { normalized, scaled, servings, servingSize, rendered, hash };
 }
 
 export interface CategoryPlan {
@@ -90,6 +99,8 @@ export function conversionRequest(
     title: recipe.name,
     rendered: prepared.rendered,
     servings: prepared.servings,
+    servingUnit: prepared.servingSize.unit,
+    servingsSource: prepared.servingSize.source,
     locale,
     ingredients: prepared.scaled,
     categoryHints: plan.hints,

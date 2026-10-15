@@ -9,7 +9,7 @@ import { validateRecipeInput, type ValidationIssue } from "../recipe/validate.js
 import { DEFAULT_PRICES, estimateCost, type PriceTable } from "./cost.js";
 import { ConversionFailedError } from "./errors.js";
 import { selectTechniques, type Knowledge } from "./knowledge.js";
-import { deriveTextStepTitles, parseJsonOutput, setLocale } from "./output.js";
+import { deriveTextStepTitles, parseJsonOutput, setLocale, setServingUnit } from "./output.js";
 import { buildSystemPrompt, buildUserMessage, usableModes, type Category } from "./prompt.js";
 import { checkSanity } from "./sanity.js";
 import type {
@@ -174,6 +174,9 @@ export function createConverter(options: ConverterOptions): Converter {
           lastJson = parsed.text;
           deriveTextStepTitles(parsed.value, limits.recipe.stepTitle.max);
           setLocale(parsed.value, knowledge.locale);
+          if (request.servingsSource !== "estimate") {
+            setServingUnit(parsed.value, request.servingUnit);
+          }
           const validation = validateRecipeInput(parsed.value, limits, {
             knownCategoryIds,
             attachments,

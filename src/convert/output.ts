@@ -66,3 +66,13 @@ export function setLocale(value: unknown, locale: string): void {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return;
   (value as Record<string, unknown>).locale = locale;
 }
+
+// Sets the serving unit of a parsed answer, in place, when the source recipe states it: the
+// unit comes from Mealie ("Scheiben"), so the code decides it, not the model. The amount
+// stays the model's, which may scale a batch down for a device limit.
+export function setServingUnit(value: unknown, unit: string | undefined): void {
+  if (!unit || typeof value !== "object" || value === null) return;
+  const servingSize = (value as { servingSize?: unknown }).servingSize;
+  if (typeof servingSize !== "object" || servingSize === null || Array.isArray(servingSize)) return;
+  (servingSize as Record<string, unknown>).unit = unit;
+}

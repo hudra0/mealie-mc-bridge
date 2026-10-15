@@ -279,6 +279,8 @@
     }
   },
   "servings": {
+    "portion": { "singular": "portion", "plural": "portions" },
+    "unitCase": "lower",
     "default": "4 portions (332 of 1015 recipes)",
     "units": ["portions", "portion", "pieces", "piece", "servings", "slices", "jars", "bottles"]
   },

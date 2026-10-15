@@ -15,6 +15,9 @@ export interface ConversionRequest {
   // The recipe as Markdown in the output language (renderRecipeForLlm), scaled.
   rendered: string;
   servings: number;
+  // The serving unit ("Portionen", "Scheiben") and where the serving size came from.
+  servingUnit?: string;
+  servingsSource?: "yield" | "servings" | "estimate";
   locale: string;
   // The scaled ingredients.
   ingredients: NormalizedIngredient[];

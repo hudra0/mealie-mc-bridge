@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deriveTextStepTitles, extractJson, parseJsonOutput, textStepTitle } from "./output.js";
+import {
+  deriveTextStepTitles,
+  extractJson,
+  parseJsonOutput,
+  setServingUnit,
+  textStepTitle,
+} from "./output.js";
 
 describe("extractJson", () => {
   it("takes plain JSON, fenced JSON and JSON inside a sentence", () => {
@@ -42,6 +48,18 @@ describe("text step titles", () => {
     ]);
     expect(() => deriveTextStepTitles(null, 80)).not.toThrow();
     expect(() => deriveTextStepTitles({ servingSize: {} }, 80)).not.toThrow();
+  });
+});
+
+describe("setServingUnit", () => {
+  it("sets the unit of the serving size and ignores other shapes", () => {
+    const answer = { servingSize: { amount: 10, unit: "Portionen" } };
+    setServingUnit(answer, "Scheiben");
+    expect(answer.servingSize.unit).toBe("Scheiben");
+    setServingUnit(answer, undefined);
+    expect(answer.servingSize.unit).toBe("Scheiben");
+    expect(() => setServingUnit({ servingSize: [] }, "x")).not.toThrow();
+    expect(() => setServingUnit(null, "x")).not.toThrow();
   });
 });
 

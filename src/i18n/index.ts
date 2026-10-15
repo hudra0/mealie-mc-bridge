@@ -44,6 +44,8 @@ export type SavedStatus = "draft" | "private-publish";
 export interface CreatedText {
   url: string;
   servings: number;
+  // The unit of the serving size: "Portionen", "Scheiben".
+  servingUnit: string;
   status: SavedStatus;
   // The status change to private-publish failed; the recipe stayed a draft.
   statusFailed: boolean;
@@ -171,7 +173,8 @@ export interface AdminMessages {
     monsieurCuisine: string;
     openRecipe(id: number | string, status: SavedStatus): string;
     scale: string;
-    servings(count: number): string;
+    // " (10 Scheiben)"; the unit is null on jobs from before it was stored.
+    servingSize(amount: number, unit: string | null): string;
     attempts: string;
     forced: string;
     created: string;
@@ -208,6 +211,7 @@ export interface AdminMessages {
     scale: string;
     preview: string;
     servings: string;
+    servingsEstimated: string;
     sourceHash: string;
     alreadySent: string;
     sentAt(time: string): string;

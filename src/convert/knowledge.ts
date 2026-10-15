@@ -238,7 +238,11 @@ export const REQUIRED_MASS_LIMITS = [
   "steaming_liquid_min",
 ] as const;
 export type RequiredMassLimit = (typeof REQUIRED_MASS_LIMITS)[number];
-export const REQUIRED_RULES = ["speed_max_whisk", "turbo_content_temperature"] as const;
+export const REQUIRED_RULES = [
+  "speed_max_whisk",
+  "turbo_content_temperature",
+  "text_step_title",
+] as const;
 export type RequiredRule = (typeof REQUIRED_RULES)[number];
 export const REQUIRED_TECHNIQUES = [...ALWAYS_SELECTED, "sear_roast"] as const;
 // Standard phrases the checks quote in their messages.

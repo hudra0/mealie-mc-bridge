@@ -28,11 +28,13 @@ describe("text step titles", () => {
     expect(textStepTitle("x".repeat(100), 80)).toBe("x".repeat(80));
   });
 
-  it("sets the title of every text step of a parsed answer and leaves the rest", () => {
+  it("fills empty text step titles from the description and keeps the model's titles", () => {
     const answer = {
       servingSize: {
         steps: [
           { kind: "text", title: "Kurz", description: "Die Zwiebel schälen und halbieren." },
+          { kind: "text", title: " ", description: "Die Zwiebel schälen und halbieren." },
+          { kind: "text", description: "Servieren." },
           { kind: "scale", title: "200 g Sahne", description: "Einwiegen.", grams: 200 },
           { kind: "text", title: "Leer", description: "" },
           "kaputt",
@@ -41,7 +43,9 @@ describe("text step titles", () => {
     };
     deriveTextStepTitles(answer, 80);
     expect(answer.servingSize.steps.map((step) => (step as { title?: string }).title)).toEqual([
+      "Kurz",
       "Die Zwiebel schälen und halbieren.",
+      "Servieren.",
       "200 g Sahne",
       "Leer",
       undefined,

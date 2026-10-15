@@ -1,7 +1,9 @@
 // The conversion loop: build the prompts, ask the generator, check the answer with the
 // validator and the plausibility rules, and feed the errors back until the recipe passes
 // or the correction rounds are used up. Warnings never trigger a correction; they reach
-// the cook as review hints.
+// the cook as review hints. Nudges (style problems such as a text step title that copies
+// its description) go back to the model once, together with any errors; after that round
+// a recipe whose only problems are nudges is accepted and the nudges become warnings.
 
 import type { DeviceLimits } from "../recipe/limits.js";
 import { RecipeInputSchema, recipeInputJsonSchema } from "../recipe/schema.js";
@@ -76,6 +78,12 @@ function mergeErrors(validation: ValidationIssue[], sanity: ValidationIssue[]): 
   return [...validation, ...sanity.filter((issue) => !paths.has(issue.path))];
 }
 
+// A nudge the model did not fix, as a warning: "The title repeats ... (servingSize.steps[0].title)".
+function nudgeWarning(issue: ValidationIssue): string {
+  const text = `${issue.message} (${issue.path})`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 export function createConverter(options: ConverterOptions): Converter {
   const {
     generator,
@@ -137,6 +145,8 @@ export function createConverter(options: ConverterOptions): Converter {
       let lastErrors: ValidationIssue[] = [];
       let lastJson = "";
       const corrections: CorrectionRound[] = [];
+      // Whether the model has been told about nudges once already.
+      let nudged = false;
 
       for (let attempt = 1; attempt <= maxCorrections + 1; attempt++) {
         if (signal?.aborted) throw abortReason(signal);
@@ -168,6 +178,7 @@ export function createConverter(options: ConverterOptions): Converter {
         const parsed = parseJsonOutput(output.json);
         let errors: ValidationIssue[];
         let warnings: string[] = [];
+        let pendingNudges: ValidationIssue[] = [];
         if (!parsed.ok) {
           errors = [{ path: "(answer)", message: parsed.message }];
         } else {
@@ -184,10 +195,13 @@ export function createConverter(options: ConverterOptions): Converter {
           const typed = RecipeInputSchema.safeParse(parsed.value);
           const sanity = typed.success
             ? checkSanity(typed.data, request, knowledge, limits)
-            : { errors: [], warnings: [] };
+            : { errors: [], warnings: [], nudges: [] };
           warnings = [...categoryWarning, ...sanity.warnings];
           errors = mergeErrors(validation.errors, sanity.errors);
-          if (errors.length === 0 && validation.recipe) {
+          const nudgeNow = sanity.nudges.length > 0 && !nudged && attempt <= maxCorrections;
+          if (nudgeNow) pendingNudges = sanity.nudges;
+          if (errors.length === 0 && validation.recipe && !nudgeNow) {
+            warnings.push(...sanity.nudges.map(nudgeWarning));
             const total: TokenUsage = cost === undefined ? usage : { ...usage, costUsd: cost };
             logger.info(
               {
@@ -211,6 +225,10 @@ export function createConverter(options: ConverterOptions): Converter {
               model,
             };
           }
+        }
+        if (pendingNudges.length > 0) {
+          errors = [...errors, ...pendingNudges];
+          nudged = true;
         }
         lastErrors = errors;
         corrections.push({ attempt, errors });

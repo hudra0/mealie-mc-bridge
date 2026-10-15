@@ -25,6 +25,7 @@ import {
   machineStepDescriptionRule,
   parseListAmount,
   servingsRule,
+  textStepTitleRule,
   steamingWaterRule,
   tMinSeconds,
   temperatureConventionRule,
@@ -187,12 +188,16 @@ describe("heat_up", () => {
 
   it("warns close to the minimum and accepts enough time", () => {
     expect(run(heatUpRule, [...water, manual(100, 420, 1)]).warnings).toHaveLength(1);
-    expect(run(heatUpRule, [...water, manual(100, 900, 1)])).toEqual({ errors: [], warnings: [] });
+    expect(run(heatUpRule, [...water, manual(100, 900, 1)])).toEqual({
+      errors: [],
+      warnings: [],
+      nudges: [],
+    });
   });
 
   it("skips contents that are still hot and low temperatures", () => {
     const hot = [...water, manual(100, 900, 1), scale(50, "Wasser"), manual(100, 60, 1)];
-    expect(run(heatUpRule, hot)).toEqual({ errors: [], warnings: [] });
+    expect(run(heatUpRule, hot)).toEqual({ errors: [], warnings: [], nudges: [] });
     expect(run(heatUpRule, [...water, manual(60, 60, 1)]).errors).toEqual([]);
   });
 
@@ -364,6 +369,7 @@ describe("ingredient_referenced (most names missing)", () => {
     expect(run(ingredientReferencedRule, steps, english, { list, mapping })).toEqual({
       errors: [],
       warnings: [],
+      nudges: [],
     });
   });
 });
@@ -397,6 +403,7 @@ describe("amount_balance", () => {
     expect(run(amountBalanceRule, [text("2 Tl Salz zugeben.")], salt)).toEqual({
       errors: [],
       warnings: [],
+      nudges: [],
     });
   });
 
@@ -407,7 +414,7 @@ describe("amount_balance", () => {
       title: "4 Eier zugeben",
       description: "4 Eier aufschlagen und in den Mixbehälter geben.",
     };
-    expect(run(amountBalanceRule, [step], eggs)).toEqual({ errors: [], warnings: [] });
+    expect(run(amountBalanceRule, [step], eggs)).toEqual({ errors: [], warnings: [], nudges: [] });
   });
 
   it("counts text amounts only in a clause that adds them to the bowl", () => {
@@ -425,7 +432,11 @@ describe("amount_balance", () => {
       scale(30, "Milch"),
       text("Die Brötchen mit den 30 g Milch einpinseln."),
     ];
-    expect(run(amountBalanceRule, steps, ingredients)).toEqual({ errors: [], warnings: [] });
+    expect(run(amountBalanceRule, steps, ingredients)).toEqual({
+      errors: [],
+      warnings: [],
+      nudges: [],
+    });
   });
 
   it("does not count a portion that goes back in as a new addition", () => {
@@ -438,7 +449,7 @@ describe("amount_balance", () => {
       scale(150, "Hirse", "in einer Schüssel auf dem Mixbehälter abwiegen"),
       text("Den Kocheinsatz einsetzen und die abgewogenen 150 g Hirse hineingeben."),
     ];
-    expect(run(amountBalanceRule, steps, pears)).toEqual({ errors: [], warnings: [] });
+    expect(run(amountBalanceRule, steps, pears)).toEqual({ errors: [], warnings: [], nudges: [] });
     expect(run(duplicateAdditionRule, steps, pears).warnings).toEqual([]);
   });
 
@@ -449,7 +460,11 @@ describe("amount_balance", () => {
       text("Die Zwiebel halbieren."),
       text("200 g Brokkoli in den Dampfgaraufsatz geben."),
     ];
-    expect(run(amountBalanceRule, steps, broccoli)).toEqual({ errors: [], warnings: [] });
+    expect(run(amountBalanceRule, steps, broccoli)).toEqual({
+      errors: [],
+      warnings: [],
+      nudges: [],
+    });
   });
 
   it("only warns when a portion set aside goes back in", () => {
@@ -471,7 +486,7 @@ describe("amount_balance", () => {
       ingredient("Gemüsebrühe", 360, "g", { note: "plus bis zu ½ Tasse mehr zum Verdünnen" }),
     ];
     const steps = [scale(360, "Gemüsebrühe"), text("Rühren."), scale(120, "Gemüsebrühe")];
-    expect(run(amountBalanceRule, steps, broth)).toEqual({ errors: [], warnings: [] });
+    expect(run(amountBalanceRule, steps, broth)).toEqual({ errors: [], warnings: [], nudges: [] });
     const fixed = [ingredient("Gemüsebrühe", 360, "g")];
     expect(run(amountBalanceRule, steps, fixed).errors).toHaveLength(1);
   });
@@ -481,6 +496,7 @@ describe("amount_balance", () => {
     expect(run(amountBalanceRule, [scale(30, "vegan parmesan")], cheese)).toEqual({
       errors: [],
       warnings: [],
+      nudges: [],
     });
     const broth = [ingredient("vegetable broth", 1, "cup")];
     expect(run(amountBalanceRule, [scale(500, "vegetable broth")], broth).errors).toHaveLength(1);
@@ -607,6 +623,7 @@ describe("ingredient_mapping", () => {
     ).toEqual({
       errors: [],
       warnings: [],
+      nudges: [],
     });
   });
 
@@ -664,6 +681,7 @@ describe("ingredient_mapping", () => {
     expect(run(ingredientMappingRule, [text("x")], austrian, { list, mapping: null })).toEqual({
       errors: [],
       warnings: [],
+      nudges: [],
     });
     expect(
       run(ingredientReferencedRule, [text("Möhren und Quark verrühren.")], austrian, { list })
@@ -750,6 +768,7 @@ describe("amount_balance through the mapping", () => {
       {
         errors: [],
         warnings: [],
+        nudges: [],
       },
     );
     const { errors } = run(amountBalanceRule, [scale(500, "Gemüsebrühe")], english, {
@@ -784,6 +803,7 @@ describe("amount_balance through the mapping", () => {
       {
         errors: [],
         warnings: [],
+        nudges: [],
       },
     );
     const tooMuch: ListEntry[] = [{ name: "Salz", amount: "3", unit: "Tl", isOptional: false }];
@@ -835,7 +855,7 @@ describe("amount_balance through the mapping", () => {
         list: added,
         mapping: [{ name: "Wasser" }],
       }),
-    ).toEqual({ errors: [], warnings: [] });
+    ).toEqual({ errors: [], warnings: [], nudges: [] });
   });
 
   it("checks English steps with the en-US words", () => {
@@ -942,6 +962,57 @@ describe("servings_changed", () => {
   });
 });
 
+describe("text_step_title", () => {
+  const titled = (title: string, description: string): RecipeStep => ({
+    kind: "text",
+    title,
+    description,
+  });
+
+  it("nudges a title that copies the start of its description", () => {
+    const { nudges, errors, warnings } = run(textStepTitleRule, [
+      titled(
+        "Zwiebel schälen und halbieren, Knoblauch",
+        "Zwiebel schälen und halbieren, Knoblauch schälen und in den Mixbehälter geben.",
+      ),
+    ]);
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(nudges).toEqual([
+      {
+        path: "servingSize.steps[0].title",
+        message: expect.stringContaining("repeats the start of the description") as string,
+      },
+    ]);
+  });
+
+  it("nudges a whole sentence copied into the title, whatever the case and the full stop", () => {
+    const { nudges } = run(textStepTitleRule, [
+      titled(
+        "Kürbis in Stücke schneiden und dazugeben",
+        "kürbis in  Stücke schneiden und dazugeben.",
+      ),
+    ]);
+    expect(nudges).toHaveLength(1);
+  });
+
+  it("nudges a title longer than the rule allows", () => {
+    const long = "Den Kürbis waschen, entkernen und in gleich große Würfel schneiden";
+    const { nudges } = run(textStepTitleRule, [titled(long, "Etwas anderes.")]);
+    expect(nudges[0]?.message).toContain("at most 60 characters");
+  });
+
+  it("accepts short summaries and short instructions repeated as titles", () => {
+    const steps = [
+      titled("Zwiebel vorbereiten", "Zwiebel schälen, halbieren und in den Mixbehälter geben."),
+      titled("Servieren", "Servieren."),
+      titled("Mit Salz abschmecken", "Mit Salz abschmecken."),
+      scale(200, "Sahne"),
+    ];
+    expect(run(textStepTitleRule, steps).nudges).toEqual([]);
+  });
+});
+
 describe("checkSanity", () => {
   it("finds nothing wrong with a well-formed converted recipe", () => {
     const recipe = RecipeInputSchema.parse(
@@ -968,6 +1039,7 @@ describe("checkSanity", () => {
     expect(checkSanity(recipe, { servings: 4, ingredients }, knowledge, limits)).toEqual({
       errors: [],
       warnings: [],
+      nudges: [],
     });
   });
 
@@ -988,6 +1060,7 @@ describe("checkSanity", () => {
       "temperature_convention",
       "duplicate_addition",
       "servings_changed",
+      "text_step_title",
     ]);
     const twice: SanityRule = {
       id: "twice",

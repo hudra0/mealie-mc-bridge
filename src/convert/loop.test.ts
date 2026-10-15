@@ -95,10 +95,8 @@ describe("createConverter", () => {
     const { log, info, warn } = logger();
     const result = await converter(generator, { logger: log }).convert(request);
     expect(result.recipe.title).toBe("Kürbis-Linsen-Suppe");
-    // Text step titles come from the description, cut at the title length.
-    expect(result.recipe.servingSize.steps[0]?.title).toBe(
-      "Zwiebel schälen und halbieren, Knoblauch schälen und beides in den Mixbehälter",
-    );
+    // The model's short text step titles stay.
+    expect(result.recipe.servingSize.steps[0]?.title).toBe("Zwiebel und Knoblauch schälen");
     expect(result.attempts).toBe(1);
     expect(result.provider).toBe("fake");
     expect(result.model).toBe("gpt-5.5");
@@ -123,6 +121,35 @@ describe("createConverter", () => {
       servingsSource: "estimate",
     });
     expect(estimated.recipe.servingSize.unit).toBe("Portionen");
+  });
+
+  it("asks once for a short title when a text step title copies its description", async () => {
+    const copied = soupWith((_, step) => {
+      step(0).title = "Zwiebel schälen und halbieren, Knoblauch schälen";
+    });
+    const { generator, calls } = fakeGenerator([copied, soup]);
+    const result = await converter(generator).convert(request);
+    expect(result.attempts).toBe(2);
+    expect(calls[1]?.feedback?.errors).toEqual([
+      {
+        path: "servingSize.steps[0].title",
+        message: expect.stringContaining("repeats the start of the description") as string,
+      },
+    ]);
+    expect(result.recipe.servingSize.steps[0]?.title).toBe("Zwiebel und Knoblauch schälen");
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("accepts a copied title after one round and reports it as a warning", async () => {
+    const copied = soupWith((_, step) => {
+      step(0).title = "Zwiebel schälen und halbieren, Knoblauch schälen";
+    });
+    const { generator } = fakeGenerator([copied, copied]);
+    const result = await converter(generator).convert(request);
+    expect(result.attempts).toBe(2);
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/^The title repeats .*\(servingSize\.steps\[0\]\.title\)$/) as string,
+    ]);
   });
 
   it("feeds the errors back and accepts the corrected recipe", async () => {

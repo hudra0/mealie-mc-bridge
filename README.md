@@ -225,7 +225,7 @@ The worker renders the scaled Mealie recipe as Markdown with numbered ingredient
 - the validator, against the hard limits of every device program in `knowledge/device-programs.json`
 - plausibility rules for what a limit table cannot see: heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 at most with the whisk, flour per kneading step, water under the steamer, a text step before every program step, every source ingredient used, amounts neither larger nor smaller than in the source
 
-Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they go into the timeline entry next to the model's own review hints.
+Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they go into the timeline entry next to the model's own review hints. A text step title that copies the start of its description, or one longer than 60 characters, goes back to the model once; after that round the recipe is accepted and the title problem is reported as a warning.
 
 | `LLM_PROVIDER` | Key                 | Model settings                                                                       | How it asks for JSON                                                     |
 | -------------- | ------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |

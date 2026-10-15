@@ -229,7 +229,8 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - Write in the official MC style: short text steps tell the cook what to do, working steps let the machine do it. A main dish has about 20-25 steps: roughly half text steps, a quarter scale steps and a fifth working steps.
 - Put one or two text or scale steps before every working step. They say what goes in, how much, how it is cut and which accessory changes. Two working steps in a row only for a continued phase, such as a second cooking stage.
 - Working steps carry no description. Give them a short action title of one to three words that says what the step does, for example "Zerkleinern", "Andünsten", "Köcheln", "Pürieren". A turbo step's title names the seconds: "Turbo-Taste für 2 Sekunden".
-- A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "und", never with a semicolon. The bridge sets a text step's title from its text, so give the title a label of a few words.
+- A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "und", never with a semicolon.
+- Give every text step a title that sums the step up as a short imperative of at most 60 characters, for example "Zwiebel vorbereiten", "Kartoffeln schälen", "Messbecher einsetzen", "Abschmecken". Never copy the first words or the first sentence of the description into the title; the description keeps the full instruction with its amounts.
 - Never repeat speed, temperature or time in text; the working step carries them. Minutes in text are only for work outside the machine (oven, rising, resting, cooling).
 - Each ingredient that goes into the bowl by weight gets its own scale step titled "<n> g <Zutat>" and described "<n> g <Zutat> in den Mixbehälter geben.", for example "200 g Wasser". Amounts under 5 g go into a text step in Tl, Prise or Msp.
 - Weigh in the Mixbehälter only what stays in it. Ingredients for outside the machine (brushing, coating, garnish, food cooked on the stove or in the oven) stay in a text step with their amount, or a scale step weighs them in a container on top: "Eine Schüssel auf den Mixbehälter stellen und darin 50 g Milch abwiegen." Never weigh on a plate.
@@ -347,6 +348,7 @@ Rules for the German text of the recipe, derived from the de-DE corpus. They add
 - Never write "Deckel schließen" (the lid is always closed) or "auf einem Teller abwiegen".
 - Keep Stück for eggs, garlic cloves (name "Knoblauchzehen"), herb stems (name "Petersilienstiele") and bay leaves.
 - Write units as the Units section spells them: g, Tl, El, Prise or Prisen, Msp. and Stück.
+- Text step titles are short imperatives with the verb last, at most 60 characters: "Zwiebel vorbereiten" over the description "Zwiebel schälen, halbieren und in den Mixbehälter geben.", "Abschmecken" over "Mit Salz und Pfeffer abschmecken.".
 
 ## Ingredient names
 
@@ -388,7 +390,8 @@ Condensed rules for the converter's system prompt. They are derived from the kno
 - Write in the official MC style: short text steps tell the cook what to do, working steps let the machine do it. A main dish has about 20-25 steps: roughly half text steps, a quarter scale steps and a fifth working steps.
 - Put one or two text or scale steps before every working step. They say what goes in, how much, how it is cut and which accessory changes. Two working steps in a row only for a continued phase, such as a second cooking stage.
 - Working steps carry no description. Give them a short action title of one to three words that says what the step does, for example "Chop", "Sauté", "Simmer", "Purée". A turbo step's title names the seconds: "Hold down the turbo button for 2 seconds.".
-- A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "and", never with a semicolon. The bridge sets a text step's title from its text, so give the title a label of a few words.
+- A text step holds one or two instructions in one sentence of about 9 words, at most 240 characters. Join two instructions with "and", never with a semicolon.
+- Give every text step a title that sums the step up as a short imperative of at most 60 characters, for example "Prepare the onion", "Peel the potatoes", "Insert the measuring beaker", "Season". Never copy the first words or the first sentence of the description into the title; the description keeps the full instruction with its amounts.
 - Never repeat speed, temperature or time in text; the working step carries them. Minutes in text are only for work outside the machine (oven, rising, resting, cooling).
 - Each ingredient that goes into the bowl by weight gets its own scale step titled "<n> g <ingredient>" and described "Put <n> g <ingredient> into the blender jug.", for example "200 g water". Amounts under 5 g go into a text step in tsp, pinch or big pinch.
 - Weigh in the blender jug only what stays in it. Ingredients for outside the machine (brushing, coating, garnish, food cooked on the stove or in the oven) stay in a text step with their amount, or a scale step weighs them in a container on top: "Place a bowl on the blender jug and weigh 50 g milk into it." Never weigh on a plate.
@@ -506,6 +509,7 @@ Rules for the English text of the recipe, written from the en-US corpus of offic
 - Text steps are full sentences in the imperative: "Put 200 g water into the blender jug.", "Season to taste with salt and pepper."
 - Count eggs, garlic cloves, herb sprigs and bay leaves without a unit: the amount field holds the count and the unit stays empty, with the item in the name ("garlic cloves", "parsley sprigs", "eggs (medium)").
 - Write units as the Units section spells them: g, tsp, tbsp, pinch or pinches, big pinch or big pinches. Never write cups, ounces or pounds; convert them to g.
+- Text step titles are short imperatives of at most 60 characters: "Prepare the onion" over the description "Peel the onion, halve it and put it into the blender jug.", "Season" over "Season to taste with salt and pepper.".
 
 ## Ingredient names
 

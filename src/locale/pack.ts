@@ -206,6 +206,8 @@ export const packPhrasesSchema = z.looseObject({
   standardPhrases: z.record(z.string(), text),
   stepTitleRules: z.looseObject({
     workingStepTitles: textList.min(1),
+    // Short imperative titles of text steps, quoted in the prompt as examples.
+    textStepTitles: textList.min(1),
     turboTitle: text,
     scaleTitle: text,
     scaleDescription: text,

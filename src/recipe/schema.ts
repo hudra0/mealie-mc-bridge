@@ -67,7 +67,7 @@ export const TextStepSchema = z
     title: z
       .string()
       .describe(
-        "A label of a few words; the bridge replaces it with the description cut to the title length",
+        "A short imperative summary of the step, at most 60 characters, not the start of the description",
       ),
     description: stepDescription.describe("Instruction shown on the device, with quantities"),
   })

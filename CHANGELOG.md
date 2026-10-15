@@ -4,7 +4,7 @@ The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` bu
 
 ## Unreleased
 
-Security hardening after an audit of 0.2.0; it applies to 0.2.1 as well. Read "What to do" before you upgrade: the bridge refuses to start until the admin credentials are set.
+Security hardening after an audit of 0.2.0; it applies to 0.2.1 and 0.2.2 as well. Read "What to do" before you upgrade: the bridge refuses to start until the admin credentials are set.
 
 ### What to do
 
@@ -13,7 +13,7 @@ Security hardening after an audit of 0.2.0; it applies to 0.2.1 as well. Read "W
 - **Behind a reverse proxy, set `TRUST_PROXY`** to the proxy's address or network. `X-Forwarded-For` and `X-Forwarded-Proto` are ignored otherwise: the login throttle then counts every client as the proxy, and the session cookie is no longer marked `Secure` from a forged or untrusted header.
 - **Check the new limits**: `JOB_DAILY_LIMIT` (50 jobs) and `JOB_DAILY_COST_LIMIT_USD` (10 USD of estimated model cost) per 24 hours, `LLM_MAX_RECIPE_KB` (40 kB of recipe text). Raise them if your household converts more.
 - **Mail over `smtp://` now requires STARTTLS.** A server without it gets no mail; switch to `smtps://`, or set `SMTP_ALLOW_INSECURE=true` for a mail server on the same host.
-- **If an automatic login failed before this upgrade, change your Lidl password.** Up to 0.2.1 the stored reason of a failed login could contain the browser's call log with the typed password, in `bridge.db`, the log, the settings page and the session mail. Migration 5 replaces the stored reason; old logs and mails keep what they had.
+- **If an automatic login failed before this upgrade, change your Lidl password.** Up to 0.2.2 the stored reason of a failed login could contain the browser's call log with the typed password, in `bridge.db`, the log, the settings page and the session mail. Migration 5 replaces the stored reason; old logs and mails keep what they had.
 - Optional: take over the hardening of `compose.example.yml` (`init`, `read_only` with `tmpfs`, `cap_drop`, `no-new-privileges`, `pids_limit`, `mem_limit`).
 
 ### Changed
@@ -42,6 +42,15 @@ Security hardening after an audit of 0.2.0; it applies to 0.2.1 as well. Read "W
 - Settings `ADMIN_AUTH`, `TRUST_PROXY`, `JOB_DAILY_LIMIT`, `JOB_DAILY_COST_LIMIT_USD`, `LLM_MAX_RECIPE_KB`, `MC_UPLOAD_HOSTS`, `LIDL_LOGIN_HOSTS` and `SMTP_ALLOW_INSECURE`.
 - A "Security" section in the README and `SECURITY.md` with the way to report vulnerabilities.
 - gitleaks rules for SMTP URLs with credentials, the `wordpress_sec_` cookie and the bridge's secret settings with a value, with fixtures that prove each rule fires.
+
+## 0.2.2 (2026-10-15)
+
+### Fixed
+
+- Automatic login: a Lidl login page that opens asking for a phone number no longer stops the login. The bridge clicks the link to the e-mail address ("Verwende stattdessen deine E-Mail-Adresse" and its translations) and never touches the country selector or the phone field; before, it could open the country selector and end with "the login form was sent, but no session followed".
+- The login follows the two Lidl steps: the e-mail address and "Weiter", then the password and "Weiter". Enter is pressed only in a visible e-mail or password field when the page has no button. An address the site does not know ends the attempt with its own reason, and the password is never typed into a page that offers a new account.
+- On the first login, monsieur-cuisine.com can ask for its terms of use and the device. When the session has not come 10 seconds after the redirect, the login ticks the terms checkbox, confirms it, picks MC Smart and closes the hint next to the chooser. The settings page notes both ("Nutzungsbedingungen wurden in deinem Namen bestätigt").
+- Less waiting: the consent dialog check returns as soon as the page has no dialog and looks at most 3 seconds (was 5), and the Lidl page gets at most 15 seconds to show its e-mail field.
 
 ## 0.2.1 (2026-10-15)
 

@@ -229,3 +229,284 @@ export const VERIFICATION_TEXT = anyWord([
   "verificare",
   "cod",
 ]);
+
+// The Lidl login page opens either asking for an e-mail address or for a phone number. In
+// phone mode it shows a country selector and a phone field, which the login never touches;
+// a link switches the page to the e-mail field.
+export const PHONE_FIELD = [
+  'input[type="tel"]',
+  'input[inputmode="tel"]',
+  'input[autocomplete^="tel"]',
+].join(", ");
+
+// Words of a control that leads to the phone login or belongs to it: the switch link of
+// the e-mail mode, the country selector and the phone field.
+export const PHONE_WORDS = anyFragment([
+  "telefon",
+  "handy",
+  "mobil",
+  "phone",
+  "téléphone",
+  "portable",
+  "telefono",
+  "cellulare",
+  "teléfono",
+  "móvil",
+  "celular",
+  "telefonní",
+  "mobilní",
+  "telefonu",
+  "komórk",
+  "telemóvel",
+  "telefoon",
+  "mobiel",
+  "telefonul",
+  "land",
+  "country",
+  "pays",
+  "paese",
+  "país",
+  "země",
+  "kraj",
+  "+4",
+  "+3",
+]);
+
+// The link that switches the phone login to the e-mail address, in the sites' languages.
+export const EMAIL_SWITCH_PHRASES = [
+  "Verwende stattdessen deine E-Mail-Adresse",
+  "Stattdessen E-Mail-Adresse verwenden",
+  "Use your e-mail address instead",
+  "Use your email address instead",
+  "Use email instead",
+  "Utiliser votre adresse e-mail",
+  "Utilise ton adresse e-mail",
+  "Usa il tuo indirizzo e-mail",
+  "Usa la tua e-mail",
+  "Usa tu correo electrónico",
+  "Použít e-mail",
+  "Použijte e-mail",
+  "Użyj adresu e-mail",
+  "Usar o e-mail",
+  "Utilizar o e-mail",
+  "Gebruik je e-mailadres",
+  "Folosește adresa de e-mail",
+] as const;
+// The switch link: one of the phrases, or any link or button that names the e-mail
+// address. PHONE_WORDS is the counterpart the click avoids.
+export const EMAIL_SWITCH = new RegExp(
+  [anyFragment(EMAIL_SWITCH_PHRASES).source, "e-?mail", "correo", "adresse électronique"].join("|"),
+  "iu",
+);
+
+// The button that sends the password on a combined form, when no continue button is there.
+export const SIGN_IN_BUTTON = startsWithPhrase([
+  "Anmelden",
+  "Einloggen",
+  "Login",
+  "Log in",
+  "Sign in",
+  "Se connecter",
+  "Connexion",
+  "Accedi",
+  "Iniciar sesión",
+  "Přihlásit",
+  "Zaloguj",
+  "Entrar",
+  "Iniciar sessão",
+  "Inloggen",
+  "Aanmelden",
+  "Conectare",
+  "Autentificare",
+]);
+// Sign-in buttons of other identity providers, which the login never uses.
+export const OTHER_PROVIDER = anyWord(["Google", "Apple", "Facebook", "Microsoft", "Amazon"]);
+
+// An error message after the e-mail address that says the site has no account for it.
+export const UNKNOWN_ACCOUNT = anyFragment([
+  "kein Konto",
+  "keinen Account",
+  "kein Benutzerkonto",
+  "nicht gefunden",
+  "existiert nicht",
+  "nicht registriert",
+  "unbekannt",
+  "no account",
+  "not found",
+  "doesn't exist",
+  "does not exist",
+  "not registered",
+  "unknown",
+  "aucun compte",
+  "introuvable",
+  "n'existe pas",
+  "nessun account",
+  "non esiste",
+  "non trovat",
+  "no existe",
+  "ninguna cuenta",
+  "no encontrad",
+  "neexistuje",
+  "nenalezen",
+  "nie istnieje",
+  "nie znaleziono",
+  "não existe",
+  "não encontrad",
+  "bestaat niet",
+  "geen account",
+  "niet gevonden",
+  "nu există",
+]);
+
+// Page text that offers to create a new account instead of asking for the password of an
+// existing one. The login never types the password into such a page.
+export const NEW_ACCOUNT_TEXT = anyFragment([
+  "Konto erstellen",
+  "Konto anlegen",
+  "Passwort erstellen",
+  "Passwort festlegen",
+  "Create account",
+  "Create an account",
+  "Create your account",
+  "Create a password",
+  "Créer un compte",
+  "Créer votre compte",
+  "Crea un account",
+  "Crear cuenta",
+  "Crear una cuenta",
+  "Vytvořit účet",
+  "Załóż konto",
+  "Utwórz konto",
+  "Criar conta",
+  "Account aanmaken",
+  "Creează cont",
+]);
+
+// After the redirect, monsieur-cuisine.com can ask for the terms of use on the first login:
+// a checkbox with this label and a button that stays disabled until it is ticked.
+export const TERMS_LABEL = anyFragment([
+  "Nutzungsbestimmungen",
+  "Nutzungsbedingungen",
+  "terms of use",
+  "terms and conditions",
+  "terms of service",
+  "conditions d'utilisation",
+  "conditions générales",
+  "termini di utilizzo",
+  "termini d'uso",
+  "condizioni d'uso",
+  "condiciones de uso",
+  "términos de uso",
+  "podmínky použití",
+  "podmínky užívání",
+  "warunki korzystania",
+  "regulamin",
+  "termos de utilização",
+  "termos de uso",
+  "gebruiksvoorwaarden",
+  "termeni de utilizare",
+]);
+// Checkboxes the login leaves alone even when their label names the terms.
+export const OPTIONAL_CONSENT = anyFragment([
+  "newsletter",
+  "werbung",
+  "marketing",
+  "cookie",
+  "angebote",
+  "offers",
+  "offres",
+  "offerte",
+  "ofertas",
+  "nabíd",
+  "oferty",
+  "aanbiedingen",
+  "oferte",
+]);
+// The button that confirms the terms: a start button, or a continue button.
+export const TERMS_CONFIRM = new RegExp(
+  [
+    startsWithPhrase([
+      "Jetzt loslegen",
+      "Loslegen",
+      "Los geht's",
+      "Get started",
+      "Let's go",
+      "Start now",
+      "Commencer",
+      "C'est parti",
+      "Inizia",
+      "Iniziamo",
+      "Empezar",
+      "Comenzar",
+      "Začít",
+      "Začněte",
+      "Rozpocznij",
+      "Zaczynamy",
+      "Começar",
+      "Aan de slag",
+      "Începe",
+    ]).source,
+    CONTINUE_BUTTON.source,
+  ].join("|"),
+  "iu",
+);
+
+// The device chooser of the first login: a prompt, a card per machine and a hint button.
+export const DEVICE_PROMPT = anyFragment([
+  "wähle dein Gerät",
+  "wählen Sie Ihr Gerät",
+  "choose your device",
+  "select your device",
+  "choisis ton appareil",
+  "choisissez votre appareil",
+  "sélectionne ton appareil",
+  "scegli il tuo dispositivo",
+  "seleziona il tuo dispositivo",
+  "elige tu dispositivo",
+  "selecciona tu dispositivo",
+  "vyber své zařízení",
+  "vyberte své zařízení",
+  "wybierz swoje urządzenie",
+  "wybierz urządzenie",
+  "escolha o seu dispositivo",
+  "escolhe o teu dispositivo",
+  "kies je apparaat",
+  "kies uw apparaat",
+  "alege dispozitivul",
+]);
+// The card of the machine the bridge writes recipes for, and the cards it must not pick.
+export const DEVICE_CHOICE = /^(?:Monsieur Cuisine|MC)\s*Smart(?!\p{L})/iu;
+export const OTHER_DEVICES = /compact|connect|plus|trend|édition|edition/iu;
+// The button that closes a hint next to the device chooser. A bare "OK" is left out: on a
+// cookie banner it accepts.
+export const HINT_BUTTON = startsWithPhrase([
+  "OKAY",
+  "Verstanden",
+  "Alles klar",
+  "Got it",
+  "Understood",
+  "Compris",
+  "Capito",
+  "Entendido",
+  "Rozumím",
+  "Rozumiem",
+  "Entendi",
+  "Begrepen",
+  "Am înțeles",
+]);
+
+// Elements that hold a dialog, used to tell quickly whether a page has one at all.
+export const DIALOG_SELECTOR = [
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  '[aria-modal="true"]',
+  "dialog[open]",
+  "#onetrust-banner-sdk",
+  "#usercentrics-root",
+  "#CybotCookiebotDialog",
+  'iframe[id^="sp_message"]',
+  '[id*="consent" i]',
+  '[class*="consent" i]',
+  '[id*="cookie-banner" i]',
+  '[class*="cookie-banner" i]',
+].join(", ");

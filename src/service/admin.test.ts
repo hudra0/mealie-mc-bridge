@@ -1103,6 +1103,29 @@ describe("settings page", () => {
     expect(body).toContain("A consent dialog was declined on the way.");
   });
 
+  it("says when the login confirmed the terms and chose the device", async () => {
+    svc = testService({
+      config: { UI_LANGUAGE: "de" },
+      browser: { form: "continue", loginWorks: true, terms: true, deviceChooser: true },
+    });
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    await svc.session.loginNow();
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("Nutzungsbedingungen wurden in deinem Namen bestätigt.");
+    expect(body).toContain("Als Gerät wurde MC Smart gewählt.");
+  });
+
+  it("names an e-mail address the site does not know", async () => {
+    svc = testService({
+      browser: { form: "continue", unknownAccount: "Konto nicht gefunden." },
+    });
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    await svc.session.loginNow();
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("The site does not know the stored e-mail address.");
+    expect(body).not.toContain("terms of use were confirmed");
+  });
+
   it("says when the browser is missing", async () => {
     svc = testService({ browser: { unavailable: "Playwright is not installed" } });
     expect((await get("/admin/settings")).body).toContain(

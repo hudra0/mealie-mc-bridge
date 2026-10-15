@@ -159,6 +159,8 @@ function autoLoginSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
                 ${last.code ? html`<br />${l.failure[last.code]}` : ""}
                 ${last.detail ? html`<br /><span class="muted">${last.detail}</span>` : ""}
                 ${last.consentDismissed ? html`<br /><span class="muted">${l.consentDismissed}</span>` : ""}
+                ${last.termsAccepted ? html`<br /><span class="muted">${l.termsAccepted}</span>` : ""}
+                ${last.deviceChosen ? html`<br /><span class="muted">${l.deviceChosen}</span>` : ""}
                 ${
                   last.screenshot
                     ? html`<br /><a

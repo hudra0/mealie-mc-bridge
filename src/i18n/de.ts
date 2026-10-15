@@ -461,6 +461,8 @@ export const de: Messages = {
         browser_unavailable: "Der Browser ist nicht verfügbar.",
         no_login_form:
           "Es kam kein Anmeldeformular: Die Seite hat sich geändert, oder ein Captcha oder eine Zustimmungsseite kam dazwischen.",
+        unknown_account:
+          "Die Seite kennt die hinterlegte E-Mail-Adresse nicht. Prüfe das hinterlegte Konto.",
         wrong_password: "Die Seite meldet ein falsches Passwort. Prüfe das hinterlegte Konto.",
         verification_required:
           "Die Seite verlangt ein Captcha oder einen Bestätigungscode. Melde dich einmal von Hand mit dem Anmelde-Helfer an.",
@@ -472,6 +474,8 @@ export const de: Messages = {
         error: "Der Browser ist ausgefallen.",
       },
       consentDismissed: "Unterwegs wurde ein Zustimmungsdialog abgelehnt.",
+      termsAccepted: "Nutzungsbedingungen wurden in deinem Namen bestätigt.",
+      deviceChosen: "Als Gerät wurde MC Smart gewählt.",
       screenshot: "Bildschirmfoto der Seite",
       nextAttempt: "Nächster automatischer Versuch frühestens",
       running: "Eine Anmeldung läuft.",

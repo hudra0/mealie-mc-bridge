@@ -31,11 +31,14 @@ interface PwLocator {
   innerText(options?: { timeout?: number }): Promise<string>;
   isEnabled(options?: { timeout?: number }): Promise<boolean>;
   getAttribute(name: string, options?: { timeout?: number }): Promise<string | null>;
+  isChecked(options?: { timeout?: number }): Promise<boolean>;
+  locator(selector: string): PwLocator;
 }
 
 // A page or one of its frames.
 interface PwFrame {
   locator(selector: string): PwLocator;
+  getByText?(text: RegExp): PwLocator;
 }
 
 interface PwPage extends PwFrame {
@@ -48,6 +51,18 @@ interface PwPage extends PwFrame {
 
 // Buttons the flow reads by their text.
 const BUTTONS = 'button, [role="button"]';
+// Links and other controls a click on a text may target, beyond buttons.
+const CONTROLS = [
+  BUTTONS,
+  "a",
+  '[role="link"]',
+  '[role="radio"]',
+  '[role="option"]',
+  '[role="tab"]',
+  "label",
+].join(", ");
+// Labels and custom checkboxes, for the terms checkbox.
+const CHECKBOX_LABELS = 'label, [role="checkbox"]';
 // Containers of a dialog, for close buttons that only carry a symbol.
 const DIALOG_BUTTONS = [
   '[role="dialog"] button',
@@ -317,13 +332,37 @@ async function firstVisible(page: PwFrame, selector: string): Promise<PwLocator 
   return null;
 }
 
-async function* visibleItems(frame: PwFrame, selector: string): AsyncGenerator<PwLocator> {
-  const all = frame.locator(selector);
+function visibleItems(frame: PwFrame, selector: string): AsyncGenerator<PwLocator> {
+  return visibleIn(frame.locator(selector));
+}
+
+async function* visibleIn(all: PwLocator): AsyncGenerator<PwLocator> {
   const count = Math.min(await all.count().catch(() => 0), MAX_ELEMENTS);
   for (let index = 0; index < count; index++) {
     const item = all.nth(index);
     if (await item.isVisible().catch(() => false)) yield item;
   }
+}
+
+// The checkbox a label or custom checkbox stands for: itself, an input inside the label, or
+// the input its for attribute names. Null when there is none.
+async function checkboxOf(frame: PwFrame, item: PwLocator, timeout: number) {
+  if ((await item.getAttribute("role", { timeout }).catch(() => null)) === "checkbox") return item;
+  const inside = item.locator('input[type="checkbox"]');
+  if ((await inside.count().catch(() => 0)) > 0) return inside.first();
+  const id = await item.getAttribute("for", { timeout }).catch(() => null);
+  if (id) {
+    const named = frame.locator(`[id="${id.replace(/["\\]/g, "\\$&")}"]`);
+    if ((await named.count().catch(() => 0)) > 0) return named.first();
+  }
+  return null;
+}
+
+async function isTicked(box: PwLocator, timeout: number): Promise<boolean> {
+  if ((await box.getAttribute("role", { timeout }).catch(() => null)) === "checkbox") {
+    return (await box.getAttribute("aria-checked", { timeout }).catch(() => null)) === "true";
+  }
+  return box.isChecked({ timeout }).catch(() => false);
 }
 
 function framesOf(page: PwPage): PwFrame[] {
@@ -353,11 +392,48 @@ function pageAdapter(page: PwPage, timeout: number): LoginPage {
         for await (const button of visibleItems(frame, BUTTONS)) {
           const text = await textOf(button);
           if (text === "" || !match.test(text) || avoid.test(text)) continue;
+          // A disabled button waits for the click until the timeout; skip it instead.
+          if (!(await button.isEnabled({ timeout }).catch(() => false))) continue;
           await button.click({ timeout });
           return text;
         }
       }
       return null;
+    },
+    clickByText: async (match, avoid, options = {}) => {
+      const selectors = options.anyElement ? [CONTROLS, null] : [CONTROLS];
+      for (const selector of selectors) {
+        for (const frame of framesOf(page)) {
+          // Any element: Playwright's text search, which also finds cards and spans.
+          const all = selector === null ? frame.getByText?.(match) : frame.locator(selector);
+          if (all === undefined) continue;
+          for await (const item of visibleIn(all)) {
+            const text = await textOf(item);
+            if (text === "" || !match.test(text) || avoid.test(text)) continue;
+            if (!(await item.isEnabled({ timeout }).catch(() => false))) continue;
+            await item.click({ timeout });
+            return text;
+          }
+        }
+      }
+      return null;
+    },
+    checkBox: async (label, avoid) => {
+      for (const frame of framesOf(page)) {
+        for await (const item of visibleItems(frame, CHECKBOX_LABELS)) {
+          const name =
+            (await textOf(item)) ||
+            ((await item.getAttribute("aria-label", { timeout }).catch(() => null)) ?? "");
+          if (!label.test(name) || avoid.test(name)) continue;
+          const box = await checkboxOf(frame, item, timeout);
+          if (box !== null && (await isTicked(box, timeout))) return true;
+          // The box itself when it shows, so a link inside the label is not hit.
+          const target = box !== null && (await box.isVisible().catch(() => false)) ? box : item;
+          await target.click({ timeout });
+          return box === null ? true : await isTicked(box, timeout);
+        }
+      }
+      return false;
     },
     closeDialog: async (label, symbol) => {
       for (const frame of framesOf(page)) {

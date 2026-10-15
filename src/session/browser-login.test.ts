@@ -1,7 +1,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser, loopClock, type FakeBrowserScript } from "../testing/browser.js";
+import { FAKE_TEXT, fakeBrowser, loopClock, type FakeBrowserScript } from "../testing/browser.js";
 import { tempDir } from "../testing/temp.js";
 import { BrowserActionError, UNKNOWN_BROWSER_FAILURE } from "./browser-errors.js";
 import {
@@ -23,6 +23,24 @@ const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
+
+// The steps appear in this order, with other steps in between.
+function expectInOrder(steps: readonly string[], expected: readonly string[]) {
+  let from = 0;
+  for (const item of expected) {
+    const index = steps.indexOf(item, from);
+    expect(index, `${item} after step ${from}`).toBeGreaterThanOrEqual(0);
+    from = index + 1;
+  }
+}
+
+// No click, fill or Enter on the phone login's controls.
+function expectPhoneUntouched(steps: readonly string[]) {
+  expect(steps).not.toContain(`click ${FAKE_TEXT.country}`);
+  expect(steps).not.toContain(`click ${FAKE_TEXT.toPhone}`);
+  expect(steps.some((step) => step.includes("tel"))).toBe(false);
+  expect(steps).not.toContain("enter without a field");
+}
 
 function login(script: FakeBrowserScript, extra: Partial<Parameters<typeof browserLogin>[0]> = {}) {
   const browser = fakeBrowser(script);
@@ -309,16 +327,60 @@ describe("browserLogin form and answers", () => {
       consent: ["Alle ablehnen"],
     });
     expect(await result).toMatchObject({ ok: true, consentDismissed: true });
-    const order = [
+    expectInOrder(browser.steps, [
       "click Alle ablehnen",
       'fill input[type="email"]',
       "click Weiter",
       'fill input[type="password"]',
-      'enter input[type="password"]',
-    ].map((step) => browser.steps.indexOf(step));
-    expect(order.every((index) => index >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(browser.steps).not.toContain('enter input[type="email"]');
+      "click Weiter",
+    ]);
+    expect(browser.steps.filter((step) => step.startsWith("enter"))).toEqual([]);
+  });
+
+  it("reports an address the site does not know, without the address", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { browser, result } = login(
+      {
+        form: "continue",
+        unknownAccount: "Zu cook@example.com gibt es kein Konto.",
+      },
+      { onStep },
+    );
+    const outcome = await result;
+    expect(outcome).toMatchObject({
+      ok: false,
+      code: "unknown_account",
+      detail: 'the site does not know the e-mail address: "Zu <e-mail> gibt es kein Konto."',
+    });
+    expect(JSON.stringify(outcome)).not.toContain(CREDENTIALS.email);
+    expect(onStep).toHaveBeenCalledWith("the site does not know the e-mail address");
+    expect(browser.filled).not.toHaveProperty('input[type="password"]');
+  });
+
+  it("never types the password into a page that offers a new account", async () => {
+    const { browser, result } = login({ form: "continue", loginWorks: true, newAccount: true });
+    expect(await result).toMatchObject({ ok: false, code: "unknown_account" });
+    expect(browser.filled).not.toHaveProperty('input[type="password"]');
+  });
+
+  it("says when the address was sent but no password field followed", async () => {
+    // A dialog without a decline button swallows the click on "Weiter".
+    const { browser, result } = login({ form: "continue", consent: ["Zustimmen"] });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "not_logged_in",
+      detail: "the e-mail address was sent, but no password field followed",
+    });
+    expect(browser.steps).not.toContain("click Zustimmen");
+  });
+
+  it("keeps another error after the address as the reason", async () => {
+    const { result } = login({ form: "continue", unknownAccount: "Bitte warte kurz." });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "not_logged_in",
+      detail: 'the site reported an error: "Bitte warte kurz."',
+    });
   });
 
   it("reports a wrong password the site names, without the address or the password", async () => {
@@ -381,6 +443,202 @@ describe("browserLogin form and answers", () => {
   it("shortens a site message to one line", () => {
     expect(siteMessage("  a\n  b  ", "")).toBe("a b");
     expect(siteMessage("y".repeat(200), "x@example.com")).toHaveLength(160);
+  });
+});
+
+describe("browserLogin on the phone login", () => {
+  it("switches to the e-mail address and logs in in two steps", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { browser, result } = login(
+      { form: "continue", phoneMode: true, loginWorks: true },
+      { onStep },
+    );
+    expect((await result).ok).toBe(true);
+    expectInOrder(browser.steps, [
+      `click ${FAKE_TEXT.toEmail}`,
+      'fill input[type="email"]',
+      "click Weiter",
+      'fill input[type="password"]',
+      "click Weiter",
+    ]);
+    expectPhoneUntouched(browser.steps);
+    expect(onStep).toHaveBeenCalledWith(
+      "switched the Lidl login from the phone number to the e-mail address",
+    );
+  });
+
+  it("switches behind a declined consent dialog", async () => {
+    const { browser, result } = login({
+      form: "two-step",
+      phoneMode: true,
+      loginWorks: true,
+      consent: ["Alle akzeptieren", "Alle ablehnen"],
+    });
+    expect(await result).toMatchObject({ ok: true, consentDismissed: true });
+    expectInOrder(browser.steps, ["click Alle ablehnen", `click ${FAKE_TEXT.toEmail}`]);
+    expect(browser.steps).not.toContain("click Alle akzeptieren");
+    expectPhoneUntouched(browser.steps);
+  });
+
+  it("never clicks the country selector when the switch link does nothing", async () => {
+    const clock = loopClock();
+    const { browser, result } = login(
+      { form: "continue", phoneMode: true, switchIgnored: true, loginWorks: true },
+      { ...clock, timeoutMs: 120_000 },
+    );
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "no_login_form",
+      detail: "no e-mail field showed up on the Lidl login page",
+    });
+    expectPhoneUntouched(browser.steps);
+    expect(browser.steps.filter((step) => step === `click ${FAKE_TEXT.toEmail}`)).toHaveLength(2);
+    expect(clock.now()).toBeLessThan(20_000);
+  });
+
+  it("gives up on a Lidl page without an e-mail field after 15 seconds", async () => {
+    const clock = loopClock();
+    const { browser, result } = login({ form: "none" }, { ...clock, timeoutMs: 120_000 });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "no_login_form",
+      detail: "no e-mail field showed up on the Lidl login page",
+    });
+    expect(clock.now()).toBeLessThan(20_000);
+    expect(browser.steps.some((step) => step.startsWith("enter"))).toBe(false);
+  });
+});
+
+describe("browserLogin on the first login at monsieur-cuisine.com", () => {
+  it("confirms the terms once the checkbox is ticked and notes it", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { browser, result } = login(
+      { form: "continue", loginWorks: true, terms: true },
+      { onStep, timeoutMs: 60_000 },
+    );
+    expect(await result).toEqual({
+      ok: true,
+      cookie: expect.any(String) as string,
+      termsAccepted: true,
+    });
+    expectInOrder(browser.steps, [
+      "click Weiter",
+      "click Weiter",
+      `check ${FAKE_TEXT.termsBox}`,
+      `click ${FAKE_TEXT.start}`,
+    ]);
+    expect(browser.steps).not.toContain(`check ${FAKE_TEXT.newsletterBox}`);
+    expect(onStep).toHaveBeenCalledWith("terms of use confirmed");
+  });
+
+  it("waits 10 seconds for the session before it looks at the terms", async () => {
+    const clock = loopClock();
+    let sentAt = -1;
+    let confirmedAt = -1;
+    const { result } = login(
+      { form: "continue", loginWorks: true, terms: true },
+      {
+        ...clock,
+        timeoutMs: 60_000,
+        onStep: (message) => {
+          if (message === "login form sent") sentAt = clock.now();
+          if (message === "terms of use confirmed") confirmedAt = clock.now();
+        },
+      },
+    );
+    expect((await result).ok).toBe(true);
+    expect(confirmedAt - sentAt).toBeGreaterThanOrEqual(10_000);
+    expect(confirmedAt - sentAt).toBeLessThan(15_000);
+  });
+
+  it("chooses MC Smart in the device chooser after the terms", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { browser, result } = login(
+      { form: "continue", loginWorks: true, terms: true, deviceChooser: true },
+      { onStep, timeoutMs: 60_000 },
+    );
+    expect(await result).toMatchObject({ ok: true, termsAccepted: true, deviceChosen: true });
+    expectInOrder(browser.steps, [`click ${FAKE_TEXT.start}`, "click MC SMART"]);
+    for (const other of ["MC COMPACT", "MC CONNECT", "MC PLUS"]) {
+      expect(browser.steps).not.toContain(`click ${other}`);
+    }
+    expect(onStep).toHaveBeenCalledWith("device MC Smart chosen");
+  });
+
+  it("closes the hint next to the chooser once the device is chosen", async () => {
+    const { browser, result } = login(
+      { form: "continue", loginWorks: true, deviceChooser: true, hintBlocks: true },
+      { timeoutMs: 60_000 },
+    );
+    const outcome = await result;
+    expect(outcome).toMatchObject({ ok: true, deviceChosen: true });
+    expect(outcome).not.toHaveProperty("termsAccepted");
+    expectInOrder(browser.steps, ["click MC SMART", `click ${FAKE_TEXT.hint}`]);
+  });
+
+  it("declines the consent dialog of the site and never accepts it", async () => {
+    const { browser, result } = login(
+      {
+        form: "continue",
+        loginWorks: true,
+        terms: true,
+        siteConsent: ["Alle akzeptieren", "Ablehnen"],
+      },
+      { timeoutMs: 60_000 },
+    );
+    expect(await result).toMatchObject({ ok: true, consentDismissed: true, termsAccepted: true });
+    expectInOrder(browser.steps, ["click Ablehnen", `check ${FAKE_TEXT.termsBox}`]);
+    expect(browser.steps).not.toContain("click Alle akzeptieren");
+  });
+
+  it("leaves the terms to the person in a login without a stored account", async () => {
+    const { browser, result } = login(
+      {
+        form: "continue",
+        loginWorks: true,
+        terms: true,
+        url: "https://www.monsieur-cuisine.com/de/",
+      },
+      { credentials: null },
+    );
+    expect((await result).ok).toBe(false);
+    expect(browser.steps.some((step) => step.startsWith("check"))).toBe(false);
+    expect(browser.steps.some((step) => step.startsWith("click"))).toBe(false);
+  });
+});
+
+describe("browserLogin timing", () => {
+  it("leaves a page without a dialog at once instead of waiting for one", async () => {
+    const clock = loopClock();
+    let filledAt = -1;
+    const { result } = login(
+      { form: "both", loginWorks: true },
+      {
+        ...clock,
+        onStep: (message) => {
+          if (message === "e-mail address entered") filledAt = clock.now();
+        },
+      },
+    );
+    expect((await result).ok).toBe(true);
+    expect(filledAt).toBe(0);
+  });
+
+  it("looks at most 3 seconds at a dialog it cannot decline", async () => {
+    const clock = loopClock();
+    let filledAt = -1;
+    const { result } = login(
+      { form: "both", consent: ["Zustimmen"] },
+      {
+        ...clock,
+        onStep: (message) => {
+          if (message === "e-mail address entered") filledAt = clock.now();
+        },
+      },
+    );
+    expect((await result).ok).toBe(false);
+    expect(filledAt).toBeGreaterThan(0);
+    expect(filledAt).toBeLessThanOrEqual(3000);
   });
 });
 

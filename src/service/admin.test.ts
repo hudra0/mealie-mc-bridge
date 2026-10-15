@@ -1029,6 +1029,18 @@ describe("settings page", () => {
     expect((await get(link ?? "", {})).statusCode).toBe(303);
   });
 
+  it("shows a wrong password and a declined consent dialog", async () => {
+    svc = testService({
+      browser: { form: "both", consent: ["Ablehnen"], siteError: "Passwort ist falsch." },
+    });
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    await svc.session.loginNow();
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("The site reported a wrong password.");
+    expect(body).toContain("wrong password reported by the site");
+    expect(body).toContain("A consent dialog was declined on the way.");
+  });
+
   it("says when the browser is missing", async () => {
     svc = testService({ browser: { unavailable: "Playwright is not installed" } });
     expect((await get("/admin/settings")).body).toContain(

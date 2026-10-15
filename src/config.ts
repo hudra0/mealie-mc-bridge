@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 import {
   DEFAULT_ANTHROPIC_MODEL,
@@ -22,12 +23,59 @@ export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
 const httpUrl = z.url({ protocol: /^https?$/, error: "must be an http or https URL" });
 
+// A comma-separated list, trimmed, lower case, without empty entries.
+const hostList = (fallback: string) =>
+  z
+    .string()
+    .default(fallback)
+    .transform((value) =>
+      value
+        .split(",")
+        .map((host) => host.trim().toLowerCase())
+        .filter(Boolean),
+    );
+
+// true/false, 1/0, yes/no, on/off.
+const flag = z.stringbool({
+  truthy: ["true", "1", "yes", "on"],
+  falsy: ["false", "0", "no", "off"],
+});
+
+export const MIN_ADMIN_PASSWORD_LENGTH = 12;
+
+// TRUST_PROXY: false (the default), true, or the addresses of the reverse proxies, as IP
+// addresses or CIDR ranges.
+export type TrustProxy = boolean | string[];
+
+export function parseTrustProxy(value: string): TrustProxy | null {
+  const text = value.trim().toLowerCase();
+  if (text === "" || text === "false" || text === "0" || text === "no") return false;
+  if (text === "true" || text === "1" || text === "yes") return true;
+  const entries = text
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const valid = entries.every((entry) => {
+    const [address = "", bits, ...rest] = entry.split("/");
+    const version = isIP(address);
+    if (version === 0 || rest.length > 0) return false;
+    if (bits === undefined) return true;
+    const prefix = Number(bits);
+    return /^\d+$/.test(bits) && prefix <= (version === 4 ? 32 : 128);
+  });
+  return valid && entries.length > 0 ? entries : null;
+}
+
 // Every setting the bridge reads. Settings the service cannot run without are optional
 // here, so tools that need only a few of them (scripts/mc-smoke.ts) can share the schema;
 // loadServiceConfig enforces them for the service.
 export const settingsSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  HOST: z.string().min(1).default("0.0.0.0"),
+  // The interface to listen on. Defaults to 127.0.0.1, and to 0.0.0.0 in the container
+  // (BRIDGE_IN_CONTAINER), where the port mapping decides who reaches it.
+  HOST: z.string().min(1).optional(),
+  // Set by the Docker image.
+  BRIDGE_IN_CONTAINER: flag.optional(),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   // Device limits the validator enforces. A relative path resolves against the working
   // directory.
@@ -101,7 +149,29 @@ export const settingsSchema = z.object({
     .refine((value) => isSettingsKey(value), "must be the base64 encoding of 32 bytes")
     .optional(),
   ADMIN_USER: z.string().min(1).optional(),
-  ADMIN_PASSWORD: z.string().min(1).optional(),
+  ADMIN_PASSWORD: z
+    .string()
+    .min(MIN_ADMIN_PASSWORD_LENGTH, `must be at least ${MIN_ADMIN_PASSWORD_LENGTH} characters`)
+    .optional(),
+  // "off" lets the service start without ADMIN_USER and ADMIN_PASSWORD, with admin pages
+  // that anyone who reaches the port can use.
+  ADMIN_AUTH: z.enum(["on", "off"]).default("on"),
+  // Which reverse proxies to believe for the client address (X-Forwarded-For) and the
+  // scheme (X-Forwarded-Proto): false, true, or a comma-separated list of addresses.
+  TRUST_PROXY: z
+    .string()
+    .default("false")
+    .transform((value, ctx) => {
+      const parsed = parseTrustProxy(value);
+      if (parsed === null) {
+        ctx.addIssue({
+          code: "custom",
+          message: "must be false, true or a comma-separated list of IP addresses or CIDR ranges",
+        });
+        return z.NEVER;
+      }
+      return parsed;
+    }),
   // Host names the admin pages answer to, comma-separated, without ports. IP addresses and
   // localhost always work. Enforced when Basic Auth is off (it blocks DNS rebinding) and
   // whenever it is set.
@@ -116,12 +186,26 @@ export const settingsSchema = z.object({
     .optional(),
   // smtp:// or smtps:// URL with credentials. Without it, no mail is sent.
   SMTP_URL: z.url({ protocol: /^smtps?$/, error: "must be an smtp or smtps URL" }).optional(),
+  // smtp:// requires STARTTLS unless this is true.
+  SMTP_ALLOW_INSECURE: flag.default(false),
   NOTIFY_EMAIL: z.email("must be an email address").optional(),
   // Sender address. Defaults to NOTIFY_EMAIL.
   SMTP_FROM: z.string().min(3).optional(),
   SESSION_CHECK_MINUTES: z.coerce.number().int().min(1).max(1440).default(60),
   WORKER_POLL_SECONDS: z.coerce.number().positive().max(60).default(2),
   TAG_NAME: z.string().trim().min(1).max(60).default("Monsieur Cuisine"),
+  // Jobs the webhook accepts in 24 hours; 0 turns the limit off.
+  JOB_DAILY_LIMIT: z.coerce.number().int().min(0).max(100_000).default(50),
+  // Estimated LLM cost in USD of the jobs of the last 24 hours above which the webhook
+  // accepts no new job; 0 turns the limit off.
+  JOB_DAILY_COST_LIMIT_USD: z.coerce.number().min(0).max(100_000).default(10),
+  // The largest recipe text, in kB, sent to the language model.
+  LLM_MAX_RECIPE_KB: z.coerce.number().int().min(1).max(1000).default(40),
+  // Hosts the signed image upload URL from Monsieur Cuisine may point to; "*." covers the
+  // subdomains of a domain.
+  MC_UPLOAD_HOSTS: hostList("*.googleapis.com,*.tecpal.com"),
+  // Hosts of the Lidl login page the automatic login fills in, compared exactly.
+  LIDL_LOGIN_HOSTS: hostList("accounts.lidl.com"),
 });
 
 // The settings with the cross-checks: MC_LOCALE needs a locale pack, and UI_LANGUAGE gets
@@ -139,6 +223,7 @@ export const envSchema = settingsSchema
   })
   .transform((env) => ({
     ...env,
+    HOST: env.HOST ?? (env.BRIDGE_IN_CONTAINER === true ? "0.0.0.0" : "127.0.0.1"),
     UI_LANGUAGE: env.UI_LANGUAGE ?? defaultUiLanguage(env.MC_LOCALE),
   }));
 
@@ -220,6 +305,10 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env): Service
   }
   if ((config.ADMIN_USER === undefined) !== (config.ADMIN_PASSWORD === undefined)) {
     problems.push("ADMIN_USER, ADMIN_PASSWORD: set both or neither");
+  } else if (config.ADMIN_USER === undefined && config.ADMIN_AUTH === "on") {
+    problems.push(
+      `ADMIN_USER, ADMIN_PASSWORD: are required (a password of at least ${MIN_ADMIN_PASSWORD_LENGTH} characters). To run the admin pages without a password on a trusted machine, set ADMIN_AUTH=off`,
+    );
   }
   if (config.SMTP_URL !== undefined && config.NOTIFY_EMAIL === undefined) {
     problems.push("NOTIFY_EMAIL: is required when SMTP_URL is set");

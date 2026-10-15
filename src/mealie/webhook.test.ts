@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { InvalidRecipeActionError, parseRecipeActionBody } from "./webhook.js";
+import {
+  InvalidRecipeActionError,
+  MAX_SCALE,
+  MIN_SCALE,
+  SCALE_STEP,
+  parseRecipeActionBody,
+  quantizeScale,
+} from "./webhook.js";
 
 const fixture = (name: string): unknown =>
   JSON.parse(readFileSync(new URL(`../../test/fixtures/mealie/${name}`, import.meta.url), "utf8"));
@@ -61,16 +68,32 @@ describe("parseRecipeActionBody", () => {
   it.each([
     ["zero", 0],
     ["negative", -1],
-    ["above 100", 100.5],
     ["infinite", Number.POSITIVE_INFINITY],
   ])("rejects a %s scale", (_name, scale) => {
     expect(issuesOf({ content: { id: recipeId }, recipe_scale: scale })).toEqual([
-      "recipe_scale: must be above 0 and at most 100",
+      "recipe_scale: must be a number above 0",
     ]);
   });
 
-  it("accepts the largest allowed scale", () => {
-    expect(parseRecipeActionBody({ content: { id: recipeId }, recipe_scale: 100 }).scale).toBe(100);
+  it.each([
+    [1.01, 1],
+    [1.13, 1.25],
+    [1.12, 1],
+    [0.6, 0.5],
+    [0.1, 0.25],
+    [10, 10],
+    [10.2, 10],
+    [100, 10],
+  ])("rounds the scale %s to %s: quarter steps from 0.25 to 10", (given, expected) => {
+    expect(parseRecipeActionBody({ content: { id: recipeId }, recipe_scale: given }).scale).toBe(
+      expected,
+    );
+  });
+
+  it("quantizes in one place", () => {
+    expect([MIN_SCALE, MAX_SCALE, SCALE_STEP]).toEqual([0.25, 10, 0.25]);
+    expect(quantizeScale(2.374)).toBe(2.25);
+    expect(quantizeScale(2.375)).toBe(2.5);
   });
 
   it("rejects a non-numeric scale", () => {

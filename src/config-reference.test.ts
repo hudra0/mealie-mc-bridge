@@ -18,7 +18,7 @@ describe("effectiveConfig", () => {
     expect(byName.size).toBe(entries.length);
     expect(entries.every((entry) => entry.description.length > 0)).toBe(true);
     expect(byName.get("PORT")).toMatchObject({ source: "env", value: "3100", secret: false });
-    expect(byName.get("HOST")).toMatchObject({ source: "default", value: "0.0.0.0" });
+    expect(byName.get("HOST")).toMatchObject({ source: "default", value: "127.0.0.1" });
     expect(byName.get("ADMIN_HOSTS")?.value).toBe("bridge.example.com,other.example.com");
     expect(byName.get("TZ")).toMatchObject({ source: "env", value: "Europe/Berlin" });
     expect(byName.get("SMTP_URL")).toMatchObject({ source: "unset", value: null });

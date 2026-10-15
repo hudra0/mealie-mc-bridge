@@ -173,6 +173,19 @@ export interface NotifierConfig {
   NOTIFY_EMAIL?: string | undefined;
   SMTP_FROM?: string | undefined;
   UI_LANGUAGE?: UiLanguage | undefined;
+  SMTP_ALLOW_INSECURE?: boolean | undefined;
+}
+
+// The transport options for SMTP_URL. smtps:// talks TLS from the start. smtp:// must
+// upgrade with STARTTLS (requireTLS), so a server or a man in the middle that does not offer
+// it cannot get the password and the mails in plain text; SMTP_ALLOW_INSECURE=true lifts
+// that for a mail server on the same host or network that has no TLS.
+export function smtpTransportOptions(
+  url: string,
+  allowInsecure = false,
+): { url: string; requireTLS: boolean } {
+  const secure = url.toLowerCase().startsWith("smtps:");
+  return { url, requireTLS: !secure && !allowInsecure };
 }
 
 // An EmailNotifier when SMTP_URL and NOTIFY_EMAIL are set, otherwise a NullNotifier.
@@ -185,7 +198,9 @@ export function createNotifier(
     logger.info({}, "email notifications are off (SMTP_URL or NOTIFY_EMAIL not set)");
     return new NullNotifier();
   }
-  const transport = options.transport ?? createTransport(config.SMTP_URL);
+  const transport =
+    options.transport ??
+    createTransport(smtpTransportOptions(config.SMTP_URL, config.SMTP_ALLOW_INSECURE === true));
   return new EmailNotifier({
     transport,
     to: config.NOTIFY_EMAIL,

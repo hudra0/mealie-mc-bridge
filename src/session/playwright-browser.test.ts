@@ -2,7 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../testing/temp.js";
-import { PROFILE_LOCKS, PlaywrightBrowser } from "./playwright-browser.js";
+import { BrowserActionError } from "./browser-errors.js";
+import {
+  PROFILE_LOCKS,
+  PlaywrightBrowser,
+  browserEnvironment,
+  killBrowserProcesses,
+  type ProcessTools,
+} from "./playwright-browser.js";
 
 // A stand-in for Playwright's chromium with one page that has the given elements.
 interface FakeElement {
@@ -23,12 +30,14 @@ function fakeChromium(
   elements: Record<string, FakeElement[]>,
   launchError: Error | null = null,
   frames: Record<string, FakeElement[]>[] = [],
+  fillError: Error | null = null,
 ) {
   const actions: string[] = [];
   const listOf = (items: FakeElement[], selector = "") => {
     const at = (index: number): Record<string, unknown> => ({
       isVisible: () => Promise.resolve(items[index]?.visible ?? false),
       fill: (value: string) => {
+        if (fillError) return Promise.reject(fillError);
         actions.push(`fill ${selector} ${value.length}`);
         return Promise.resolve();
       },
@@ -100,8 +109,119 @@ describe("PlaywrightBrowser", () => {
     expect(await noBrowser.unavailable()).toBe("Chromium for Playwright is not installed");
     const broken = fakeChromium({}, new Error("\nbrowserType.launch: Target page crashed\nmore"));
     expect(await new PlaywrightBrowser({ load: loader(broken.chromium) }).unavailable()).toBe(
-      "Chromium does not start: browserType.launch: Target page crashed",
+      "Chromium does not start",
     );
+    const libraries = fakeChromium(
+      {},
+      new Error("browserType.launch: error while loading shared libraries: libnss3.so"),
+    );
+    expect(await new PlaywrightBrowser({ load: loader(libraries.chromium) }).unavailable()).toBe(
+      "Chromium does not start: system libraries are missing (npx playwright install-deps chromium)",
+    );
+  });
+
+  it("starts the browser without the bridge's secrets in its environment", async () => {
+    const env = {
+      PATH: "/usr/bin",
+      HOME: "/home/bridge",
+      LANG: "C.UTF-8",
+      PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright",
+      OPENAI_API_KEY: "sk-test-not-real",
+      SETTINGS_KEY: "settings-key-for-tests",
+      MEALIE_API_TOKEN: "mealie-token",
+      SMTP_URL: "smtps://user:pass@mail.example.com",
+      MC_COOKIE: "PHPSESSID=x",
+      ADMIN_PASSWORD: "admin-password",
+    };
+    const fake = fakeChromium({});
+    const browser = new PlaywrightBrowser({ load: loader(fake.chromium), env });
+    await browser.unavailable();
+    await browser.open({ profileDir: "/tmp/profile", headless: true });
+    const expected = {
+      PATH: "/usr/bin",
+      HOME: "/home/bridge",
+      LANG: "C.UTF-8",
+      PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright",
+    };
+    if (process.platform !== "win32") {
+      expect(fake.chromium.launch).toHaveBeenCalledWith(expect.objectContaining({ env: expected }));
+      expect(fake.chromium.launchPersistentContext).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ env: expected }),
+      );
+    }
+    expect(browserEnvironment(env, { platform: "linux" })).toEqual(expected);
+    expect(
+      browserEnvironment({ ...env, DISPLAY: ":0" }, { platform: "linux", headless: false }),
+    ).toEqual({ ...expected, DISPLAY: ":0" });
+    expect(
+      browserEnvironment(
+        { Path: "C:/Windows", SystemRoot: "C:/Windows", OPENAI_API_KEY: "x" },
+        { platform: "win32" },
+      ),
+    ).toEqual({ Path: "C:/Windows", SystemRoot: "C:/Windows" });
+  });
+
+  it("replaces Playwright's error messages with fixed ones", async () => {
+    const marker = "MARKER-PASSWORD-55";
+    const leak = Object.assign(
+      new Error(`locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - fill("${marker}")`),
+      { name: "TimeoutError" },
+    );
+    const fake = fakeChromium({ 'input[type="password"]': [{ visible: true }] }, null, [], leak);
+    const context = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    const error = await context.page
+      .fillVisible('input[type="password"]', marker)
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(BrowserActionError);
+    expect((error as Error).message).toBe("the browser timed out on the login page");
+    expect(JSON.stringify(error)).not.toContain(marker);
+    expect(String((error as Error).stack)).not.toContain(marker);
+
+    fake.page.goto.mockImplementationOnce(() => Promise.reject(new Error(`net::ERR ${marker}`)));
+    await expect(context.page.goto("https://www.monsieur-cuisine.com/")).rejects.toThrow(
+      /^the login page did not load$/,
+    );
+    const failing = fakeChromium({});
+    failing.chromium.launchPersistentContext.mockImplementationOnce(() =>
+      Promise.reject(new Error(`launch failed ${marker}`)),
+    );
+    await expect(
+      new PlaywrightBrowser({ load: loader(failing.chromium) }).open({
+        profileDir: "/tmp/profile",
+        headless: true,
+      }),
+    ).rejects.toThrow(/^the browser did not start$/);
+  });
+
+  it("kills a hung browser by its profile directory, with its process group", () => {
+    const killed: Array<[number, string]> = [];
+    const tools = (platform: NodeJS.Platform, refuseGroup = false): ProcessTools => ({
+      platform,
+      pids: () => ["1", "40", "41", "77"],
+      cmdline: (pid) =>
+        ({
+          "1": "/sbin/tini\0--\0node\0dist/main.js",
+          "40": `/ms-playwright/chrome\0--headless\0--user-data-dir=/data/tmp/login-a\0about:blank`,
+          "41": "/ms-playwright/chrome\0--user-data-dir=/data/tmp/login-b",
+          "77": null,
+        })[pid] ?? null,
+      kill: (pid, signal) => {
+        if (refuseGroup && pid < 0) throw new Error("ESRCH");
+        killed.push([pid, signal]);
+      },
+    });
+    expect(killBrowserProcesses("/data/tmp/login-a", tools("linux"))).toBe(1);
+    expect(killed).toEqual([[-40, "SIGKILL"]]);
+    killed.length = 0;
+    expect(killBrowserProcesses("/data/tmp/login-a", tools("linux", true))).toBe(1);
+    expect(killed).toEqual([[40, "SIGKILL"]]);
+    killed.length = 0;
+    expect(killBrowserProcesses("/data/tmp/login-a", tools("win32"))).toBe(0);
+    expect(killed).toEqual([]);
   });
 
   it("probes with a real headless launch, remembers a success and retries a failure later", async () => {

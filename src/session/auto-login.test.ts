@@ -40,7 +40,8 @@ function setup(
   const autoOptions: AutoLoginOptions = {
     settings: store.settings,
     browser,
-    profileDir: join(store.dir, "browser-profile"),
+    tempDir: join(store.dir, "tmp"),
+    legacyProfileDir: join(store.dir, "browser-profile"),
     screenshotDir: join(store.dir, "login-screenshots"),
     editorPath: "/de/create-recipe?devices=mc-smart",
     logger: silentLogger(),
@@ -52,7 +53,15 @@ function setup(
   const autoLogin = new AutoLogin(autoOptions);
   if (options.credentials !== false) autoLogin.saveCredentials("cook@example.com", PASSWORD);
   const accept = vi.fn<(cookie: string) => Promise<void>>(() => Promise.resolve());
-  return { autoLogin, browser, clock, accept, settings: store.settings, dir: store.dir };
+  return {
+    autoLogin,
+    browser,
+    clock,
+    accept,
+    settings: store.settings,
+    dir: store.dir,
+    logger: autoOptions.logger,
+  };
 }
 
 // A login that fails at once, with a screenshot, without the polling loop.
@@ -301,38 +310,141 @@ describe("manual tests", () => {
   });
 });
 
+describe("browser profiles", () => {
+  it("gives every attempt a fresh profile and removes it afterwards", async () => {
+    const seen: string[] = [];
+    const recording = (options: BrowserLoginOptions): Promise<BrowserLoginResult> => {
+      seen.push(options.profileDir);
+      expect(existsSync(options.profileDir)).toBe(true);
+      writeFileSync(join(options.profileDir, "Cookies"), "lidl session");
+      return failing(options);
+    };
+    const { autoLogin, accept, clock, dir } = setup({ login: recording });
+    await autoLogin.run({ manual: true, accept });
+    clock.advance(MANUAL_COOLDOWN_MS + 1000);
+    await autoLogin.run({ manual: true, accept });
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).not.toBe(seen[1]);
+    for (const profile of seen) {
+      expect(profile.startsWith(join(dir, "tmp"))).toBe(true);
+      expect(existsSync(profile)).toBe(false);
+    }
+    expect(readdirSync(join(dir, "tmp"))).toEqual([]);
+  });
+
+  it("removes the profile also when the login throws", async () => {
+    let profile = "";
+    const throwing = (options: BrowserLoginOptions): Promise<BrowserLoginResult> => {
+      profile = options.profileDir;
+      return Promise.reject(new Error("broken"));
+    };
+    const { autoLogin, accept } = setup({ login: throwing });
+    expect((await autoLogin.run({ manual: true, accept })).status).toBe("failed");
+    expect(profile).not.toBe("");
+    expect(existsSync(profile)).toBe(false);
+  });
+
+  it("removes the persistent profile of 0.2.0 and leftover temporary profiles", () => {
+    const { autoLogin, dir } = setup();
+    mkdirSync(join(dir, "browser-profile", "Default"), { recursive: true });
+    writeFileSync(join(dir, "browser-profile", "Default", "Cookies"), "lidl session");
+    mkdirSync(join(dir, "tmp", "login-stale"), { recursive: true });
+    autoLogin.cleanUp();
+    expect(existsSync(join(dir, "browser-profile"))).toBe(false);
+    expect(existsSync(join(dir, "tmp"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "creates the profile and the screenshots for the bridge user only",
+    async () => {
+      let mode = 0;
+      const checking = (options: BrowserLoginOptions): Promise<BrowserLoginResult> => {
+        mode = statSync(options.profileDir).mode & 0o777;
+        return failing(options);
+      };
+      const { autoLogin, accept, dir } = setup({ login: checking });
+      await autoLogin.run({ manual: false, accept });
+      expect(mode).toBe(0o700);
+      expect(statSync(join(dir, "login-screenshots")).mode & 0o777).toBe(0o700);
+    },
+  );
+});
+
 describe("deleting the account", () => {
-  it("removes the browser profile and the screenshots", async () => {
+  it("removes the screenshots and any browser profile", async () => {
     const { autoLogin, accept, dir } = setup({ login: failing });
     await autoLogin.run({ manual: true, accept });
-    const profile = join(dir, "browser-profile");
-    writeFileSync(join(profile, "Cookies"), "lidl session");
+    const legacy = join(dir, "browser-profile");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "Cookies"), "lidl session");
     autoLogin.deleteCredentials();
-    expect(existsSync(profile)).toBe(false);
+    expect(existsSync(legacy)).toBe(false);
     expect(existsSync(join(dir, "login-screenshots"))).toBe(false);
     expect(autoLogin.status()).toMatchObject({ configured: false, last: null });
   });
 
-  it("keeps the profile while a login is using it", async () => {
+  it("keeps the profile while a login is using it, and removes it when the login ends", async () => {
     let release: () => void = () => undefined;
-    const slow = () =>
+    let profile = "";
+    const slow = (options: BrowserLoginOptions) =>
       new Promise<BrowserLoginResult>((resolve) => {
+        profile = options.profileDir;
         release = () => resolve({ ok: false, code: "error", detail: "stopped", screenshot: null });
       });
-    const { autoLogin, accept, dir } = setup({ login: slow });
+    const { autoLogin, accept } = setup({ login: slow });
     const running = autoLogin.run({ manual: false, accept });
     autoLogin.deleteCredentials();
-    expect(existsSync(join(dir, "browser-profile"))).toBe(true);
+    expect(existsSync(profile)).toBe(true);
     release();
     await running;
+    expect(existsSync(profile)).toBe(false);
+  });
+});
+
+describe("failure details", () => {
+  const MARKER = "MARKER-PASSWORD-77";
+
+  it("never stores, logs or shows the password or a call log of the browser", async () => {
+    const leaking = (): Promise<BrowserLoginResult> =>
+      Promise.resolve({
+        ok: false,
+        code: "error",
+        detail: `locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - fill("${MARKER}")`,
+        screenshot: null,
+      });
+    const { autoLogin, accept, settings, logger } = setup({ login: leaking });
+    autoLogin.saveCredentials("cook@example.com", MARKER);
+    const warn = vi.spyOn(logger, "warn");
+    const run = await autoLogin.run({ manual: true, accept });
+    expect(run).toMatchObject({
+      status: "failed",
+      attempt: { code: "error", detail: "browser error (details withheld)" },
+    });
+    expect(settings.get(AUTO_LOGIN_KEYS.last)).not.toContain(MARKER);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(MARKER);
+    expect(JSON.stringify(autoLogin.status())).not.toContain(MARKER);
   });
 
-  it.skipIf(process.platform === "win32")(
-    "creates the profile for the bridge user only",
-    async () => {
-      const { autoLogin, accept, dir } = setup();
-      await autoLogin.run({ manual: false, accept });
-      expect(statSync(join(dir, "browser-profile")).mode & 0o777).toBe(0o700);
-    },
-  );
+  it("masks the account's own values in any other detail", async () => {
+    const echoing = (options: BrowserLoginOptions): Promise<BrowserLoginResult> =>
+      Promise.resolve({
+        ok: false,
+        code: "not_logged_in",
+        detail: `the site said: ${options.credentials?.email ?? ""} / ${options.credentials?.password ?? ""}`,
+        screenshot: null,
+      });
+    const { autoLogin, accept } = setup({ login: echoing });
+    const run = await autoLogin.run({ manual: true, accept });
+    const detail = run.status === "failed" ? run.attempt.detail : null;
+    expect(detail).toBe("the site said: [redacted] / [redacted]");
+  });
+
+  it("keeps the password out when the real browser flow fails on a fill", async () => {
+    const leak = new Error(`locator.fill: Timeout\nCall log:\n  - fill("${MARKER}")`);
+    const { autoLogin, accept, settings } = setup({ script: { form: "both", fillError: leak } });
+    autoLogin.saveCredentials("cook@example.com", MARKER);
+    const run = await autoLogin.run({ manual: true, accept });
+    expect(run).toMatchObject({ status: "failed", attempt: { code: "error" } });
+    expect(settings.get(AUTO_LOGIN_KEYS.last)).not.toContain(MARKER);
+  });
 });

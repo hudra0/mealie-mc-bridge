@@ -97,6 +97,29 @@ describe("openDatabase and migrations", () => {
 });
 
 describe("JobStore", () => {
+  it("counts the jobs and their cost since a point in time", () => {
+    const clock = steppingClock("2026-10-13T10:00:00.000Z");
+    store = tempStore({ now: clock.now });
+    const old = store.jobs.enqueue({ recipeId: RECIPE, scale: 1 }).job;
+    store.jobs.update(old.id, { costUsd: 4 });
+    clock.set("2026-10-14T12:00:00.000Z");
+    const recent = store.jobs.enqueue({ recipeId: OTHER, scale: 1 }).job;
+    store.jobs.update(recent.id, { costUsd: 0.25 });
+    store.jobs.enqueue({ recipeId: OTHER, scale: 2 });
+    expect(store.jobs.usageSince(new Date("2026-10-14T00:00:00.000Z"))).toEqual({
+      jobs: 2,
+      costUsd: 0.25,
+    });
+    expect(store.jobs.usageSince(new Date("2026-10-13T00:00:00.000Z"))).toEqual({
+      jobs: 3,
+      costUsd: 4.25,
+    });
+    expect(store.jobs.usageSince(new Date("2026-10-15T00:00:00.000Z"))).toEqual({
+      jobs: 0,
+      costUsd: 0,
+    });
+  });
+
   it("enqueues a job with defaults and an event", () => {
     store = tempStore({ now: steppingClock().now });
     const { job, created } = store.jobs.enqueue({

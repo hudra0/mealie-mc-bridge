@@ -285,6 +285,14 @@ describe("plainText", () => {
     expect(plainText(null)).toBe("");
     expect(plainText(undefined)).toBe("");
   });
+
+  it("turns numeric entities outside Unicode into U+FFFD instead of throwing", () => {
+    expect(plainText("Salt &#9999999; pepper")).toBe("Salt \uFFFD pepper");
+    expect(plainText("&#1114111;")).toBe(String.fromCodePoint(0x10ffff));
+    expect(plainText("&#1114112; &#0; &#55296; &#57343;")).toBe("\uFFFD \uFFFD \uFFFD \uFFFD");
+    expect(plainText("&#99999999999999999999999;")).toBe("\uFFFD");
+    expect(plainText("&#x41;&#X42;")).toBe("AB");
+  });
 });
 
 describe("excluded tags", () => {

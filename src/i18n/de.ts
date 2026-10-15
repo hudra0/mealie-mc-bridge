@@ -72,6 +72,12 @@ export const de: Messages = {
     session() {
       return "Die Bridge ist gerade nicht bei Monsieur Cuisine angemeldet. Der Auftrag wartet und läuft automatisch weiter, sobald auf der Admin-Seite eine neue Sitzung hinterlegt ist.";
     },
+    limitSubject: "Monsieur Cuisine: nicht gesendet, Tageslimit erreicht",
+    limit(text) {
+      return text.kind === "jobs"
+        ? `Die Bridge nimmt höchstens ${formatNumber(text.limit, INTL)} Rezepte in 24 Stunden an, und so viele sind eingegangen. Bitte später erneut versuchen; der Betreiber kann JOB_DAILY_LIMIT erhöhen.`
+        : `Die Kosten des Sprachmodells der letzten 24 Stunden haben das Limit von ${formatNumber(text.limit, INTL)} USD erreicht. Bitte später erneut versuchen; der Betreiber kann JOB_DAILY_COST_LIMIT_USD erhöhen.`;
+    },
     failureReasons: FAILURE_REASONS,
   },
   jobEvents: {
@@ -188,8 +194,6 @@ export const de: Messages = {
         `Das Cookie ließ sich nicht prüfen und wurde deshalb nicht gespeichert: ${reason}`,
       noSuchJob: "Diesen Auftrag gibt es nicht. Vielleicht ist der Link falsch.",
       recipeNotLoaded: (reason) => `Das Rezept ließ sich nicht laden: ${reason}`,
-      conversionLinkExpired:
-        "Der Link zur Umwandlung ist abgelaufen (die Bridge wurde neu gestartet, oder der Link stammt von woanders). Nutze den Knopf unten.",
       conversionFailed: (reason) => `Die Umwandlung ist fehlgeschlagen: ${reason}`,
       credentialsInvalid: (field) =>
         field === "email"
@@ -464,6 +468,8 @@ export const de: Messages = {
           "Die Seite verlangt ein Captcha oder einen Bestätigungscode. Melde dich einmal von Hand mit dem Anmelde-Helfer an.",
         not_logged_in:
           "Das Formular wurde abgeschickt, aber es kam keine Sitzung: falsches Passwort, Captcha oder zweiter Faktor.",
+        unexpected_page:
+          "Ein Anmeldeformular erschien auf einer Seite, die nicht die Lidl-Anmeldung ist; dort wurde nichts eingetragen.",
         verify_failed: "Die Anmeldung lief durch, aber Monsieur Cuisine lehnt die neue Sitzung ab.",
         error: "Der Browser ist ausgefallen.",
       },
@@ -512,7 +518,7 @@ export const de: Messages = {
         "Der Slug ist der letzte Teil der Rezept-URL in Mealie, zum Beispiel `kuerbissuppe` in `/g/home/r/kuerbissuppe`.",
       scale: "Faktor",
       scaleHelp:
-        "Vervielfacht die Portionen wie der Faktor in Mealie. 1 lässt das Rezept, wie es ist.",
+        "Vervielfacht die Portionen wie der Faktor in Mealie, in Viertelschritten von 0,25 bis 10. 1 lässt das Rezept, wie es ist.",
       preview: "Vorschau",
       alsoConvert: "Gleich umwandeln",
       alsoConvertHelp:

@@ -47,6 +47,46 @@ describe("POST /hooks/mealie/:token", () => {
     });
   });
 
+  it("refuses new jobs over the daily job limit and says so in the timeline", async () => {
+    svc = testService({ config: { JOB_DAILY_LIMIT: 2, JOB_DAILY_COST_LIMIT_USD: 0 } });
+    const other = "00000000-0000-4000-8000-0000000000aa";
+    svc.store.jobs.enqueue({ recipeId: other, scale: 1 });
+    const first = await svc.app.inject({ method: "POST", url: hook(), payload: actionBody });
+    expect(first.statusCode).toBe(202);
+    // A double click of an active job counts toward no limit.
+    const again = await svc.app.inject({ method: "POST", url: hook(), payload: actionBody });
+    expect(again.statusCode).toBe(202);
+    expect(again.json()).toEqual(first.json());
+    const third = await svc.app.inject({
+      method: "POST",
+      url: hook(),
+      payload: { ...actionBody, recipe_scale: 3 },
+    });
+    expect(third.statusCode).toBe(429);
+    expect(third.json()).toEqual({
+      error: "Too Many Requests",
+      message: "Daily limit reached: at most 2 jobs in 24 hours (JOB_DAILY_LIMIT).",
+    });
+    expect(svc.store.jobs.stats().queued).toBe(2);
+    await vi.waitFor(() => expect(svc?.mealie.timeline).toHaveLength(1));
+    expect(svc.mealie.timeline[0]).toMatchObject({
+      recipeId: RECIPE_ID,
+      event: { subject: "Monsieur Cuisine: not sent, daily limit reached" },
+    });
+  });
+
+  it("refuses new jobs once the cost of the last 24 hours reaches the limit", async () => {
+    svc = testService({ config: { JOB_DAILY_LIMIT: 0, JOB_DAILY_COST_LIMIT_USD: 1 } });
+    const { job } = svc.store.jobs.enqueue({
+      recipeId: "00000000-0000-4000-8000-0000000000aa",
+      scale: 1,
+    });
+    svc.store.jobs.update(job.id, { costUsd: 1.2 });
+    const response = await svc.app.inject({ method: "POST", url: hook(), payload: actionBody });
+    expect(response.statusCode).toBe(429);
+    expect(response.json<{ message: string }>().message).toMatch(/JOB_DAILY_COST_LIMIT_USD/);
+  });
+
   it("answers a double click with the same job", async () => {
     svc = testService();
     const first = await svc.app.inject({ method: "POST", url: hook(), payload: actionBody });
@@ -278,6 +318,31 @@ describe("Docker healthcheck", () => {
   it("passes on 200 and fails on 503", async () => {
     expect(await healthcheckExit(200)).toBe(0);
     expect(await healthcheckExit(503)).toBe(1);
+  });
+
+  it("starts the bridge under tini and binds every interface inside the container", () => {
+    const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
+    const runtime = dockerfile.slice(dockerfile.lastIndexOf("FROM "));
+    expect(runtime).toContain('ENTRYPOINT ["/usr/bin/tini", "--"]');
+    expect(runtime).toMatch(/apt-get install -y --no-install-recommends tini/);
+    expect(runtime).toContain("ENV BRIDGE_IN_CONTAINER=1");
+    expect(runtime).toContain("USER bridge");
+  });
+
+  it("hardens the container in the compose example", () => {
+    const compose = readFileSync(new URL("../../compose.example.yml", import.meta.url), "utf8");
+    for (const line of [
+      "init: true",
+      "read_only: true",
+      "cap_drop:\n      - ALL",
+      "no-new-privileges:true",
+      "pids_limit:",
+      "mem_limit:",
+      "- /tmp",
+      '"127.0.0.1:3000:3000"',
+    ]) {
+      expect(compose, line).toContain(line);
+    }
   });
 
   it("installs the browser libraries of the Playwright version the lock file pins", () => {

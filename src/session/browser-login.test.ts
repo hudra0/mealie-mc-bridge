@@ -3,11 +3,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FAKE_TEXT, fakeBrowser, loopClock, type FakeBrowserScript } from "../testing/browser.js";
 import { tempDir } from "../testing/temp.js";
+import { BrowserActionError, UNKNOWN_BROWSER_FAILURE } from "./browser-errors.js";
 import {
   browserLogin,
   closeWithin,
   buildCookieHeader,
   hasLoginCookies,
+  onLoginHost,
   readSessionCookie,
   siteLanguage,
   siteMessage,
@@ -200,6 +202,63 @@ describe("browserLogin", () => {
     const { result } = login({ openError: new Error("Executable doesn't exist") });
     expect(await result).toMatchObject({ ok: false, code: "error", screenshot: null });
   });
+
+  it.each([
+    ["a look-alike host", "https://evil-accounts.lidl.com/Account/Login"],
+    ["a host that only starts with the login host", "https://accounts.lidl.com.example.com/"],
+    ["plain http", "http://accounts.lidl.com/Account/Login"],
+    ["the Monsieur Cuisine site", "https://www.monsieur-cuisine.com/de/"],
+  ])("never types the account into %s", async (_name, url) => {
+    const { browser, result, dir } = login({ form: "both", loginWorks: true, url });
+    const outcome = await result;
+    expect(outcome).toMatchObject({ ok: false, code: "unexpected_page" });
+    expect(outcome.ok ? null : outcome.screenshot).toBe(join(dir, "shot.png"));
+    expect(browser.filled).toEqual({});
+    expect(browser.steps.filter((step) => /^(fill|enter|click)/.test(step))).toEqual([]);
+    expect(JSON.stringify(outcome)).not.toContain(CREDENTIALS.email);
+  });
+
+  it("fills the form on a configured login host", async () => {
+    const { browser, result } = login(
+      { form: "both", loginWorks: true, url: "https://login.example.com/signin" },
+      { loginHosts: ["login.example.com"] },
+    );
+    expect((await result).ok).toBe(true);
+    expect(browser.filled['input[type="password"]']).toBe(CREDENTIALS.password);
+  });
+
+  it("never passes the browser's error message on", async () => {
+    const leak = new Error(
+      `locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - fill("${CREDENTIALS.password}")\n  - fill("${CREDENTIALS.email}")`,
+    );
+    const raw = await login({ form: "both", fillError: leak }).result;
+    expect(raw).toMatchObject({ ok: false, code: "error", detail: UNKNOWN_BROWSER_FAILURE });
+    expect(JSON.stringify(raw)).not.toContain(CREDENTIALS.password);
+    expect(JSON.stringify(raw)).not.toContain(CREDENTIALS.email);
+
+    const mapped = await login({ form: "both", fillError: new BrowserActionError("timeout") })
+      .result;
+    expect(mapped).toMatchObject({
+      ok: false,
+      code: "error",
+      detail: "the browser timed out on the login page",
+    });
+  });
+});
+
+describe("onLoginHost", () => {
+  it("matches the login hosts exactly and over https only", () => {
+    expect(onLoginHost("https://accounts.lidl.com/Account/Login?x=1")).toBe(true);
+    expect(onLoginHost("https://ACCOUNTS.lidl.com/")).toBe(true);
+    expect(onLoginHost("https://accounts.lidl.com:443/")).toBe(true);
+    expect(onLoginHost("https://lidl.com/")).toBe(false);
+    expect(onLoginHost("https://xaccounts.lidl.com/")).toBe(false);
+    expect(onLoginHost("https://accounts.lidl.com.evil.example/")).toBe(false);
+    expect(onLoginHost("http://accounts.lidl.com/")).toBe(false);
+    expect(onLoginHost("about:blank")).toBe(false);
+    expect(onLoginHost("not a url")).toBe(false);
+    expect(onLoginHost("https://login.example.com/", ["login.example.com"])).toBe(true);
+  });
 });
 
 describe("browserLogin with consent dialogs", () => {
@@ -377,7 +436,8 @@ describe("browserLogin form and answers", () => {
       verification: "text",
       url: "https://www.monsieur-cuisine.com/de/",
     });
-    expect(await elsewhere.result).toMatchObject({ ok: false, code: "not_logged_in" });
+    // Off the Lidl pages the text is no verification step, and the form is not filled.
+    expect(await elsewhere.result).toMatchObject({ ok: false, code: "unexpected_page" });
   });
 
   it("shortens a site message to one line", () => {
@@ -583,20 +643,26 @@ describe("browserLogin timing", () => {
 });
 
 describe("closeWithin", () => {
-  it("gives up on a browser that never closes", async () => {
+  it("gives up on a browser that never closes and kills it", async () => {
     vi.useFakeTimers();
     try {
-      const hanging = { close: () => new Promise<void>(() => undefined) };
+      const kill = vi.fn();
+      const hanging = { close: () => new Promise<void>(() => undefined), kill };
       const done = closeWithin(hanging, 10_000);
       await vi.advanceTimersByTimeAsync(10_000);
       await expect(done).resolves.toBeUndefined();
+      expect(kill).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
   it("returns as soon as the browser closed, and ignores a failing close", async () => {
-    await expect(closeWithin({ close: () => Promise.resolve() }, 60_000)).resolves.toBeUndefined();
+    const kill = vi.fn();
+    await expect(
+      closeWithin({ close: () => Promise.resolve(), kill }, 60_000),
+    ).resolves.toBeUndefined();
+    expect(kill).not.toHaveBeenCalled();
     await expect(
       closeWithin({ close: () => Promise.reject(new Error("gone")) }, 60_000),
     ).resolves.toBeUndefined();

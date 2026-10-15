@@ -22,6 +22,10 @@ export const JOB_STATUSES = [
 
 const statusList = JOB_STATUSES.map((status) => `'${status}'`).join(", ");
 
+// What migration 5 leaves as the reason of the last automatic login.
+export const PURGED_LOGIN_DETAIL =
+  "details removed by the security update; see the log of a new attempt";
+
 export const MIGRATIONS: readonly Migration[] = [
   {
     version: 1,
@@ -105,6 +109,22 @@ export const MIGRATIONS: readonly Migration[] = [
     name: "serving unit of a job",
     sql: `
       ALTER TABLE jobs ADD COLUMN serving_unit TEXT;
+    `,
+  },
+  {
+    // Up to 0.2.0 the reason of a failed automatic login could carry the browser's call
+    // log, which names the typed Lidl password. The stored reason is replaced; the code and
+    // the time of the attempt stay.
+    version: 5,
+    name: "purge the stored reason of the last automatic login",
+    sql: `
+      UPDATE settings
+         SET value = json_set(value, '$.detail', '${PURGED_LOGIN_DETAIL}')
+       WHERE key = 'autologin.last_attempt'
+         AND json_valid(value)
+         AND json_type(value, '$.detail') = 'text';
+      DELETE FROM settings
+       WHERE key = 'autologin.last_attempt' AND NOT json_valid(value);
     `,
   },
 ];

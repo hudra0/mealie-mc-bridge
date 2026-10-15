@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
-import { MealieApiError, MealieClient, slugify } from "./client.js";
+import {
+  ImageTooLargeError,
+  MAX_IMAGE_BYTES,
+  MealieApiError,
+  MealieClient,
+  slugify,
+} from "./client.js";
 
 const TOKEN = "test-token-not-a-secret";
 const BASE = "https://mealie.example.com";
@@ -127,6 +133,25 @@ describe("MealieClient reads", () => {
     await expect(mealie.getRecipeImage(RECIPE_ID)).resolves.toBeNull();
     const error = await caught(mealie.getRecipeImage(RECIPE_ID));
     expect(error).toMatchObject({ status: 500, kind: "server", detail: "boom" });
+  });
+
+  it("refuses an image above the size limit, by its header or while reading", async () => {
+    const imagePath = `/api/media/recipes/${RECIPE_ID}/images/original.webp`;
+    const mock = mockFetch({
+      [`GET ${imagePath}`]: [
+        () =>
+          new Response(new Uint8Array(8), { status: 200, headers: { "content-length": "999" } }),
+        () => new Response(new Uint8Array(20), { status: 200 }),
+        () => new Response(new Uint8Array(10), { status: 200 }),
+      ],
+    });
+    const mealie = new MealieClient(`${BASE}/`, TOKEN, mock.fetchImpl, { maxImageBytes: 10 });
+    await expect(mealie.getRecipeImage(RECIPE_ID)).rejects.toBeInstanceOf(ImageTooLargeError);
+    await expect(mealie.getRecipeImage(RECIPE_ID)).rejects.toThrow(
+      "The recipe image is larger than 0 MB",
+    );
+    expect((await mealie.getRecipeImage(RECIPE_ID))?.length).toBe(10);
+    expect(MAX_IMAGE_BYTES).toBe(15 * 1024 * 1024);
   });
 });
 

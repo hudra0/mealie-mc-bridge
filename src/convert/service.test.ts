@@ -5,6 +5,7 @@ import { MissingApiKeyError } from "../config.js";
 import { loadConverter } from "../pipeline/converter-port.js";
 import { loadDeviceLimits } from "../recipe/limits.js";
 import * as convertModule from "./index.js";
+import { RecipeTooLargeError } from "./errors.js";
 import { categoriesFromHints, createServiceConverter } from "./service.js";
 import type { ConversionRequest, GenerationInput, RecipeGenerator } from "./types.js";
 
@@ -70,6 +71,22 @@ describe("createServiceConverter", () => {
     expect(calls[0]?.user).toContain("- 12: Hauptgerichte\n- 228: Suppen & Eintöpfe");
     expect(calls[0]?.user).not.toContain("# Mealie categories");
     expect(result.usage.costUsd).toBe(0.002);
+  });
+
+  it("refuses a recipe text above LLM_MAX_RECIPE_KB before calling the model", async () => {
+    const { generator, calls } = fakeGenerator();
+    const converter = await createServiceConverter(
+      { env: { ...env, LLM_MAX_RECIPE_KB: "1" }, limits, logger },
+      () => generator,
+    );
+    const long = { ...request, rendered: `${request.rendered}${"Ö".repeat(600)}` };
+    const error = await converter.convert(long).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(RecipeTooLargeError);
+    expect((error as Error).message).toBe(
+      "The recipe is too long for a conversion: 2 kB of text, the limit is 1 kB (LLM_MAX_RECIPE_KB). Shorten the description or the notes in Mealie, or raise the limit.",
+    );
+    expect(calls).toEqual([]);
+    await expect(converter.convert(request)).resolves.toBeTruthy();
   });
 
   it("writes recipes for MC_LOCALE and refuses requests for another locale", async () => {

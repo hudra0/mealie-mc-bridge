@@ -1,8 +1,9 @@
-import { writeFileSync } from "node:fs";
+import { statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { tempDir, tempStore, type TempStore } from "../testing/temp.js";
 import { DataDirError, checkDataDir, isPermissionError, storeStartupMessage } from "./data-dir.js";
+import { openDatabase } from "./db.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -25,6 +26,18 @@ describe("checkDataDir", () => {
     checkDataDir(target);
     expect(() => checkDataDir(target)).not.toThrow();
   });
+
+  it.skipIf(process.platform === "win32")(
+    "creates the directory and a new database for the bridge user only",
+    () => {
+      const target = join(dir(), "data");
+      checkDataDir(target);
+      expect(statSync(target).mode & 0o777).toBe(0o700);
+      const db = openDatabase(join(target, "bridge.db"));
+      db.close();
+      expect(statSync(join(target, "bridge.db")).mode & 0o777).toBe(0o600);
+    },
+  );
 
   it("names the directory when it cannot write there", () => {
     const base = dir();

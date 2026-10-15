@@ -99,8 +99,8 @@ describe("admin authentication", () => {
     expect((await get("/admin/login", { cookie })).headers.location).toBe("/admin");
   });
 
-  it("marks the cookie Secure behind an HTTPS proxy and ignores foreign next targets", async () => {
-    svc = testService();
+  it("marks the cookie Secure and sends HSTS behind a trusted HTTPS proxy", async () => {
+    svc = testService({ trustProxy: true });
     const response = await post(
       "/admin/login",
       {
@@ -113,6 +113,23 @@ describe("admin authentication", () => {
     );
     expect(response.headers.location).toBe("/admin");
     expect(String(response.headers["set-cookie"])).toContain("Secure");
+    expect(response.headers["strict-transport-security"]).toBe("max-age=31536000");
+  });
+
+  it("ignores X-Forwarded-Proto unless TRUST_PROXY names the sender", async () => {
+    for (const trustProxy of [undefined, ["192.0.2.1"]]) {
+      svc = testService(trustProxy ? { trustProxy } : {});
+      const response = await post(
+        "/admin/login",
+        { _csrf: LOGIN_CSRF, user: ADMIN.user, password: ADMIN.password },
+        { "content-type": "application/x-www-form-urlencoded", "x-forwarded-proto": "https" },
+      );
+      expect(response.statusCode).toBe(303);
+      expect(String(response.headers["set-cookie"])).not.toContain("Secure");
+      expect(response.headers["strict-transport-security"]).toBeUndefined();
+      await svc.dispose();
+      svc = null;
+    }
   });
 
   it("refuses a wrong password or user without setting a cookie", async () => {
@@ -182,6 +199,34 @@ describe("admin authentication", () => {
     expect(api.headers["retry-after"]).toBeDefined();
     now += 15 * 60_000 + 1000;
     expect((await attempt(ADMIN.password)).statusCode).toBe(303);
+  });
+
+  it("throttles each client behind a trusted proxy on its own", async () => {
+    svc = testService({ trustProxy: ["127.0.0.1"], throttle: new LoginThrottle({ max: 2 }) });
+    const attempt = (client: string, password: string) =>
+      post(
+        "/admin/login",
+        { _csrf: LOGIN_CSRF, user: ADMIN.user, password },
+        { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": client },
+      );
+    expect((await attempt("198.51.100.7", "wrong")).statusCode).toBe(401);
+    expect((await attempt("198.51.100.7", "wrong")).statusCode).toBe(401);
+    expect((await attempt("198.51.100.7", ADMIN.password)).statusCode).toBe(429);
+    // The operator behind the same proxy is not locked out.
+    expect((await attempt("203.0.113.9", ADMIN.password)).statusCode).toBe(303);
+  });
+
+  it("does not believe X-Forwarded-For without TRUST_PROXY", async () => {
+    svc = testService({ throttle: new LoginThrottle({ max: 2 }) });
+    const attempt = (client: string, password: string) =>
+      post(
+        "/admin/login",
+        { _csrf: LOGIN_CSRF, user: ADMIN.user, password },
+        { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": client },
+      );
+    expect((await attempt("198.51.100.7", "wrong")).statusCode).toBe(401);
+    expect((await attempt("198.51.100.8", "wrong")).statusCode).toBe(401);
+    expect((await attempt("198.51.100.9", ADMIN.password)).statusCode).toBe(429);
   });
 
   it("counts wrong Basic Auth on the API as failed logins", async () => {
@@ -679,6 +724,9 @@ describe("jobs", () => {
   });
 });
 
+const convertDryRun = () =>
+  post("/admin/dry-run", { recipe: "kurbis-linsen-suppe", convert: "1", _csrf: SESSION_CSRF });
+
 describe("dry run", () => {
   it("shows the form without a recipe", async () => {
     svc = testService();
@@ -728,11 +776,15 @@ describe("dry run", () => {
     expect(response.body).toContain("The recipe could not be loaded: no recipe missing");
   });
 
-  it("refuses to convert without the form token", async () => {
+  it("converts only on a POST with the form token, never on a link", async () => {
     const converter = fakeConverter();
     svc = testService({ converter });
-    const body = (await get("/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1")).body;
-    expect(body).toContain("The conversion link has expired");
+    const link = await get(
+      `/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${SESSION_CSRF}`,
+    );
+    expect(link.statusCode).toBe(200);
+    const missing = await post("/admin/dry-run", { recipe: "kurbis-linsen-suppe", convert: "1" });
+    expect(missing.statusCode).toBe(403);
     expect(converter.requests).toEqual([]);
   });
 
@@ -744,9 +796,12 @@ describe("dry run", () => {
       }),
     );
     svc = testService({ converter });
-    const response = await get(
-      `/admin/dry-run?recipe=kurbis-linsen-suppe&scale=1&convert=1&_csrf=${SESSION_CSRF}`,
-    );
+    const response = await post("/admin/dry-run", {
+      recipe: "kurbis-linsen-suppe",
+      scale: "1",
+      convert: "1",
+      _csrf: SESSION_CSRF,
+    });
     expect(response.statusCode).toBe(200);
     const body = response.body;
     expect(converter.requests).toHaveLength(1);
@@ -771,7 +826,7 @@ describe("dry run", () => {
         suggest: (names) => names.map((_, index) => (index === 0 ? ["Kürbis"] : [])),
       },
     });
-    await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${SESSION_CSRF}`);
+    await convertDryRun();
     expect(converter.requests[0]?.catalogNames).toEqual([{ index: 0, names: ["Kürbis"] }]);
   });
 
@@ -784,9 +839,7 @@ describe("dry run", () => {
       seconds: 500,
     });
     svc = testService({ converter: fakeConverter(conversionResult({ recipe: broken })) });
-    const body = (
-      await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${SESSION_CSRF}`)
-    ).body;
+    const body = (await convertDryRun()).body;
     expect(body).toMatch(/[0-9]+ errors?</);
     expect(body).toContain("servingSize.steps[2]");
     expect(body).toContain("dropped unknown ids 9999");
@@ -794,9 +847,7 @@ describe("dry run", () => {
 
   it("shows a converter failure", async () => {
     svc = testService({ converter: fakeConverter(new ConverterNotConfiguredError()) });
-    const body = (
-      await get(`/admin/dry-run?recipe=kurbis-linsen-suppe&convert=1&_csrf=${SESSION_CSRF}`)
-    ).body;
+    const body = (await convertDryRun()).body;
     expect(body).toContain("The conversion failed: converter not configured");
   });
 

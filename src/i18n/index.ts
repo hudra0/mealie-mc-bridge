@@ -44,6 +44,7 @@ export type AutoLoginFailureName =
   | "wrong_password"
   | "verification_required"
   | "not_logged_in"
+  | "unexpected_page"
   | "verify_failed"
   | "error";
 
@@ -78,6 +79,9 @@ export interface TimelineMessages {
   failed(text: { stage: FailureStage; detail: string }): string;
   sessionSubject: string;
   session(): string;
+  // The webhook refused a click because a daily limit is reached.
+  limitSubject: string;
+  limit(text: { kind: "jobs" | "cost"; limit: number }): string;
   failureReasons: Readonly<Record<FailureStage, string>>;
 }
 
@@ -148,7 +152,6 @@ export interface AdminMessages {
     cookieUnchecked(reason: string): string;
     noSuchJob: string;
     recipeNotLoaded(reason: string): string;
-    conversionLinkExpired: string;
     conversionFailed(reason: string): string;
     credentialsInvalid(field: "email" | "password"): string;
   };

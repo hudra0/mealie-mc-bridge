@@ -9,18 +9,37 @@
 services:
   mc-bridge:
     image: ghcr.io/hudra0/mealie-mc-bridge:latest
-    # latest follows main. To pin a build, use its sha-<commit> tag; once a release is tagged,
-    # its X.Y tag works too. To build the image yourself from a clone of the repository,
-    # replace the image line with the path of the clone:
+    # latest follows main. To pin a build, use its sha-<commit> tag or a release tag (X.Y or
+    # X.Y.Z); to fix the exact image, add its digest: mealie-mc-bridge:X.Y.Z@sha256:<digest>.
+    # To build the image yourself from a clone of the repository, replace the image line with
+    # the path of the clone:
     # build: .
     restart: unless-stopped
+    # Hardening. The image's entrypoint (tini) reaps the processes a crashed browser leaves;
+    # init: true does the same for an image built without it. The bridge writes only to
+    # /data; the browser of the automatic login writes to /tmp and the home directory, which
+    # live in memory here.
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /home/bridge
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    # Node.js and a headless Chromium during a login; raise it if the log shows the
+    # container being killed.
+    mem_limit: 1g
     # Every setting comes from .env; README.md has the full reference.
     env_file: .env
     # The admin pages and /health. Mealie reaches the webhook over the Docker network as
     # http://mc-bridge:3000, so the host port only needs to be open for you. As written it
-    # answers on this machine only. To open the admin pages to your LAN, put the host's LAN
-    # address in front, for example "<LAN address>:3000:3000". Never publish it on the
-    # internet.
+    # answers on this machine only. To reach the admin pages from other machines, put a
+    # reverse proxy with TLS in front (README, "Security") rather than opening the port;
+    # the admin password, the session cookie and the Lidl password cross the network in plain
+    # text otherwise. Never publish it on the internet.
     ports:
       - "127.0.0.1:3000:3000"
     volumes:

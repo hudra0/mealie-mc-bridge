@@ -4,8 +4,9 @@
 // Protection, in layers:
 // - A login form for ADMIN_USER and ADMIN_PASSWORD, compared in constant time. A correct
 //   login sets a signed, HttpOnly, SameSite=Lax session cookie for 12 hours
-//   (admin-auth.ts). Without both settings, the pages are open (a warning is logged and
-//   every page shows a banner); bind the port to localhost or the LAN only.
+//   (admin-auth.ts). The service does not start without both settings unless ADMIN_AUTH=off;
+//   then the pages are open (a warning is logged and every page shows a banner).
+// - Over HTTPS (directly, or behind a proxy in TRUST_PROXY) every page sends HSTS.
 // - The JSON endpoints under /admin/api/ also take HTTP Basic Auth with the same
 //   credentials, for scripts such as `npm run mc:login`. They need a JSON body, which a
 //   form on another site cannot send.
@@ -31,7 +32,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { errorMessage, type AppLogger } from "../app-logger.js";
 import { messages, type AdminMessages, type UiLanguage } from "../i18n/index.js";
 import { McSessionError, type McRecipeSink } from "../mc/index.js";
-import { MAX_SCALE } from "../mealie/index.js";
+import { quantizeScale } from "../mealie/index.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import {
   checkConverted,
@@ -55,6 +56,7 @@ import type { McRecipeStore } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
 import {
   ADMIN_COOKIE,
+  HSTS_VALUE,
   LoginThrottle,
   SESSIONS_VALID_AFTER_KEY,
   adminSessions,
@@ -204,7 +206,7 @@ export function admin(
   if (authDisabled) {
     options.logger.warn(
       {},
-      "ADMIN_USER and ADMIN_PASSWORD are not set: the admin pages have no password",
+      "ADMIN_AUTH=off and no ADMIN_USER and ADMIN_PASSWORD: the admin pages have no password",
     );
   }
 
@@ -221,12 +223,14 @@ export function admin(
     return nonce === null ? "" : formTokenFor(secret, nonce);
   };
 
-  const securityHeaders = (reply: FastifyReply) =>
-    reply
+  const securityHeaders = (reply: FastifyReply) => {
+    if (isHttps(reply.request)) reply.header("strict-transport-security", HSTS_VALUE);
+    return reply
       .header("cache-control", "no-store")
       .header("x-frame-options", "DENY")
       .header("x-content-type-options", "nosniff")
       .header("referrer-policy", "same-origin");
+  };
 
   const render = (
     reply: FastifyReply,
@@ -688,11 +692,18 @@ export function admin(
     }),
   );
 
-  app.get("/admin/dry-run", async (request, reply) => {
-    const query = request.query as Record<string, unknown>;
-    const recipeParam = typeof query.recipe === "string" ? query.recipe.trim().slice(0, 200) : "";
-    const scaleRaw = typeof query.scale === "string" ? Number(query.scale) : 1;
-    const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 && scaleRaw <= MAX_SCALE ? scaleRaw : 1;
+  // The preview is a GET and costs nothing. The conversion, which is a paid model call, is
+  // a POST: the form token travels in the body, never in a URL that proxies and browser
+  // histories keep, and the preHandler has checked it before this runs.
+  const dryRun = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    input: Record<string, unknown>,
+    convert: boolean,
+  ) => {
+    const recipeParam = typeof input.recipe === "string" ? input.recipe.trim().slice(0, 200) : "";
+    const scaleRaw = typeof input.scale === "string" ? Number(input.scale) : 1;
+    const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? quantizeScale(scaleRaw) : 1;
     const formToken = csrf(request);
     const data: DryRunData = { recipeParam, scale, formToken, recipeStatus: options.recipeStatus };
     if (!recipeParam)
@@ -715,33 +726,38 @@ export function admin(
     data.prepared = prepared;
     data.sent = options.store.mcRecipes.find(recipe.id, scale, prepared.hash);
 
-    if (query.convert === "1") {
-      if (!tokenValid(query._csrf, formToken)) {
-        data.conversionError = t.errors.conversionLinkExpired;
-      } else {
-        try {
-          const plan = await planCategories(
-            recipe,
-            options.mc,
-            options.store.settings,
-            options.locale,
-            {
-              ...(options.now ? { now: options.now } : {}),
-              isSessionError: (error) => error instanceof McSessionError,
-            },
-          );
-          const result = await options.converter.convert(
-            conversionRequest(recipe, prepared, plan, options.locale.pack.locale, {
-              ingredients: options.ingredients,
-            }),
-          );
-          data.conversion = { plan, result, checked: checkConverted(result, plan, options.limits) };
-        } catch (error) {
-          data.conversionError = t.errors.conversionFailed(errorMessage(error));
-        }
+    if (convert) {
+      try {
+        const plan = await planCategories(
+          recipe,
+          options.mc,
+          options.store.settings,
+          options.locale,
+          {
+            ...(options.now ? { now: options.now } : {}),
+            isSessionError: (error) => error instanceof McSessionError,
+          },
+        );
+        const result = await options.converter.convert(
+          conversionRequest(recipe, prepared, plan, options.locale.pack.locale, {
+            ingredients: options.ingredients,
+          }),
+        );
+        data.conversion = { plan, result, checked: checkConverted(result, plan, options.limits) };
+      } catch (error) {
+        data.conversionError = t.errors.conversionFailed(errorMessage(error));
       }
     }
     return render(reply, t.titles.dryRun, dryRunView(data, t), { active: "dryRun" });
+  };
+
+  app.get("/admin/dry-run", (request, reply) =>
+    dryRun(request, reply, request.query as Record<string, unknown>, false),
+  );
+
+  app.post("/admin/dry-run", (request, reply) => {
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    return dryRun(request, reply, body, body.convert === "1");
   });
 
   options.extend?.(context);

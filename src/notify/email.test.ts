@@ -7,6 +7,7 @@ import {
   EmailNotifier,
   NullNotifier,
   createNotifier,
+  smtpTransportOptions,
   type MailMessage,
   type MailTransport,
 } from "./email.js";
@@ -222,6 +223,35 @@ describe("createNotifier", () => {
     expect(createNotifier({ SMTP_URL: "smtp://mail.example.com" }, silentLogger())).toBeInstanceOf(
       NullNotifier,
     );
+  });
+
+  it("requires STARTTLS on smtp:// unless SMTP_ALLOW_INSECURE is set", () => {
+    expect(smtpTransportOptions("smtp://user:pw@mail.example.com:587")).toEqual({
+      url: "smtp://user:pw@mail.example.com:587",
+      requireTLS: true,
+    });
+    expect(smtpTransportOptions("smtp://mail.example.com:25", true).requireTLS).toBe(false);
+    expect(smtpTransportOptions("smtps://user:pw@mail.example.com:465").requireTLS).toBe(false);
+    const built = createNotifier(
+      { SMTP_URL: "smtp://mail.example.com:587", NOTIFY_EMAIL: "cook@example.com" },
+      silentLogger(),
+    );
+    expect(built).toBeInstanceOf(EmailNotifier);
+  });
+
+  it("keeps a browser call log with the password out of the session mail", async () => {
+    const transport = stub();
+    const n = createNotifier(
+      { SMTP_URL: "smtps://mail.example.com", NOTIFY_EMAIL: "cook@example.com" },
+      silentLogger(),
+      { transport },
+    );
+    await n.sessionExpired(status(), {
+      autoLoginFailed:
+        'locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - fill("MARKER-PASSWORD-12")',
+    });
+    expect(transport.sent[0]?.text).toContain("locator.fill: Timeout 5000ms exceeded.");
+    expect(transport.sent[0]?.text).not.toContain("MARKER-PASSWORD-12");
   });
 
   it("returns an EmailNotifier with the sender defaulting to the recipient", async () => {

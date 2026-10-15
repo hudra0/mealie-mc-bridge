@@ -9,6 +9,10 @@ export type AppLogger = Pick<BaseLogger, "debug" | "info" | "warn" | "error">;
 // token in the hook path. Error messages from clients are scrubbed with this before they
 // reach a mail, the Mealie timeline or a page.
 const SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
+  // Playwright appends the call log of a failed action to its message, and the call log of
+  // a fill() names the typed value. Everything from "Call log:" on goes.
+  [/\s*Call log:[\s\S]*$/gi, ""],
+  [/\b(fill|type|pressSequentially)\(\s*(["'`])(?:\\.|(?!\2)[^\\])*\2\s*\)/g, '$1("[redacted]")'],
   [/\b(cookie:\s*)[^\r\n]+/gi, "$1[redacted]"],
   [/\b(wordpress_logged_in_[A-Za-z0-9]*|lidl_sso_id_token|PHPSESSID)=[^;\s]+/g, "$1=[redacted]"],
   [/\b(bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[redacted]"],

@@ -12,7 +12,18 @@ export interface RecipeAction {
   actionTitle?: string;
 }
 
-export const MAX_SCALE = 100;
+// The scale goes in steps of a quarter between a quarter and ten times the recipe. Each
+// distinct scale is a separate conversion and a separate recipe on monsieur-cuisine.com,
+// so a free-form number would let any household member start unlimited conversions.
+export const MIN_SCALE = 0.25;
+export const MAX_SCALE = 10;
+export const SCALE_STEP = 0.25;
+
+// Rounds a positive scale to the nearest step and clamps it to MIN_SCALE..MAX_SCALE.
+export function quantizeScale(scale: number): number {
+  const stepped = Math.round(scale / SCALE_STEP) * SCALE_STEP;
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, stepped));
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NUMERIC = /^\s*\d+(?:\.\d+)?\s*$/;
@@ -60,11 +71,14 @@ export function parseRecipeActionBody(body: unknown): RecipeAction {
   const read = readScale(raw);
   if (read === "invalid") throw new InvalidRecipeActionError([`${key}: must be a number`]);
   // Mealie sends 1 when the servings scaler was not touched; treat a missing value the same.
-  const scale = read ?? 1;
-  if (!Number.isFinite(scale) || scale <= 0 || scale > MAX_SCALE) {
-    throw new InvalidRecipeActionError([`${key}: must be above 0 and at most ${MAX_SCALE}`]);
+  const requested = read ?? 1;
+  if (!Number.isFinite(requested) || requested <= 0) {
+    throw new InvalidRecipeActionError([`${key}: must be a number above 0`]);
   }
-  const action: RecipeAction = { recipeId: data.content.id.toLowerCase(), scale };
+  const action: RecipeAction = {
+    recipeId: data.content.id.toLowerCase(),
+    scale: quantizeScale(requested),
+  };
   const title = data.action?.title?.trim();
   if (title) action.actionTitle = title;
   return action;

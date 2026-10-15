@@ -6,6 +6,7 @@
 import { loadConfig, type Config } from "../config.js";
 import type { DeviceLimits } from "../recipe/limits.js";
 import { priceTable } from "./cost.js";
+import { RecipeTooLargeError } from "./errors.js";
 import { createGenerator } from "./generator.js";
 import { loadKnowledge } from "./knowledge.js";
 import { createConverter, type ConverterLogger } from "./loop.js";
@@ -51,6 +52,11 @@ export async function createServiceConverter(
   let generator: RecipeGenerator | undefined;
   return {
     async convert(request: ConversionRequest, opts = {}): Promise<ConversionResult> {
+      // Before any model call, so a recipe that is too long costs nothing.
+      const bytes = Buffer.byteLength(request.rendered, "utf8");
+      if (bytes > config.LLM_MAX_RECIPE_KB * 1024) {
+        throw new RecipeTooLargeError(Math.ceil(bytes / 1024), config.LLM_MAX_RECIPE_KB);
+      }
       // Built at the first conversion: a missing API key fails the job with its message
       // instead of keeping the service from starting.
       generator ??= makeGenerator(config);

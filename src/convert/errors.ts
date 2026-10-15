@@ -86,3 +86,18 @@ export class LlmConfigError extends Error {
 export function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
+
+// The recipe text is larger than LLM_MAX_RECIPE_KB. It is not sent: a scraped page can
+// carry a huge description, and every correction round would send it again.
+export class RecipeTooLargeError extends Error {
+  readonly sizeKb: number;
+  readonly limitKb: number;
+  constructor(sizeKb: number, limitKb: number) {
+    super(
+      `The recipe is too long for a conversion: ${sizeKb} kB of text, the limit is ${limitKb} kB (LLM_MAX_RECIPE_KB). Shorten the description or the notes in Mealie, or raise the limit.`,
+    );
+    this.name = "RecipeTooLargeError";
+    this.sizeKb = sizeKb;
+    this.limitKb = limitKb;
+  }
+}

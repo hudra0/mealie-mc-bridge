@@ -1,6 +1,31 @@
+import { crc32, deflateSync } from "node:zlib";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
-import { UnsupportedImageError, prepareRecipeImage as prepare } from "./image.js";
+import { MAX_IMAGE_BYTES, UnsupportedImageError, prepareRecipeImage as prepare } from "./image.js";
+
+// A PNG that declares width x height pixels in its header but carries almost no data:
+// the shape of a decompression bomb, in 68 bytes.
+function declaredPng(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body) >>> 0);
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // bit depth
+  header[9] = 2; // RGB
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(Buffer.alloc(16))),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
 
 // The cover photo aspect of the knowledge file.
 const WIDE = { width: 16, height: 9 };
@@ -86,6 +111,23 @@ describe("prepareRecipeImage", () => {
     const gif = await solid(10, 10).gif().toBuffer();
     await expect(prepareRecipeImage(gif)).rejects.toThrow(
       new UnsupportedImageError("Unsupported image format gif; expected JPEG, PNG or WebP"),
+    );
+  });
+
+  it("refuses an image that declares more than 40 million pixels before decoding it", async () => {
+    const bomb = declaredPng(16_000, 16_000);
+    expect(bomb.length).toBeLessThan(100);
+    await expect(prepareRecipeImage(bomb)).rejects.toThrow(
+      new UnsupportedImageError(
+        "The image has 16000 x 16000 pixels, more than the limit of 40 million",
+      ),
+    );
+  });
+
+  it("refuses an image file above 15 MB", async () => {
+    const large = Buffer.alloc(MAX_IMAGE_BYTES + 1);
+    await expect(prepareRecipeImage(large)).rejects.toThrow(
+      new UnsupportedImageError("The image is larger than 15 MB (16 MB)"),
     );
   });
 

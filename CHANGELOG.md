@@ -2,6 +2,47 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+Security hardening after an audit of 0.2.0. Read "What to do" before you upgrade: the bridge refuses to start until the admin credentials are set.
+
+### What to do
+
+- **Set `ADMIN_USER` and `ADMIN_PASSWORD`** (at least 12 characters). The bridge no longer starts without them. To keep open admin pages on a port only this machine reaches, set `ADMIN_AUTH=off` instead.
+- **`HOST` now defaults to `127.0.0.1`** outside the container. The Docker image sets `BRIDGE_IN_CONTAINER=1`, which keeps `0.0.0.0` there, so Compose setups need no change. A local `npm start` that other machines must reach needs `HOST=0.0.0.0`. Remove `HOST=0.0.0.0` from an `.env` that does not need it.
+- **Behind a reverse proxy, set `TRUST_PROXY`** to the proxy's address or network. `X-Forwarded-For` and `X-Forwarded-Proto` are ignored otherwise: the login throttle then counts every client as the proxy, and the session cookie is no longer marked `Secure` from a forged or untrusted header.
+- **Check the new limits**: `JOB_DAILY_LIMIT` (50 jobs) and `JOB_DAILY_COST_LIMIT_USD` (10 USD of estimated model cost) per 24 hours, `LLM_MAX_RECIPE_KB` (40 kB of recipe text). Raise them if your household converts more.
+- **Mail over `smtp://` now requires STARTTLS.** A server without it gets no mail; switch to `smtps://`, or set `SMTP_ALLOW_INSECURE=true` for a mail server on the same host.
+- **If an automatic login failed before this upgrade, change your Lidl password.** Up to 0.2.0 the stored reason of a failed login could contain the browser's call log with the typed password, in `bridge.db`, the log, the settings page and the session mail. Migration 5 replaces the stored reason; old logs and mails keep what they had.
+- Optional: take over the hardening of `compose.example.yml` (`init`, `read_only` with `tmpfs`, `cap_drop`, `no-new-privileges`, `pids_limit`, `mem_limit`).
+
+### Changed
+
+- The automatic login never passes a Playwright error message on. Browser failures become fixed texts (timeout, navigation, page element, launch), anything that looks like a call log is withheld, and the account's own e-mail address and password are masked in every stored reason, log line, page and mail.
+- The automatic login types the Lidl account only into an https page whose host is exactly in `LIDL_LOGIN_HOSTS` (default `accounts.lidl.com`); a password field anywhere else ends the attempt as "unexpected page" with a screenshot.
+- Each automatic login runs in a fresh browser profile under `DATA_DIR/tmp`, removed after the attempt. The persistent `browser-profile/` of 0.2.0 is deleted on start, so no Lidl or Monsieur Cuisine session lives on disk outside the encrypted settings.
+- Chromium starts with a minimal environment (`PATH`, `HOME`, `LANG`, `PLAYWRIGHT_BROWSERS_PATH`) instead of the bridge's, and a browser that does not close within 10 seconds is killed with its process group.
+- The webhook rounds the scale to quarter steps and clamps it to 0.25 to 10 (it accepted any value up to 100), and answers 429 with a timeline entry on the recipe when a daily limit is reached.
+- The admin pages send `Strict-Transport-Security` over HTTPS. The paid dry-run conversion is a form POST; the form token no longer appears in a URL.
+- `GET /jobs/:id` no longer shows the title, slug, servings or the Monsieur Cuisine recipe link; the state and the log stay.
+- Unexpected errors answer with a generic 500 body; the message stays in the log.
+- The signed image upload goes only to https hosts on `MC_UPLOAD_HOSTS` (default `*.googleapis.com,*.tecpal.com`) and follows no redirect.
+- Recipe images above 15 MB or 40 million pixels are skipped instead of decoded.
+- The prompt puts the recipe between `<recipe>` delimiters and tells the model it is untrusted data whose instructions it must ignore.
+- Outside Docker, the data directory and the screenshot directory are created with mode 700 and a new `bridge.db` with mode 600.
+- The Docker image runs under tini.
+- Database migration 5 replaces the stored reason of the last automatic login; it runs on start.
+
+### Fixed
+
+- A recipe with a numeric HTML entity above U+10FFFF (for example `&#9999999;`) no longer fails every job; such entities become U+FFFD.
+
+### Added
+
+- Settings `ADMIN_AUTH`, `TRUST_PROXY`, `JOB_DAILY_LIMIT`, `JOB_DAILY_COST_LIMIT_USD`, `LLM_MAX_RECIPE_KB`, `MC_UPLOAD_HOSTS`, `LIDL_LOGIN_HOSTS` and `SMTP_ALLOW_INSECURE`.
+- A "Security" section in the README and `SECURITY.md` with the way to report vulnerabilities.
+- gitleaks rules for SMTP URLs with credentials, the `wordpress_sec_` cookie and the bridge's secret settings with a value, with fixtures that prove each rule fires.
+
 ## 0.2.0 (2026-10-15)
 
 ### Added

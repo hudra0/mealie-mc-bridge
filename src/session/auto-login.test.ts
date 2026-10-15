@@ -10,6 +10,7 @@ import {
   InvalidCredentialsError,
   KEEP_SCREENSHOTS,
   MANUAL_COOLDOWN_MS,
+  RATE_LIMIT_BACKOFF_MS,
   type AutoLoginOptions,
 } from "./auto-login.js";
 import {
@@ -307,6 +308,62 @@ describe("limits", () => {
     });
     expect(await autoLogin.browserUnavailable()).toBe("Playwright is not installed");
     expect(existsSync(join(dir, "login-screenshots"))).toBe(false);
+  });
+});
+
+// A login the site throttles.
+const throttled = (): Promise<BrowserLoginResult> =>
+  Promise.resolve({
+    ok: false,
+    code: "rate_limited",
+    detail: 'the site throttles the login: "Die Kapazität wurde überschritten"',
+    screenshot: null,
+  });
+
+describe("a throttled login", () => {
+  it("holds automatic attempts for at least an hour, without counting a failure", async () => {
+    const { autoLogin, accept, clock } = setup({ login: throttled });
+    expect(await autoLogin.run({ manual: false, accept })).toMatchObject({
+      status: "failed",
+      attempt: { code: "rate_limited" },
+    });
+    expect(autoLogin.status().failures).toBe(0);
+    const last = Date.parse(autoLogin.status().last?.at ?? "");
+    const next = Date.parse(autoLogin.status().nextAttemptAt ?? "");
+    expect(next - last).toBeGreaterThanOrEqual(RATE_LIMIT_BACKOFF_MS);
+    clock.advance(RATE_LIMIT_BACKOFF_MS - 10_000);
+    expect(await autoLogin.run({ manual: false, accept })).toMatchObject({
+      status: "skipped",
+      reason: "rate_limited",
+    });
+    clock.advance(20_000);
+    expect((await autoLogin.run({ manual: false, accept })).status).toBe("failed");
+    expect(autoLogin.status().failures).toBe(0);
+  });
+
+  it("holds manual tests for an hour as well, and automatic ones after a manual test", async () => {
+    const { autoLogin, accept, clock } = setup({ login: throttled });
+    expect((await autoLogin.run({ manual: true, accept })).status).toBe("failed");
+    clock.advance(MANUAL_COOLDOWN_MS + 1000);
+    const manual = await autoLogin.run({ manual: true, accept });
+    expect(manual).toMatchObject({ status: "skipped", reason: "cooldown" });
+    expect(autoLogin.status().manualAvailableAt).not.toBeNull();
+    expect(await autoLogin.run({ manual: false, accept })).toMatchObject({
+      status: "skipped",
+      reason: "rate_limited",
+    });
+    clock.advance(RATE_LIMIT_BACKOFF_MS);
+    expect(autoLogin.status()).toMatchObject({ manualAvailableAt: null, nextAttemptAt: null });
+  });
+
+  it("ends with the next successful login", async () => {
+    let result: (options: BrowserLoginOptions) => Promise<BrowserLoginResult> = throttled;
+    const { autoLogin, accept, clock, settings } = setup({ login: (o) => result(o) });
+    await autoLogin.run({ manual: true, accept });
+    clock.advance(RATE_LIMIT_BACKOFF_MS + 1000);
+    result = (options) => browserLogin({ ...options, ...loopClock() });
+    expect((await autoLogin.run({ manual: true, accept })).status).toBe("ok");
+    expect(settings.get(AUTO_LOGIN_KEYS.rateLimitedUntil)).toBeNull();
   });
 });
 

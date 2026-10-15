@@ -421,6 +421,7 @@ export const en: Messages = {
         "How often: an automatic login runs at most once per hour and three times in 24 hours. After a failure it waits 1 hour, after two in a row 4 hours, after three 24 hours.",
         "Storage: e-mail and password live in `bridge.db`, encrypted with `SETTINGS_KEY`. The password is never shown, logged or sent back to the browser.",
         "Limits: a captcha or a second factor stops the login. You then get the session mail and renew the session another way.",
+        "Lidl throttles repeated logins and runs bot detection. When it reports that its capacity is exceeded, the bridge waits at least an hour before the next attempt, a manual test included. If that keeps happening, renew the session with the login helper and a visible browser.",
         "On failure the bridge keeps a screenshot of the login page (the last five), linked below, so you can see what got in the way.",
         "Delete the account with the button below. That also removes the screenshots and the browser profile.",
       ],
@@ -457,6 +458,8 @@ export const en: Messages = {
         unknown_account:
           "The site does not know the stored e-mail address. Check the stored account.",
         wrong_password: "The site reported a wrong password. Check the stored account.",
+        rate_limited:
+          "Lidl has temporarily throttled the login. Wait at least an hour before you test again: every attempt in the meantime can make the throttle last longer. The stored account is not the problem.",
         verification_required:
           "The site asked for a captcha or a verification code. Log in by hand once with the login helper.",
         not_logged_in:
@@ -483,6 +486,10 @@ export const en: Messages = {
         cookies_received: "session cookies received",
       },
       consentSteps: (count) => `consent dialog declined (${count}×)`,
+      browserUsed: (name, mode) =>
+        `Browser: ${name ?? "unknown"}, ${
+          { new: "headless (new mode)", shell: "headless shell", window: "visible window" }[mode]
+        }`,
       screenshot: "Screenshot of the page",
       nextAttempt: "Next automatic attempt not before",
       running: "A login is running.",

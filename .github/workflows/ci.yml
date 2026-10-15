@@ -124,6 +124,11 @@ jobs:
             const context = await browser.open({ profileDir, headless: true });
             await context.page.goto('data:text/html,<title>ok</title>');
             await context.close();
+            // The full Chromium in the new headless mode, with a user agent without Headless.
+            const info = context.browser ?? {};
+            console.log('browser: ' + JSON.stringify(info));
+            if (info.headless !== 'new') { console.error('not the new headless mode'); process.exit(1); }
+            if (!info.userAgent || /Headless/.test(info.userAgent)) { console.error('user agent not rewritten'); process.exit(1); }
             console.log('adapter ok as uid ' + process.getuid());
           "
           docker image ls mealie-mc-bridge:ci

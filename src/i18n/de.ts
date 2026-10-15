@@ -427,6 +427,7 @@ export const de: Messages = {
         "Wie oft: höchstens einmal pro Stunde und dreimal in 24 Stunden. Nach einem Fehlschlag wartet sie 1 Stunde, nach zwei in Folge 4 Stunden, nach drei 24 Stunden.",
         "Speicherort: E-Mail und Passwort liegen in `bridge.db`, verschlüsselt mit `SETTINGS_KEY`. Das Passwort wird nie angezeigt, geloggt oder an den Browser zurückgeschickt.",
         "Grenzen: Ein Captcha oder ein zweiter Faktor hält die Anmeldung auf. Dann kommt die Sitzungs-Mail, und du erneuerst die Sitzung auf einem anderen Weg.",
+        "Lidl drosselt wiederholte Anmeldungen und erkennt Bots. Meldet die Seite, dass ihre Kapazität überschritten ist, wartet die Bridge mindestens eine Stunde bis zum nächsten Versuch, auch mit dem manuellen Test. Passiert das öfter, erneuere die Sitzung mit dem Anmelde-Helfer und sichtbarem Browser.",
         "Bei einem Fehlschlag hebt die Bridge ein Bildschirmfoto der Anmeldeseite auf (die letzten fünf), unten verlinkt, damit du siehst, was im Weg war.",
         "Löschen: mit dem Knopf unten. Dabei verschwinden auch die Bildschirmfotos und das Browserprofil.",
       ],
@@ -464,6 +465,8 @@ export const de: Messages = {
         unknown_account:
           "Die Seite kennt die hinterlegte E-Mail-Adresse nicht. Prüfe das hinterlegte Konto.",
         wrong_password: "Die Seite meldet ein falsches Passwort. Prüfe das hinterlegte Konto.",
+        rate_limited:
+          "Lidl hat die Anmeldung vorübergehend gedrosselt. Warte mindestens eine Stunde, bevor du erneut testest: Jeder Versuch in der Zwischenzeit kann die Sperre verlängern. Am hinterlegten Konto liegt es nicht.",
         verification_required:
           "Die Seite verlangt ein Captcha oder einen Bestätigungscode. Melde dich einmal von Hand mit dem Anmelde-Helfer an.",
         not_logged_in:
@@ -490,6 +493,14 @@ export const de: Messages = {
         cookies_received: "Sitzungscookies erhalten",
       },
       consentSteps: (count) => `Zustimmungsdialog abgelehnt (${count}×)`,
+      browserUsed: (name, mode) =>
+        `Browser: ${name ?? "unbekannt"}, ${
+          {
+            new: "ohne Fenster (neuer Modus)",
+            shell: "Headless-Shell",
+            window: "sichtbares Fenster",
+          }[mode]
+        }`,
       screenshot: "Bildschirmfoto der Seite",
       nextAttempt: "Nächster automatischer Versuch frühestens",
       running: "Eine Anmeldung läuft.",

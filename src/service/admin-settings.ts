@@ -18,7 +18,7 @@ import {
   type AutoLoginRun,
   type AutoLoginStatus,
 } from "../session/auto-login.js";
-import type { LoginProgress } from "../session/browser-login.js";
+import { browserName, type LoginProgress } from "../session/browser-login.js";
 import type { SessionStatus } from "../session/manager.js";
 import type { AdminContext, RenderExtra } from "./admin.js";
 import {
@@ -133,8 +133,17 @@ function progressList(progress: LoginProgress, l: AdminMessages["settings"]): Sa
       ? l.consentSteps(progress.consentDismissals)
       : l.steps[name],
   );
-  if (items.length === 0) return html``;
-  return html`<br /><span class="muted">${l.progressTitle}</span>
+  const info = progress.browser;
+  const browser = info
+    ? html`<br /><span class="muted"
+          >${l.browserUsed(
+            browserName(info.userAgent),
+            info.headless === false ? "window" : info.headless,
+          )}</span
+        >`
+    : html``;
+  if (items.length === 0) return browser;
+  return html`${browser}<br /><span class="muted">${l.progressTitle}</span>
     <ol class="small steps">
       ${items.map((item) => html`<li>${item}</li>`)}
     </ol>`;

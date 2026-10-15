@@ -12,14 +12,18 @@ import { tempDir } from "../testing/temp.js";
 import { BrowserActionError, UNKNOWN_BROWSER_FAILURE } from "./browser-errors.js";
 import {
   ACTION_PAUSE_MS,
+  FIELD_PAUSE_MS,
   LOGIN_STEPS,
   LOGIN_STEP_TEXT,
+  browserLabel,
   browserLogin,
+  browserName,
   closeWithin,
   buildCookieHeader,
   hasLoginCookies,
   onLoginHost,
   readSessionCookie,
+  sanitizeUserAgent,
   siteLanguage,
   siteMessage,
   ssoLoginUrl,
@@ -443,13 +447,70 @@ describe("browserLogin form and answers", () => {
   });
 
   it("keeps another error message of the site as the reason", async () => {
-    const { result } = login({ form: "both", siteError: "Zu viele Versuche. Bitte warte." });
+    const { result } = login({ form: "both", siteError: "Konto gesperrt." });
     expect(await result).toMatchObject({
       ok: false,
       code: "not_logged_in",
-      detail:
-        'the site reported an error: "Zu viele Versuche. Bitte warte."; stuck after: password entered',
+      detail: 'the site reported an error: "Konto gesperrt."; stuck after: password entered',
     });
+  });
+
+  it("reports a throttled login, before reading the message as a wrong password", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { result } = login(
+      {
+        form: "both",
+        siteError:
+          "Die Kapazität wurde überschritten. Bitte warte einen Moment und versuche es erneut.",
+      },
+      { onStep },
+    );
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "rate_limited",
+      detail:
+        'the site throttles the login: "Die Kapazität wurde überschritten. Bitte warte einen Moment und versuche es erneut."; stuck after: password entered',
+    });
+    expect(onStep).toHaveBeenCalledWith("the site throttles the login");
+    const wrong = login({
+      form: "both",
+      siteError: "Too many incorrect attempts. Try again later.",
+    });
+    expect(await wrong.result).toMatchObject({ ok: false, code: "rate_limited" });
+  });
+
+  it("reports a throttled login after the e-mail step, not as an unknown account", async () => {
+    const { result } = login({ form: "two-step", unknownAccount: "Too many requests, not found" });
+    expect(await result).toMatchObject({ ok: false, code: "rate_limited" });
+  });
+
+  it("reports a throttled login the page shows outside its error elements", async () => {
+    const { browser, result } = login({
+      form: "continue",
+      pageNotice:
+        "Die Kapazität wurde überschritten Bitte warte einen Moment und versuche es erneut",
+    });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "rate_limited",
+      detail: "the site throttles the login (message on the page); stuck after: password entered",
+    });
+    // Back at the e-mail step, the flow does not send the account again.
+    expect(
+      browser.steps.filter((step) => step.startsWith('fill input[type="password"]')),
+    ).toHaveLength(1);
+  });
+
+  it("records the browser the attempt ran in", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const info = {
+      userAgent:
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+      headless: "new" as const,
+    };
+    const { result } = login({ form: "both", loginWorks: true, browser: info }, { onStep });
+    expect(await result).toMatchObject({ ok: true, progress: { browser: info } });
+    expect(onStep).toHaveBeenCalledWith("browser: Chrome 141, new headless");
   });
 
   it("reports a captcha frame, but not the invisible one every form carries", async () => {
@@ -647,6 +708,9 @@ describe("browserLogin on the first login at monsieur-cuisine.com", () => {
   });
 });
 
+// The pause before a field at random() = 0.5.
+const FIELD_MID = (FIELD_PAUSE_MS.min + FIELD_PAUSE_MS.max) / 2;
+
 describe("browserLogin timing", () => {
   it("leaves a page without a dialog at once instead of waiting for one", async () => {
     const clock = loopClock();
@@ -661,8 +725,8 @@ describe("browserLogin timing", () => {
       },
     );
     expect((await result).ok).toBe(true);
-    // The fill at once, then the pause after it.
-    expect(filledAt).toBe(500);
+    // The pause before the field, the fill at once, then the pause after it.
+    expect(filledAt).toBe(FIELD_MID + 500);
   });
 
   it("does not wait at a dialog it cannot dismiss", async () => {
@@ -678,7 +742,7 @@ describe("browserLogin timing", () => {
       },
     );
     expect((await result).ok).toBe(false);
-    expect(filledAt).toBe(500);
+    expect(filledAt).toBe(FIELD_MID + 500);
   });
 });
 
@@ -748,7 +812,8 @@ describe("browserLogin with dialogs that come late", () => {
     const { browser, result } = login({
       form: "continue",
       consent: ["Zustimmen"],
-      consentDelayMs: 400,
+      // After the e-mail address is typed, before "Weiter".
+      consentDelayMs: FIELD_MID + 400,
       coverBlocks: true,
     });
     expect(await result).toMatchObject({
@@ -848,9 +913,26 @@ describe("browserLogin on the Lidl page as it is", () => {
       { ...clock, random: () => 0, onStep: (message) => (times[message] = clock.now()) },
     );
     expect((await result).ok).toBe(true);
-    // The fill at once and a pause, then the click on "Weiter" and a pause.
-    expect(times["e-mail address entered"]).toBe(ACTION_PAUSE_MS.min);
-    expect(times["e-mail address sent"]).toBe(2 * ACTION_PAUSE_MS.min);
+    // A longer pause before the field, the fill at once and a pause, then the click on
+    // "Weiter" and a pause.
+    expect(times["e-mail address entered"]).toBe(FIELD_PAUSE_MS.min + ACTION_PAUSE_MS.min);
+    expect(times["e-mail address sent"]).toBe(FIELD_PAUSE_MS.min + 2 * ACTION_PAUSE_MS.min);
+  });
+});
+
+describe("browser diagnostics", () => {
+  it("names the browser and its mode in a short label", () => {
+    const ua =
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36";
+    expect(browserName(ua)).toBe("Chrome 141");
+    expect(browserName("curl/8")).toBeNull();
+    expect(browserLabel({ userAgent: ua, headless: "shell" })).toBe("Chrome 141, headless shell");
+    expect(browserLabel({ userAgent: null, headless: false })).toBe(
+      "unknown browser, visible window",
+    );
+    expect(sanitizeUserAgent(`  a\n\tb\u0000c ${"x".repeat(300)}`)).toBe(
+      `a b c ${"x".repeat(194)}`,
+    );
   });
 });
 

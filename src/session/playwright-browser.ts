@@ -28,8 +28,14 @@
 //   apart, instead of being set at once.
 // Playwright passes --no-sandbox by default (chromiumSandbox: false); the container needs
 // it, because it runs without the capabilities Chromium's sandbox wants.
+//
+// The full Chromium starts its crash handler with a database under XDG_CONFIG_HOME (or
+// ~/.config), and quits when that directory cannot be created. In the container the home
+// directory is a tmpfs owned by root, so the browser gets XDG_CONFIG_HOME and XDG_CACHE_HOME
+// inside the profile of the attempt, or inside a temporary directory for the probe.
 
-import { readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { browserFailure, type BrowserFailureKind } from "./browser-errors.js";
 import {
@@ -228,7 +234,7 @@ const WINDOWS_ENV = [
 
 export function browserEnvironment(
   env: NodeJS.ProcessEnv = process.env,
-  options: { platform?: NodeJS.Platform; headless?: boolean } = {},
+  options: { platform?: NodeJS.Platform; headless?: boolean; configDir?: string } = {},
 ): Record<string, string> {
   const platform = options.platform ?? process.platform;
   const names: string[] = [...BROWSER_ENV];
@@ -241,6 +247,11 @@ export function browserEnvironment(
     const key = platform === "win32" ? lookup.get(name.toUpperCase()) : name;
     const value = key === undefined ? undefined : env[key];
     if (value !== undefined && value !== "") result[key ?? name] = value;
+  }
+  // A writable place for the browser's configuration and cache, whatever HOME allows.
+  if (options.configDir !== undefined) {
+    result.XDG_CONFIG_HOME = join(options.configDir, "config");
+    result.XDG_CACHE_HOME = join(options.configDir, "cache");
   }
   return result;
 }
@@ -407,35 +418,44 @@ export class PlaywrightBrowser implements LoginBrowser {
   async #probeLaunch(chromium: PwChromium): Promise<string | null> {
     const modes: HeadlessMode[] = this.#channel ? ["new"] : ["new", "shell"];
     let problem = NOT_INSTALLED;
-    for (const mode of modes) {
-      let browser: PwBrowser;
-      try {
-        browser = await chromium.launch(this.#launchOptions(true, mode));
-      } catch (error) {
-        problem = launchProblem(error);
-        if (problem !== NOT_INSTALLED) return problem;
-        continue;
+    const configDir = mkdtempSync(join(tmpdir(), "bridge-chromium-"));
+    try {
+      for (const mode of modes) {
+        let browser: PwBrowser;
+        try {
+          browser = await chromium.launch(this.#launchOptions(true, mode, configDir));
+        } catch (error) {
+          problem = launchProblem(error);
+          if (problem !== NOT_INSTALLED) return problem;
+          continue;
+        }
+        try {
+          this.#userAgent = await readUserAgent(await browser.newPage?.().catch(() => null));
+        } finally {
+          await browser.close().catch(() => undefined);
+        }
+        this.#mode = mode;
+        return null;
       }
-      try {
-        this.#userAgent = await readUserAgent(await browser.newPage?.().catch(() => null));
-      } finally {
-        await browser.close().catch(() => undefined);
-      }
-      this.#mode = mode;
-      return null;
+      return problem;
+    } finally {
+      rmSync(configDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
     }
-    return problem;
   }
 
   // What every launch gets: the mode, the arguments, the environment without secrets.
-  #launchOptions(headless: boolean, mode: HeadlessMode): Record<string, unknown> {
+  #launchOptions(
+    headless: boolean,
+    mode: HeadlessMode,
+    configDir: string,
+  ): Record<string, unknown> {
     let channel = this.#channel;
     if (channel === undefined && headless && mode === "new") channel = NEW_HEADLESS_CHANNEL;
     return {
       headless,
       ...(channel ? { channel } : {}),
       args: [...LAUNCH_ARGS],
-      env: browserEnvironment(this.#env, { headless }),
+      env: browserEnvironment(this.#env, { headless, configDir }),
       // Playwright's default, stated: --no-sandbox, which the container needs.
       chromiumSandbox: false,
     };
@@ -469,7 +489,8 @@ export class PlaywrightBrowser implements LoginBrowser {
     const mode = this.#mode;
     const context = await guard("launch", () =>
       chromium.launchPersistentContext(profileDir, {
-        ...this.#launchOptions(options.headless, mode),
+        // The configuration directory lives and goes with the profile.
+        ...this.#launchOptions(options.headless, mode, join(profileDir, "xdg")),
         ...this.#contextOptions(options.headless),
       }),
     );

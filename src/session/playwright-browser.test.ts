@@ -192,13 +192,33 @@ describe("PlaywrightBrowser", () => {
       LANG: "C.UTF-8",
       PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright",
     };
+    // Plus a writable configuration directory: a temporary one for the probe, one inside
+    // the profile for the login.
+    const probeEnv = fake.chromium.launch.mock.calls[0]?.[0].env as Record<string, string>;
+    const loginEnv = fake.chromium.launchPersistentContext.mock.calls[0]?.[1].env as Record<
+      string,
+      string
+    >;
+    expect(probeEnv.XDG_CONFIG_HOME).toContain("bridge-chromium-");
+    expect(loginEnv.XDG_CONFIG_HOME).toBe(join("/tmp/profile", "xdg", "config"));
+    expect(loginEnv.XDG_CACHE_HOME).toBe(join("/tmp/profile", "xdg", "cache"));
     if (process.platform !== "win32") {
-      expect(fake.chromium.launch).toHaveBeenCalledWith(expect.objectContaining({ env: expected }));
-      expect(fake.chromium.launchPersistentContext).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ env: expected }),
-      );
+      const own = (value: Record<string, string>) => {
+        const copy = { ...value };
+        delete copy.XDG_CONFIG_HOME;
+        delete copy.XDG_CACHE_HOME;
+        return copy;
+      };
+      expect(own(probeEnv)).toEqual(expected);
+      expect(own(loginEnv)).toEqual(expected);
     }
+    expect(
+      browserEnvironment(env, { platform: "linux", configDir: "/data/tmp/login-a/xdg" }),
+    ).toEqual({
+      ...expected,
+      XDG_CONFIG_HOME: join("/data/tmp/login-a/xdg", "config"),
+      XDG_CACHE_HOME: join("/data/tmp/login-a/xdg", "cache"),
+    });
     expect(browserEnvironment(env, { platform: "linux" })).toEqual(expected);
     expect(
       browserEnvironment({ ...env, DISPLAY: ":0" }, { platform: "linux", headless: false }),

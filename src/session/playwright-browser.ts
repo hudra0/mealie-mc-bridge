@@ -90,6 +90,8 @@ export class PlaywrightBrowser implements LoginBrowser {
     const context = await chromium.launchPersistentContext(options.profileDir, {
       headless: options.headless,
       ...(this.#channel ? { channel: this.#channel } : {}),
+      // Docker gives /dev/shm only 64 MB, too little for Chromium's shared memory.
+      args: ["--disable-dev-shm-usage"],
       viewport: options.headless ? { width: 1280, height: 900 } : null,
     });
     const page = context.pages()[0] ?? (await context.newPage());

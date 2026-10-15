@@ -21,7 +21,7 @@ Status: first release 0.1.0. It runs end to end and is used with German recipes 
 - A Monsieur Cuisine account on www.monsieur-cuisine.com and a Monsieur Cuisine Smart linked to it
 - An API key for OpenAI or Anthropic. Conversions are paid per use; see [Costs](#costs)
 
-The image is published for linux/amd64 and linux/arm64.
+The image is published for linux/amd64 and linux/arm64. It carries a headless Chromium for the automatic login, which makes it a few hundred MB larger than a plain Node.js image.
 
 ## Quick start with Docker Compose
 
@@ -78,11 +78,11 @@ curl http://127.0.0.1:3000/health
 
 `/health` answers with `"status": "degraded"` and the session state `invalid` until the next step. That is expected. If mail is configured, this first check also sends a mail that the session does not work; ignore it. If the container does not start, `docker compose logs mc-bridge` names the setting it rejects; values are never printed.
 
-### 6. Paste the Monsieur Cuisine session
+### 6. Connect the Monsieur Cuisine session
 
 Open the admin pages at `http://127.0.0.1:3000/admin` and log in with `ADMIN_USER` and `ADMIN_PASSWORD`. The example compose file publishes the port on localhost only; to reach it from another machine, bind it to the host's LAN address (see the comment in `compose.example.yml`). Keep it off the internet.
 
-Copy the session cookie from your browser and paste it into the form on the dashboard, as described under [Monsieur Cuisine session](#monsieur-cuisine-session). The bridge checks it against your account before it stores it. The session state turns `valid`.
+Open Settings ("Einstellungen"), enter the e-mail address and password of your Lidl account for monsieur-cuisine.com and press "Test login now" ("Anmeldung jetzt testen"). The bridge logs in in a headless browser, checks the session against your account and stores it; the session state turns `valid`. If that does not work, use the login helper or paste the cookie, as described under [Monsieur Cuisine session](#monsieur-cuisine-session).
 
 ### 7. Create the recipe action in Mealie
 
@@ -171,22 +171,57 @@ The bridge reads its settings from the environment; Compose passes `.env` throug
 
 ## Monsieur Cuisine session
 
-Monsieur Cuisine has no public API for writing recipes. The bridge uses the same internal API as the recipe editor on www.monsieur-cuisine.com, with the session cookies of your browser.
+Monsieur Cuisine has no public API for writing recipes. The bridge uses the same internal API as the recipe editor on www.monsieur-cuisine.com, with the session cookies of a logged-in browser. There are three ways to give it that session, best first:
 
-### Get the cookie
+1. **Settings page (recommended).** Store your Lidl account; the bridge logs in by itself whenever the session expires.
+2. **Login helper.** `npm run mc:login` logs in in a browser on your computer and sends the session to the bridge.
+3. **Cookie paste.** Copy the `Cookie` header from your browser's developer tools and paste it on the dashboard.
+
+Whichever way, the bridge checks the cookie with a separate request before it stores it, encrypted with `SETTINGS_KEY`. A cookie Monsieur Cuisine rejects is not stored, and the working session stays in place. The cookie is a secret: anyone who has it can change the recipes in your account. Keep it out of chats, screenshots and issue reports.
+
+### Automatic login with your Lidl account
+
+On Settings ("Einstellungen") the bridge stores the e-mail address and password of your Lidl account, encrypted with `SETTINGS_KEY` like the cookie. The password is never shown again or logged; leave the field empty to keep it when you change the address. "Delete account" ("Konto löschen") removes both.
+
+When Monsieur Cuisine rejects the session, the bridge opens the site's login in a headless Chromium inside the container, fills in the Lidl form, waits for the login cookies and checks them against your account. The waiting jobs then continue, and no mail goes out. The browser profile lives in `browser-profile/` in the data directory, so a later login often gets through on the Lidl session alone.
+
+A login on a third-party site should stay rare, so the bridge limits it: one at a time, an automatic attempt at most once per hour and three times in 24 hours, and after a failure it waits 1 hour, after two failures in a row 4 hours, after three 24 hours. "Test login now" skips these waiting times, but not a login that is already running.
+
+A captcha, a second factor or a changed page stops the login. The settings page then shows the time, the reason and a screenshot of the page (the last five stay in `login-screenshots/` in the data directory), and the session mail says that a manual login is needed: use the login helper or paste the cookie.
+
+Without Chromium in the image (a self-built image without it, or an unusual platform) the settings page says the browser is not available; everything else works.
+
+### Renewing the session with the login helper
+
+The helper runs on your computer, from a clone of this repository:
+
+```sh
+npm ci
+npm run mc:login -- --bridge http://<bridge address>:3000
+```
+
+It opens a browser window on the Monsieur Cuisine login. Log in with your Lidl account; the helper waits up to 10 minutes, checks the new session against your account and sends it to the bridge (`POST /admin/api/session`) with `ADMIN_USER` and `ADMIN_PASSWORD`. The password comes from the `ADMIN_PASSWORD` environment variable or a prompt that does not echo, and the helper never prints the cookie. `--user` sets another admin user.
+
+The browser is an installed Google Chrome when the helper finds one, otherwise Playwright's Chromium: install it once with `npx playwright install chromium`, or force it with `--chromium`. `npm run mc:login -- --self-test` opens the public recipe list without logging in, to check that the browser starts.
+
+The browser profile stays in `local/mc-login-profile` (`--profile` sets another directory), so the Lidl login survives between runs. `--headless` reuses it without a window: when the Lidl login in the profile is still valid, the helper gets a new session without any input; otherwise it exits with code 1 and asks you to log in once with a window. Run it on a schedule (cron, or the Windows Task Scheduler) to keep the bridge's session fresh for as long as the profile's Lidl login lasts:
+
+```sh
+ADMIN_PASSWORD='...' npm run mc:login -- --bridge http://<bridge address>:3000 --headless
+```
+
+### Get the cookie by hand
 
 1. Log in on www.monsieur-cuisine.com and open "Create recipe".
 2. Open the browser's developer tools (F12), Network tab, and reload the page.
 3. Pick any request whose URL contains `proxy-api` and copy the value of its `Cookie` request header. In Chrome and Edge it is under Headers, Request Headers; in Firefox under Headers, Request Headers with "Raw" switched on.
 4. Paste it into the form on the admin dashboard and press "Save session" ("Sitzung speichern").
 
-The bridge checks the cookie with a separate request before it stores it, encrypted with `SETTINGS_KEY`. A cookie Monsieur Cuisine rejects is not stored, and the working session stays in place. The cookie is a secret: anyone who has it can change the recipes in your account. Keep it out of chats, screenshots and issue reports.
-
 Instead of the form you can set `MC_COOKIE` in `.env`. The bridge stores it on the next start, and again whenever that value changes; a cookie pasted on the admin page later wins until you change `MC_COOKIE`. Wrap the value in single quotes in `.env`, so Compose leaves characters like `$` alone.
 
 ### How long it lasts
 
-The login cookies carry an expiry date 14 days after you logged in. Expect to paste a new cookie about every two weeks. Logging out on the website may end it earlier, so close the tab after copying the cookie instead of logging out.
+The login cookies carry an expiry date 14 days after the login. Without a stored Lidl account, expect to renew the session about every two weeks. Logging out on the website may end it earlier, so close the tab after copying the cookie instead of logging out.
 
 The bridge checks the session on start and then every `SESSION_CHECK_MINUTES` (60 by default) with a cheap account call. "Check now" ("Jetzt prüfen") on the dashboard runs the check at once, and the dashboard shows the state, the time of the last check and the age of the cookie.
 
@@ -197,9 +232,9 @@ When Monsieur Cuisine rejects the cookie:
 - the dashboard shows the session as `expired` or `invalid`, and `/health` reports `degraded`
 - the worker stops taking jobs; queued jobs and jobs that hit the dead session move to "session expired" instead of failing
 - Mealie gets a timeline entry on the recipe saying the job waits for a new session
-- you get one mail, if mail is configured
+- with a stored Lidl account, the automatic login runs; without one, or when it fails, you get one mail, if mail is configured
 
-Paste a fresh cookie and the waiting jobs run on their own. A check that fails for another reason, such as the site being down, leaves the state alone and sends one mail per failure streak.
+Once a new session is stored, the waiting jobs run on their own. A check that fails for another reason, such as the site being down, leaves the state alone and sends one mail per failure streak.
 
 ## Languages
 
@@ -225,6 +260,8 @@ The worker renders the scaled Mealie recipe as Markdown with numbered ingredient
 - the validator, against the hard limits of every device program in `knowledge/device-programs.json`
 - plausibility rules for what a limit table cannot see: heat-up time against the bowl content, at most 3000 g in the bowl, turbo only on cool contents, speed 4 at most with the whisk, flour per kneading step, water under the steamer, a text step before every program step, every source ingredient used, amounts neither larger nor smaller than in the source
 
+The serving size follows the Mealie recipe: a yield with a text ("10 Scheiben", "12 Muffins") becomes the serving size on the machine, scaled with the recipe; servings alone become portions ("Portionen" in German); a recipe with neither gets a serving size the model estimates and flags as a point to check.
+
 Errors go back to the model with its previous answer, up to `LLM_MAX_CORRECTIONS` times. Warnings do not trigger a correction; they go into the timeline entry next to the model's own review hints. A text step title that copies the start of its description, or one longer than 60 characters, goes back to the model once; after that round the recipe is accepted and the title problem is reported as a warning.
 
 | `LLM_PROVIDER` | Key                 | Model settings                                                                       | How it asks for JSON                                                     |
@@ -249,7 +286,11 @@ The dashboard shows the session, the queue and recent jobs. The job list shows e
 
 "Dry run" ("Probelauf") shows what the converter would get for a Mealie recipe and, on request, runs the conversion without uploading anything. That conversion is a paid model call.
 
+The pages need a login with `ADMIN_USER` and `ADMIN_PASSWORD`. A correct login sets a session cookie for 12 hours (HttpOnly, SameSite=Lax, signed with a key derived from `SETTINGS_KEY`); "Log out" ("Abmelden") on every page ends it, and a new `ADMIN_PASSWORD` ends every session. The job list and a job page reload every 5 seconds while a job is queued or running.
+
 Without `ADMIN_USER` and `ADMIN_PASSWORD` the admin pages are open to anyone who reaches the port, and they answer only to an IP address, `localhost` or a host name listed in `ADMIN_HOSTS`.
+
+`/admin/api/session` is the one endpoint for scripts: `GET` returns the session state as JSON, `POST` with `{"cookie": "..."}` checks and stores a new cookie like the dashboard form. Both take HTTP Basic Auth with `ADMIN_USER` and `ADMIN_PASSWORD` or the login cookie, and `POST` needs `Content-Type: application/json`. The login helper uses it.
 
 ### Logs
 
@@ -270,13 +311,13 @@ The bridge logs JSON lines to stdout: `docker compose logs -f mc-bridge`. Set `L
 }
 ```
 
-`status` is `degraded` while the session is `invalid` or `expired` or the worker is stopped. A restart fixes neither, so the container health check fails only when the bridge stops answering or its database fails (503). `lastError` carries only the time of the last worker error; the message is on the dashboard.
+`status` is `degraded` while the session is `invalid` or `expired` or the worker is stopped. A restart fixes neither, so the container health check fails only when the bridge stops answering or its store is unusable: the database does not answer, or the data directory or `bridge.db` is no longer writable. Then `/health` answers 503 and the Docker health check counts that as a failure. `lastError` carries only the time of the last worker error; the message is on the dashboard.
 
 `GET /jobs/<id>` returns one job with its log as JSON. It needs no login either; job ids are random UUIDs that appear in the bridge's pages, logs and failure mails, and in its answer to Mealie. Anyone who has a job id can read that job's log.
 
 ### Data directory and backups
 
-Everything the bridge keeps is in `bridge.db` in the data directory (`/data` in the container): jobs and their logs, the list of sent recipes, the encrypted session, the category cache and the ingredient id cache. The database runs in WAL mode, so back up the whole directory with the container stopped, or take a consistent copy while it runs:
+Everything the bridge keeps is in `bridge.db` in the data directory (`/data` in the container): jobs and their logs, the list of sent recipes, the encrypted session and Lidl account, the category cache and the ingredient id cache. Next to it are `browser-profile/` (the browser profile of the automatic login) and `login-screenshots/` (pages of failed logins). The container runs as uid and gid 1000 and needs to write the directory; on start it checks that and exits with one log line that says what to do. The database runs in WAL mode, so back up the whole directory with the container stopped, or take a consistent copy while it runs:
 
 ```sh
 docker compose exec mc-bridge node -e "require('better-sqlite3')('/data/bridge.db').backup('/data/backup.db').then(() => console.log('done'))"
@@ -312,7 +353,7 @@ Mealie answers the click before it contacts the bridge and ignores the answer, s
 
 ### A job ends as "session expired"
 
-The Monsieur Cuisine cookie expired or was rejected. Paste a new one ([Monsieur Cuisine session](#monsieur-cuisine-session)); the job continues on its own. If a fresh cookie is rejected right away, copy it from a `proxy-api` request again: a cookie from another request or another site will not do.
+The Monsieur Cuisine cookie expired or was rejected. With a stored Lidl account the bridge logs in again by itself; the settings page shows the last attempt. Otherwise renew the session with the login helper or paste a new cookie ([Monsieur Cuisine session](#monsieur-cuisine-session)); the job continues on its own. If a fresh cookie is rejected right away, copy it from a `proxy-api` request again: a cookie from another request or another site will not do.
 
 ### A job fails with "checks not passed" or "conversion failed"
 
@@ -331,6 +372,38 @@ Only a recipe saved privately shows up on the machine; a draft does not. Check:
 - `MC_RECIPE_STATUS` is `private-publish` (the default). With `draft` the bridge stops after creating the draft.
 - The timeline entry. If setting the status failed, it says the recipe stayed a draft. Open it in the web editor and save it privately there.
 - The machine is online and signed in to the same account.
+
+### The container exits with "unable to open database file"
+
+The bridge runs as uid 1000 and cannot write the data directory, usually because Docker created the bind-mounted directory as root. The log names the directory and the uid the process runs as:
+
+```text
+Cannot open the database: DATA_DIR /data is not writable (EACCES: ...); chown the data directory to the service user, uid 1000 ...
+```
+
+Fix the owner on the host and start again:
+
+```sh
+sudo chown -R 1000:1000 ./data
+docker compose up -d mc-bridge
+```
+
+With a named volume, run the `chown` once in a helper container: `docker run --rm -v <volume>:/data alpine chown -R 1000:1000 /data`. If the directory becomes read-only while the bridge runs, `/health` answers 503 and the container turns unhealthy.
+
+### Mealie's log shows the action URL with "%3C" and "%3E", and the bridge answers 404
+
+The action URL still contains the placeholder from the docs: `<WEBHOOK_TOKEN>` arrives URL-encoded as `%3CWEBHOOK_TOKEN%3E`, which is not a token, so the bridge answers 404 like for any unknown path and logs `webhook call with a wrong token`. Edit the recipe action in Mealie and put the value of `WEBHOOK_TOKEN` from `.env` in place of `<WEBHOOK_TOKEN>`, without the angle brackets.
+
+### Portainer stacks: where the `${VAR}` values come from
+
+In a Portainer stack written in the web editor there is no `.env` file next to the compose file, so `env_file: .env` finds nothing, and `${VAR}` in the compose text is filled from the stack's "Environment variables" section instead. Put the settings there ("Advanced mode" takes the lines of a `.env` file, and "Load variables from .env file" uploads one). Portainer also writes them to a file named `stack.env`, so the simplest change to the example compose file is `env_file: stack.env` in place of `env_file: .env`. Alternatively list each setting under `environment:`, for example `WEBHOOK_TOKEN: ${WEBHOOK_TOKEN}`. The values are applied when the stack is deployed: after changing one, press "Update the stack". A variable that is missing becomes an empty string, and the bridge then names the setting it rejects in its log. A `$` inside a value written into the compose text needs `$$`.
+
+### The login helper or the automatic login does not get a session
+
+- "No browser": install Playwright's Chromium with `npx playwright install chromium`, or install Google Chrome. In the container the browser ships with the image; the settings page says when it is missing.
+- "refused the admin user or password": the helper uses `ADMIN_USER` and `ADMIN_PASSWORD` of the bridge, not your Lidl account.
+- `--headless` asks to "log in once with a window": the Lidl login in the profile has ended or needs a confirmation. Run the helper once without `--headless`.
+- On the settings page, a failed attempt shows its reason and a screenshot. A captcha or a second factor cannot be solved headless; log in once with the helper, and the profile on your computer keeps the Lidl login for the scheduled runs.
 
 ## Costs
 
@@ -397,6 +470,8 @@ npm run mc:smoke -- create recipe.json --image photo.jpg [--status private-publi
 ```
 
 `create` adds a real recipe to your account, as a draft unless `--status private-publish` is given; it never submits a recipe for publication. `test/fixtures/recipe/all-modes.recipe-input.json` is a sample input with one step per device program (do not cook it). Exit codes: 0 done, 1 invalid input, 2 no usable session, 3 API failure, 64 usage error, 78 missing or broken device limits file or locale pack.
+
+`npm run mc:login` logs in in a browser and sends the session to a running bridge; see [Renewing the session with the login helper](#renewing-the-session-with-the-login-helper). Exit codes: 0 stored, 1 no session, 2 the bridge refused or did not answer, 64 usage error.
 
 See `CONTRIBUTING.md` for the pull request format, the secrets policy and how to add a language, and `docs/ARCHITECTURE.md` for the design.
 

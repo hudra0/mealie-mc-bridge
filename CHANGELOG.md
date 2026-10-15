@@ -2,6 +2,24 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+### Added
+
+- Automatic login: the settings page stores the Lidl account (encrypted with `SETTINGS_KEY`), and when the session expires the bridge logs in with a headless Chromium, at most hourly and three times a day, with backoff after failures. Failed attempts keep a screenshot and the reason, and the session mail then asks for a manual login. "Test login now" runs a login at once.
+- `npm run mc:login`: a login helper for your computer that logs in in a browser with a persistent profile and sends the session to the bridge. `--headless` reuses the profile without a window, for scheduled runs; `--self-test` checks the browser.
+- `POST /admin/api/session` and `GET /admin/api/session` for scripts, with Basic Auth or the login cookie.
+- The serving size follows the Mealie yield: "10 Scheiben" in Mealie becomes 10 Scheiben on the machine, scaled with the recipe. A recipe without servings and yield gets an estimated serving size flagged as a point to check.
+- Text steps get short action titles instead of the start of their text; a copied title goes back to the model once.
+- Admin pages: an event timeline with relative times, a reload every 5 seconds while a job is queued or running, a dry-run form that converts in one step, coloured badges and narrow-screen layouts.
+
+### Changed
+
+- The admin pages use a login form and a signed session cookie (12 hours) instead of HTTP Basic Auth, with a logout button on every page. `ADMIN_USER` and `ADMIN_PASSWORD` stay the credentials. Scripts that called the pages with Basic Auth should use `/admin/api/session`.
+- The Docker image includes a headless Chromium and its libraries and is a few hundred MB larger.
+- The bridge exits at start with one log line when `DATA_DIR` is not writable or the database cannot be migrated, with the hint to `chown` the directory to uid 1000. `/health` answers 503 when the database or the data directory becomes unusable, and the container health check accepts only 200.
+- Database migration 4 adds the serving unit to jobs; it runs on start.
+
 ## 0.1.0 (2026-10-14)
 
 ### Added

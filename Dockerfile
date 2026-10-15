@@ -24,13 +24,22 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 # Fail the build here, not at runtime, when a native module does not load.
 RUN node -e "const D = require('better-sqlite3'); new D(':memory:').close(); require('sharp');"
+# The headless Chromium of the automatic login, for the target platform (this stage runs on
+# it; the builder does not). Only the headless shell: the bridge never opens a window.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install --only-shell chromium
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 WORKDIR /app
 COPY package.json ./
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /ms-playwright /ms-playwright
+# The Debian libraries Chromium needs (a few hundred MB). Without them or the browser the
+# bridge still runs; the settings page then says the browser is not available.
+RUN npx playwright install-deps chromium \n  && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/dist ./dist
 # The knowledge base: device limits for the validator (DEVICE_PROGRAMS_PATH) and the
 # techniques, timing and unit rules the converter reads and the ingredient catalog

@@ -206,6 +206,81 @@ export const WRONG_PASSWORD = anyFragment([
   "incorect",
 ]);
 
+// Builds a pattern that matches a noun followed, within three words, by one of the verbs:
+// "Die Kapazität wurde überschritten", "capacity has been exceeded".
+function nearWords(pairs: readonly (readonly [string, readonly string[]])[]): RegExp {
+  const alternatives = pairs.map(
+    ([noun, verbs]) =>
+      `${escapeRegExp(noun)}(?:\\s+\\S+){0,3}?\\s+(?:${verbs.map(escapeRegExp).join("|")})`,
+  );
+  return new RegExp(alternatives.join("|"), "iu");
+}
+
+// An error message or page text that says the site throttles the login: its capacity is
+// exceeded, too many attempts, try again later. The Lidl page shows "Die Kapazität wurde
+// überschritten" after repeated logins from one address. A bare "please wait a moment" is
+// left out: loading screens say it too.
+export const RATE_LIMITED = new RegExp(
+  [
+    anyFragment([
+      "zu viele Versuche",
+      "zu viele Anmeldeversuche",
+      "zu viele Anfragen",
+      "später erneut",
+      "später noch einmal",
+      "too many attempts",
+      "too many login attempts",
+      "too many sign-in attempts",
+      "too many requests",
+      "too many tries",
+      "try again later",
+      "rate limit",
+      "trop de tentatives",
+      "trop de requêtes",
+      "réessayez plus tard",
+      "réessaye plus tard",
+      "troppi tentativi",
+      "troppe richieste",
+      "riprova più tardi",
+      "demasiados intentos",
+      "demasiadas solicitudes",
+      "inténtalo más tarde",
+      "inténtelo más tarde",
+      "inténtalo de nuevo más tarde",
+      "příliš mnoho pokusů",
+      "příliš mnoho požadavků",
+      "zkuste to později",
+      "zkuste to znovu později",
+      "zbyt wiele prób",
+      "zbyt wiele żądań",
+      "spróbuj ponownie później",
+      "przekroczono limit",
+      "demasiadas tentativas",
+      "muitas tentativas",
+      "tente novamente mais tarde",
+      "te veel pogingen",
+      "te veel verzoeken",
+      "probeer het later opnieuw",
+      "prea multe încercări",
+      "prea multe solicitări",
+      "încearcă din nou mai târziu",
+    ]).source,
+    nearWords([
+      ["Kapazität", ["überschritten"]],
+      ["capacity", ["exceeded"]],
+      ["capacité", ["dépassée"]],
+      ["capacità", ["superata"]],
+      ["capacidad", ["excedida", "superada"]],
+      ["kapacita", ["překročena"]],
+      ["pojemność", ["przekroczona"]],
+      ["capacidade", ["excedida", "esgotada"]],
+      ["capaciteit", ["overschreden"]],
+      ["capacitatea", ["depășită"]],
+    ]).source,
+  ].join("|"),
+  "iu",
+);
+
 // The source of a frame that shows a captcha or a challenge. Invisible reCAPTCHA frames
 // sit on many login forms without asking anything: the Lidl login page carries the anchor
 // frame of reCAPTCHA Enterprise from the start. A challenge opens a bframe instead.

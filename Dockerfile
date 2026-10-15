@@ -24,10 +24,12 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 # Fail the build here, not at runtime, when a native module does not load.
 RUN node -e "const D = require('better-sqlite3'); new D(':memory:').close(); require('sharp');"
-# The headless Chromium of the automatic login, for the target platform (this stage runs on
-# it; the builder does not). Only the headless shell: the bridge never opens a window.
+# The Chromium of the automatic login, for the target platform (this stage runs on it; the
+# builder does not). The full browser, not the smaller headless shell: it runs in Chromium's
+# new headless mode, which login pages with bot detection tell apart from a person's
+# browser less easily. The shell is left out; the bridge never uses it when this one works.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --only-shell chromium
+RUN npx playwright install --no-shell chromium
 
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production

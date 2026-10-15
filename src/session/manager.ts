@@ -135,7 +135,12 @@ export interface SessionManagerOptions {
 }
 
 // Skip reasons after which the automatic login runs again by itself, later.
-const WAITING: ReadonlySet<string> = new Set(["too_soon", "backoff", "daily_limit"]);
+const WAITING: ReadonlySet<string> = new Set([
+  "too_soon",
+  "backoff",
+  "daily_limit",
+  "rate_limited",
+]);
 
 const STATES: readonly SessionState[] = ["valid", "invalid", "expired", "unknown"];
 

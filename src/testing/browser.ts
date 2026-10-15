@@ -12,7 +12,12 @@
 
 import { writeFileSync } from "node:fs";
 import { BrowserActionError } from "../session/browser-errors.js";
-import type { BrowserCookie, LoginBrowser, LoginContext } from "../session/browser-login.js";
+import type {
+  BrowserCookie,
+  BrowserInfo,
+  LoginBrowser,
+  LoginContext,
+} from "../session/browser-login.js";
 import { DIALOG_SELECTOR } from "../session/login-pages.js";
 
 export interface FakeBrowserScript {
@@ -53,6 +58,9 @@ export interface FakeBrowserScript {
   loginWorks?: boolean;
   // The message the form shows after the password is sent.
   siteError?: string;
+  // After the password is sent the page goes back to the e-mail step and shows this text
+  // outside the error elements, the way the Lidl page shows that it throttles the login.
+  pageNotice?: string;
   // The message the form shows after the e-mail address is sent, instead of the password.
   unknownAccount?: string;
   // After the e-mail address the page offers to create an account, with a password field.
@@ -76,6 +84,8 @@ export interface FakeBrowserScript {
   url?: string;
   // Thrown by fillVisible, the way Playwright throws on a field that does not take input.
   fillError?: Error;
+  // The browser the context reports for the diagnostics.
+  browser?: BrowserInfo;
 }
 
 export const LOGIN_COOKIES: BrowserCookie[] = [
@@ -196,6 +206,10 @@ export function fakeBrowser(
       // After the password: the cookies, or first the screens of monsieur-cuisine.com.
       const sendPassword = () => {
         passwordSent = true;
+        if (script.pageNotice !== undefined) {
+          passwordShown = script.form === "both";
+          return;
+        }
         if (!script.loginWorks) return;
         onSite = true;
         url = SITE_URL;
@@ -459,6 +473,9 @@ export function fakeBrowser(
               ...(passwordSent && script.verification === "frame" ? [CAPTCHA_CHALLENGE] : []),
             ]),
           text: () => {
+            if (passwordSent && script.pageNotice !== undefined) {
+              return Promise.resolve(`${script.pageNotice} Anmelden E-Mail Weiter`);
+            }
             if (chooserShown) return Promise.resolve("Bitte wähle dein Gerät.");
             if (termsShown) return Promise.resolve("Nutzungsbedingungen 1. Geltungsbereich");
             if (passwordSent && script.verification === "text") {
@@ -486,6 +503,7 @@ export function fakeBrowser(
           browser.closed++;
           return Promise.resolve();
         },
+        ...(script.browser ? { browser: script.browser } : {}),
       };
       return Promise.resolve(context);
     },

@@ -6,17 +6,46 @@
 //
 // Three rules keep the browser from leaking what the bridge knows:
 // - No Playwright error message leaves this file. Playwright appends the call log of a
-//   failed action to its message, and the call log of a fill() names the typed value, the
-//   Lidl password included. Every failure becomes a BrowserActionError with a fixed text.
+//   failed action to its message, and the call log of a fill() or pressSequentially() names
+//   the typed value, the Lidl password included. Every failure becomes a BrowserActionError with a fixed text.
 // - The browser gets a minimal environment (browserEnvironment), never the bridge's
 //   secrets: Playwright would otherwise hand it process.env as it is.
 // - A browser that does not close in time is killed with its process group, found by the
 //   profile directory on its command line (Linux only).
+//
+// The login page runs reCAPTCHA Enterprise and Akamai Bot Manager, which score how much a
+// browser looks like a person's. The adapter keeps the plain signs of automation away,
+// without any stealth package:
+// - Headless runs in Chromium's new headless mode, the full browser without a window
+//   (Playwright: channel "chromium"), not in the separate headless shell. When only the
+//   shell is installed, the adapter falls back to it and says so in the diagnostics.
+// - The user agent is the browser's own, with "HeadlessChrome" replaced by "Chrome"; the
+//   probe reads it from a blank page once.
+// - --disable-blink-features=AutomationControlled, so navigator.webdriver is false.
+// - A common viewport (1280x800 at scale 1), the locale and time zone of the bridge, and an
+//   Accept-Language header that matches the locale.
+// - The e-mail address and the password are typed one character at a time, 40 to 120 ms
+//   apart, instead of being set at once.
+// Playwright passes --no-sandbox by default (chromiumSandbox: false); the container needs
+// it, because it runs without the capabilities Chromium's sandbox wants.
+//
+// The full Chromium starts its crash handler with a database under XDG_CONFIG_HOME (or
+// ~/.config), and quits when that directory cannot be created. In the container the home
+// directory is a tmpfs owned by root, so the browser gets XDG_CONFIG_HOME and XDG_CACHE_HOME
+// inside the profile of the attempt, or inside a temporary directory for the probe.
 
-import { readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { browserFailure, type BrowserFailureKind } from "./browser-errors.js";
-import type { BrowserCookie, LoginBrowser, LoginContext, LoginPage } from "./browser-login.js";
+import {
+  sanitizeUserAgent,
+  type BrowserCookie,
+  type BrowserInfo,
+  type LoginBrowser,
+  type LoginContext,
+  type LoginPage,
+} from "./browser-login.js";
 import { DIALOG_SELECTOR, buttonText, type DialogPatterns } from "./login-pages.js";
 
 // The parts of Playwright the adapter uses, so the bridge compiles without its types.
@@ -26,6 +55,7 @@ interface PwLocator {
   count(): Promise<number>;
   isVisible(): Promise<boolean>;
   fill(value: string, options?: { timeout?: number }): Promise<void>;
+  pressSequentially(text: string, options?: { timeout?: number }): Promise<void>;
   press(key: string, options?: { timeout?: number }): Promise<void>;
   click(options?: { timeout?: number }): Promise<void>;
   innerText(options?: { timeout?: number }): Promise<string>;
@@ -60,6 +90,7 @@ interface PwPage extends PwFrame {
   // The main frame and every child frame; consent dialogs sometimes live in a frame.
   frames?(): PwFrame[];
   screenshot(options: { path: string; fullPage?: boolean }): Promise<unknown>;
+  evaluate?<T>(fn: () => T): Promise<T>;
 }
 
 // Buttons the flow reads by their text.
@@ -86,8 +117,13 @@ interface PwContext {
   close(): Promise<void>;
 }
 
+interface PwBrowser {
+  close(): Promise<void>;
+  newPage?(): Promise<PwPage>;
+}
+
 interface PwChromium {
-  launch(options: Record<string, unknown>): Promise<{ close(): Promise<void> }>;
+  launch(options: Record<string, unknown>): Promise<PwBrowser>;
   launchPersistentContext(
     userDataDir: string,
     options: Record<string, unknown>,
@@ -115,13 +151,64 @@ export interface PlaywrightBrowserOptions {
   // The environment the browser's environment is taken from; process.env by default.
   env?: NodeJS.ProcessEnv;
   processes?: ProcessTools;
+  // The locale the pages see ("de-DE"): navigator.language and Accept-Language.
+  locale?: string | undefined;
+  // The time zone the pages see ("Europe/Berlin"); an unknown one is left out.
+  timezoneId?: string | undefined;
+  // The waits between typed characters; tests pass fakes.
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
 }
 
 const ACTION_TIMEOUT_MS = 5000;
 // A failed probe is repeated after this long, so a browser installed later is found.
 const PROBE_RETRY_MS = 10 * 60_000;
-// Docker gives /dev/shm only 64 MB, too little for Chromium's shared memory.
-const LAUNCH_ARGS = ["--disable-dev-shm-usage"];
+// Docker gives /dev/shm only 64 MB, too little for Chromium's shared memory. Blink's
+// AutomationControlled feature sets navigator.webdriver, the plainest sign of automation.
+export const LAUNCH_ARGS = [
+  "--disable-dev-shm-usage",
+  "--disable-blink-features=AutomationControlled",
+] as const;
+// Playwright's channel for the full Chromium in its new headless mode.
+export const NEW_HEADLESS_CHANNEL = "chromium";
+// The window of a headless browser: a common laptop size.
+export const VIEWPORT = { width: 1280, height: 800 } as const;
+// The wait between two typed characters, between these bounds.
+export const TYPING_DELAY_MS = { min: 40, max: 120 } as const;
+
+// The user agent the browser sends: its own, without the "Headless" that marks it.
+export function presentedUserAgent(userAgent: string): string {
+  return userAgent.replace(/HeadlessChrome/g, "Chrome");
+}
+
+// The Accept-Language header a browser set to the locale sends: "de-DE,de;q=0.9".
+export function acceptLanguageHeader(locale: string): string {
+  const language = locale.split("-")[0] ?? locale;
+  return language === locale ? locale : `${locale},${language};q=0.9`;
+}
+
+// The time zone when Chromium knows it, else undefined; Playwright refuses to start with an
+// unknown one. TZ values like ":/etc/localtime" are left out.
+export function knownTimeZone(timeZone: string | undefined): string | undefined {
+  if (timeZone === undefined || timeZone === "" || timeZone.startsWith(":")) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return timeZone;
+  } catch {
+    return undefined;
+  }
+}
+
+// The locale when it looks like one ("de-DE", "de"), else undefined.
+function knownLocale(locale: string | undefined): string | undefined {
+  return locale !== undefined && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(locale)
+    ? locale
+    : undefined;
+}
+
+// How the browser runs without a window: Chromium's new headless mode, or the old headless
+// shell when only that is installed.
+type HeadlessMode = "new" | "shell";
 // Lock files a Chromium that was killed leaves in its profile. Logins run one at a time, so
 // a lock found before a launch is always stale.
 export const PROFILE_LOCKS = ["SingletonLock", "SingletonCookie", "SingletonSocket"] as const;
@@ -147,7 +234,7 @@ const WINDOWS_ENV = [
 
 export function browserEnvironment(
   env: NodeJS.ProcessEnv = process.env,
-  options: { platform?: NodeJS.Platform; headless?: boolean } = {},
+  options: { platform?: NodeJS.Platform; headless?: boolean; configDir?: string } = {},
 ): Record<string, string> {
   const platform = options.platform ?? process.platform;
   const names: string[] = [...BROWSER_ENV];
@@ -160,6 +247,11 @@ export function browserEnvironment(
     const key = platform === "win32" ? lookup.get(name.toUpperCase()) : name;
     const value = key === undefined ? undefined : env[key];
     if (value !== undefined && value !== "") result[key ?? name] = value;
+  }
+  // A writable place for the browser's configuration and cache, whatever HOME allows.
+  if (options.configDir !== undefined) {
+    result.XDG_CONFIG_HOME = join(options.configDir, "config");
+    result.XDG_CACHE_HOME = join(options.configDir, "cache");
   }
   return result;
 }
@@ -220,12 +312,15 @@ async function loadPlaywright(): Promise<{ chromium: PwChromium }> {
   return (await import(name)) as { chromium: PwChromium };
 }
 
+// The failure of launchProblem when the browser's files are missing.
+const NOT_INSTALLED = "Chromium for Playwright is not installed";
+
 // Why the browser does not start, in fixed words for the settings page. The launch error
 // itself is not passed on.
 export function launchProblem(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/Executable doesn't exist|executable.*not found|playwright install/i.test(message)) {
-    return "Chromium for Playwright is not installed";
+    return NOT_INSTALLED;
   }
   if (/shared librar|missing dependencies|install-deps/i.test(message)) {
     return "Chromium does not start: system libraries are missing (npx playwright install-deps chromium)";
@@ -258,6 +353,20 @@ export function guardPage(page: LoginPage): LoginPage {
   return guarded as unknown as LoginPage;
 }
 
+const defaultSleep = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+
+// The user agent of a blank page of the browser; null when it cannot be read.
+async function readUserAgent(page: PwPage | null | undefined): Promise<string | null> {
+  try {
+    const agent = await page?.evaluate?.(
+      () => (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? "",
+    );
+    return typeof agent === "string" && agent !== "" ? agent : null;
+  } catch {
+    return null;
+  }
+}
+
 export class PlaywrightBrowser implements LoginBrowser {
   readonly #channel: string | undefined;
   readonly #load: () => Promise<{ chromium: PwChromium }>;
@@ -265,7 +374,13 @@ export class PlaywrightBrowser implements LoginBrowser {
   readonly #now: () => number;
   readonly #env: NodeJS.ProcessEnv;
   readonly #processes: ProcessTools;
+  readonly #locale: string | undefined;
+  readonly #timezoneId: string | undefined;
+  readonly #typing: Typing;
   #probe: { result: string | null; at: number } | null = null;
+  // What the probe found: how headless runs and the browser's own user agent.
+  #mode: HeadlessMode = "new";
+  #userAgent: string | null = null;
 
   constructor(options: PlaywrightBrowserOptions = {}) {
     this.#channel = options.channel;
@@ -274,11 +389,14 @@ export class PlaywrightBrowser implements LoginBrowser {
     this.#now = options.now ?? Date.now;
     this.#env = options.env ?? process.env;
     this.#processes = options.processes ?? systemProcesses;
+    this.#locale = knownLocale(options.locale);
+    this.#timezoneId = knownTimeZone(options.timezoneId);
+    this.#typing = { sleep: options.sleep ?? defaultSleep, random: options.random ?? Math.random };
   }
 
-  // Starts the headless browser once and closes it again. A file check would not do: the
-  // image carries only the headless shell, which lives elsewhere than the full Chromium
-  // that executablePath() names. A success is remembered; a failure for ten minutes.
+  // Starts the headless browser once, reads its user agent from a blank page and closes it
+  // again. A file check would not do: the full Chromium and the headless shell live in
+  // different places. A success is remembered; a failure for ten minutes.
   async unavailable(): Promise<string | null> {
     const cached = this.#probe;
     if (cached && (cached.result === null || this.#now() - cached.at < PROBE_RETRY_MS)) {
@@ -287,18 +405,7 @@ export class PlaywrightBrowser implements LoginBrowser {
     let result: string | null;
     try {
       const { chromium } = await this.#load();
-      try {
-        const browser = await chromium.launch({
-          headless: true,
-          args: LAUNCH_ARGS,
-          env: browserEnvironment(this.#env, { headless: true }),
-          ...(this.#channel ? { channel: this.#channel } : {}),
-        });
-        await browser.close();
-        result = null;
-      } catch (error) {
-        result = launchProblem(error);
-      }
+      result = await this.#probeLaunch(chromium);
     } catch {
       result = "Playwright is not installed";
     }
@@ -306,29 +413,101 @@ export class PlaywrightBrowser implements LoginBrowser {
     return result;
   }
 
+  // Tries the new headless mode, then, when the full Chromium is missing, the headless shell.
+  // An installed Google Chrome (a channel) has no shell to fall back to.
+  async #probeLaunch(chromium: PwChromium): Promise<string | null> {
+    const modes: HeadlessMode[] = this.#channel ? ["new"] : ["new", "shell"];
+    let problem = NOT_INSTALLED;
+    const configDir = mkdtempSync(join(tmpdir(), "bridge-chromium-"));
+    try {
+      for (const mode of modes) {
+        let browser: PwBrowser;
+        try {
+          browser = await chromium.launch(this.#launchOptions(true, mode, configDir));
+        } catch (error) {
+          problem = launchProblem(error);
+          if (problem !== NOT_INSTALLED) return problem;
+          continue;
+        }
+        try {
+          this.#userAgent = await readUserAgent(await browser.newPage?.().catch(() => null));
+        } finally {
+          await browser.close().catch(() => undefined);
+        }
+        this.#mode = mode;
+        return null;
+      }
+      return problem;
+    } finally {
+      rmSync(configDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    }
+  }
+
+  // What every launch gets: the mode, the arguments, the environment without secrets.
+  #launchOptions(
+    headless: boolean,
+    mode: HeadlessMode,
+    configDir: string,
+  ): Record<string, unknown> {
+    let channel = this.#channel;
+    if (channel === undefined && headless && mode === "new") channel = NEW_HEADLESS_CHANNEL;
+    return {
+      headless,
+      ...(channel ? { channel } : {}),
+      args: [...LAUNCH_ARGS],
+      env: browserEnvironment(this.#env, { headless, configDir }),
+      // Playwright's default, stated: --no-sandbox, which the container needs.
+      chromiumSandbox: false,
+    };
+  }
+
+  // What the pages see: the window, the user agent without "Headless", locale and time zone.
+  // A visible window keeps its own size and user agent.
+  #contextOptions(headless: boolean): Record<string, unknown> {
+    const userAgent =
+      headless && this.#userAgent !== null ? presentedUserAgent(this.#userAgent) : null;
+    const locale = this.#locale;
+    return {
+      viewport: headless ? VIEWPORT : null,
+      ...(headless ? { deviceScaleFactor: 1 } : {}),
+      ...(userAgent !== null ? { userAgent } : {}),
+      ...(locale
+        ? { locale, extraHTTPHeaders: { "Accept-Language": acceptLanguageHeader(locale) } }
+        : {}),
+      ...(this.#timezoneId ? { timezoneId: this.#timezoneId } : {}),
+    };
+  }
+
   async open(options: { profileDir: string; headless: boolean }): Promise<LoginContext> {
     const { chromium } = await guard("launch", () => this.#load());
+    // The user agent comes from the probe; the flow runs it first, a direct call here.
+    if (options.headless && this.#probe === null) await this.unavailable();
     const profileDir = absolute(options.profileDir);
     for (const lock of PROFILE_LOCKS) {
       rmSync(join(profileDir, lock), { force: true });
     }
+    const mode = this.#mode;
     const context = await guard("launch", () =>
       chromium.launchPersistentContext(profileDir, {
-        headless: options.headless,
-        ...(this.#channel ? { channel: this.#channel } : {}),
-        args: LAUNCH_ARGS,
-        env: browserEnvironment(this.#env, { headless: options.headless }),
-        viewport: options.headless ? { width: 1280, height: 900 } : null,
+        // The configuration directory lives and goes with the profile.
+        ...this.#launchOptions(options.headless, mode, join(profileDir, "xdg")),
+        ...this.#contextOptions(options.headless),
       }),
     );
     const page = await guard("launch", async () => context.pages()[0] ?? (await context.newPage()));
+    const userAgent = await readUserAgent(page);
+    const browser: BrowserInfo = {
+      userAgent: userAgent === null ? null : sanitizeUserAgent(userAgent),
+      headless: options.headless ? mode : false,
+    };
     return {
-      page: guardPage(pageAdapter(page, this.#timeout)),
+      page: guardPage(pageAdapter(page, this.#timeout, this.#typing)),
       cookies: (url) => guard("navigation", () => context.cookies(url)),
       close: () => guard("launch", () => context.close()),
       kill: () => {
         killBrowserProcesses(profileDir, this.#processes);
       },
+      browser,
     };
   }
 }
@@ -381,7 +560,13 @@ interface Candidate {
   exact: boolean;
 }
 
-function pageAdapter(page: PwPage, timeout: number): LoginPage {
+// The waits between typed characters.
+interface Typing {
+  sleep: (ms: number) => Promise<void>;
+  random: () => number;
+}
+
+function pageAdapter(page: PwPage, timeout: number, typing: Typing): LoginPage {
   const textOf = async (item: PwLocator) =>
     buttonText(await item.innerText({ timeout }).catch(() => ""));
   // The first visible and enabled button in the scope whose text matches `match` and not
@@ -432,7 +617,14 @@ function pageAdapter(page: PwPage, timeout: number): LoginPage {
       for await (const field of visibleItems(page, selector)) {
         // A field behind a consent dialog or still loading can be disabled.
         if (!(await field.isEnabled({ timeout }).catch(() => false))) continue;
-        await field.fill(value, { timeout: options.timeoutMs ?? timeout });
+        const actionTimeout = options.timeoutMs ?? timeout;
+        // Emptied first, so a second try after a timeout does not type the value twice.
+        await field.fill("", { timeout: actionTimeout });
+        for (const character of value) {
+          await field.pressSequentially(character, { timeout: actionTimeout });
+          const { min, max } = TYPING_DELAY_MS;
+          await typing.sleep(Math.round(min + typing.random() * (max - min)));
+        }
         return true;
       }
       return false;

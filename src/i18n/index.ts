@@ -42,6 +42,7 @@ export type AutoLoginFailureName =
   | "no_login_form"
   | "unknown_account"
   | "wrong_password"
+  | "rate_limited"
   | "verification_required"
   | "not_logged_in"
   | "unexpected_page"
@@ -365,6 +366,8 @@ export interface AdminMessages {
     progressTitle: string;
     steps: Readonly<Record<LoginStepName, string>>;
     consentSteps(count: number): string;
+    // The browser of an attempt: "Chrome 141" (or null when unknown) and how it ran.
+    browserUsed(name: string | null, mode: "new" | "shell" | "window"): string;
     screenshot: string;
     nextAttempt: string;
     running: string;

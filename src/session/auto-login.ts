@@ -9,7 +9,11 @@
 //   after three or more 24 hours;
 // - a manual "Test login now" skips the waiting times, but never runs next to another
 //   attempt and at most every 3 minutes; manual attempts count neither toward the daily
-//   limit nor toward the backoff.
+//   limit nor toward the backoff;
+// - when the site throttles the login ("rate_limited": capacity exceeded, too many
+//   attempts), every attempt waits at least RATE_LIMIT_BACKOFF_MS, a manual test included.
+//   Each attempt in that time can make the throttle last longer. Such an attempt does not
+//   count as a failure for the backoff: the account is fine, the site wants a break.
 // A failed attempt keeps a screenshot of the page (the last five stay) and its reason, so
 // the admin page can show what got in the way: a captcha, a second factor, a changed page.
 // A screenshot can show the Lidl account page with the e-mail address; deleting the account
@@ -26,6 +30,7 @@ import { errorMessage, type AppLogger } from "../app-logger.js";
 import type { SettingsStore } from "../store/settings.js";
 import { scrubLoginDetail } from "./browser-errors.js";
 import {
+  browserLabel,
   browserLogin,
   type BrowserLoginFailure,
   type BrowserLoginOptions,
@@ -42,6 +47,7 @@ export const AUTO_LOGIN_KEYS = {
   attempts: "autologin.attempts",
   failures: "autologin.failures",
   lastManual: "autologin.last_manual",
+  rateLimitedUntil: "autologin.rate_limited_until",
 } as const;
 
 const HOUR_MS = 60 * 60_000;
@@ -51,6 +57,8 @@ export const MAX_ATTEMPTS_PER_DAY = 3;
 export const KEEP_SCREENSHOTS = 5;
 export const LOGIN_TIMEOUT_MS = 120_000;
 export const MANUAL_COOLDOWN_MS = 3 * 60_000;
+// How long every attempt waits after the site throttled the login.
+export const RATE_LIMIT_BACKOFF_MS = HOUR_MS;
 
 // Why an attempt failed: a browser login failure, or the cookie it produced was refused
 // when the bridge checked it against the account.
@@ -76,7 +84,13 @@ export interface LoginAttempt {
 }
 
 export type SkipReason =
-  "no_credentials" | "running" | "too_soon" | "backoff" | "daily_limit" | "cooldown";
+  | "no_credentials"
+  | "running"
+  | "too_soon"
+  | "backoff"
+  | "daily_limit"
+  | "rate_limited"
+  | "cooldown";
 
 export type AutoLoginRun =
   | { status: "ok"; attempt: LoginAttempt }
@@ -244,18 +258,40 @@ export class AutoLogin {
     return this.#screenshots().includes(name) ? join(this.#options.screenshotDir, name) : null;
   }
 
+  // When the next manual test may run: 3 minutes after the last one, or when the throttle
+  // of the site ends, whichever is later. Null when it may run now.
   #manualCooldown(now: Date): string | null {
     const last = Date.parse(this.#settings.get(AUTO_LOGIN_KEYS.lastManual) ?? "");
-    if (!Number.isFinite(last) || now.getTime() >= last + MANUAL_COOLDOWN_MS) return null;
-    return new Date(last + MANUAL_COOLDOWN_MS).toISOString();
+    const until = Math.max(
+      Number.isFinite(last) ? last + MANUAL_COOLDOWN_MS : 0,
+      this.#rateLimitedUntil(),
+    );
+    return now.getTime() < until ? new Date(until).toISOString() : null;
+  }
+
+  // When the throttle of the site ends, in ms; 0 when there is none.
+  #rateLimitedUntil(): number {
+    const until = Date.parse(this.#settings.get(AUTO_LOGIN_KEYS.rateLimitedUntil) ?? "");
+    return Number.isFinite(until) ? until : 0;
   }
 
   // Why an automatic attempt may not run now, and until when.
   #gate(now: Date): { reason: SkipReason; until: string } | null {
+    // Every limit that holds; the one that ends last decides.
+    const holds: { reason: SkipReason; until: number }[] = [
+      { reason: "rate_limited", until: this.#rateLimitedUntil() },
+    ];
     const attempts = this.#recentAttempts(now);
     const last = attempts[attempts.length - 1];
-    if (last === undefined) return null;
-    // Every limit that holds; the one that ends last decides.
+    if (last !== undefined) holds.push(...this.#attemptHolds(attempts, last));
+    const latest = holds
+      .filter((hold) => hold.until > now.getTime())
+      .sort((x, y) => y.until - x.until)[0];
+    return latest ? { reason: latest.reason, until: new Date(latest.until).toISOString() } : null;
+  }
+
+  // The limits that follow from the recent automatic attempts.
+  #attemptHolds(attempts: number[], last: number): { reason: SkipReason; until: number }[] {
     const holds: { reason: SkipReason; until: number }[] = [];
     if (attempts.length >= MAX_ATTEMPTS_PER_DAY) {
       const oldest = attempts[attempts.length - MAX_ATTEMPTS_PER_DAY] ?? last;
@@ -267,10 +303,7 @@ export class AutoLogin {
       holds.push({ reason: "backoff", until: last + wait });
     }
     holds.push({ reason: "too_soon", until: last + MIN_INTERVAL_MS });
-    const latest = holds
-      .filter((hold) => hold.until > now.getTime())
-      .sort((x, y) => y.until - x.until)[0];
-    return latest ? { reason: latest.reason, until: new Date(latest.until).toISOString() } : null;
+    return holds;
   }
 
   async #attempt(options: {
@@ -376,13 +409,21 @@ export class AutoLogin {
     };
     this.#settings.setJson(AUTO_LOGIN_KEYS.last, attempt);
     const logger = this.#options.logger;
+    const browser = notes.progress?.browser ? browserLabel(notes.progress.browser) : undefined;
     // Manual tests leave the backoff alone.
     if (failure === null) {
       if (!manual) this.#settings.set(AUTO_LOGIN_KEYS.failures, "0");
-      logger.info({ manual }, "automatic Monsieur Cuisine login succeeded");
+      this.#settings.delete(AUTO_LOGIN_KEYS.rateLimitedUntil);
+      logger.info({ manual, browser }, "automatic Monsieur Cuisine login succeeded");
       return { status: "ok", attempt };
     }
-    const failures = this.#failures() + (manual ? 0 : 1);
+    // A throttled login holds every attempt for a while, but is no failure of the account.
+    const throttled = failure.code === "rate_limited";
+    if (throttled) {
+      const until = new Date(this.#now().getTime() + RATE_LIMIT_BACKOFF_MS).toISOString();
+      this.#settings.set(AUTO_LOGIN_KEYS.rateLimitedUntil, until);
+    }
+    const failures = this.#failures() + (manual || throttled ? 0 : 1);
     this.#settings.set(AUTO_LOGIN_KEYS.failures, String(failures));
     logger.warn(
       {
@@ -392,6 +433,7 @@ export class AutoLogin {
         failures,
         ...notes,
         ...(notes.progress ? { progress: notes.progress.reached } : {}),
+        ...(browser ? { browser } : {}),
       },
       "automatic Monsieur Cuisine login failed",
     );

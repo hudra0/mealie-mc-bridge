@@ -5,12 +5,24 @@ import { tempDir } from "../testing/temp.js";
 import { BrowserActionError } from "./browser-errors.js";
 import { CONSENT_DIALOG, DIALOG_SELECTOR } from "./login-pages.js";
 import {
+  LAUNCH_ARGS,
   PROFILE_LOCKS,
   PlaywrightBrowser,
+  TYPING_DELAY_MS,
+  acceptLanguageHeader,
   browserEnvironment,
   killBrowserProcesses,
+  knownTimeZone,
+  presentedUserAgent,
   type ProcessTools,
 } from "./playwright-browser.js";
+
+// The user agent of Chromium in its new headless mode, as a blank page reports it.
+const HEADLESS_UA =
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36";
+const CHROME_UA = HEADLESS_UA.replace("HeadlessChrome", "Chrome");
+// Typing without waiting.
+const noSleep = () => Promise.resolve();
 
 // A stand-in for Playwright's chromium with one page that has the given elements.
 interface FakeElement {
@@ -36,8 +48,11 @@ function fakeChromium(
   fillError: Error | null = null,
 ) {
   const actions: string[] = [];
-  // The timeout of every fill and click, in order.
+  // The timeout of every fill, typed character and click, in order.
   const timeouts: Array<number | undefined> = [];
+  // What was typed into each selector, one character at a time.
+  const typed: Record<string, string> = {};
+  let typedCalls = 0;
   const listOf = (items: FakeElement[], selector = "") => {
     const at = (index: number): Record<string, unknown> => ({
       isVisible: () => Promise.resolve(items[index]?.visible ?? false),
@@ -45,6 +60,14 @@ function fakeChromium(
         if (fillError) return Promise.reject(fillError);
         timeouts.push(options?.timeout);
         actions.push(`fill ${selector} ${value.length}`);
+        typed[selector] = value;
+        return Promise.resolve();
+      },
+      pressSequentially: (text: string, options?: { timeout?: number }) => {
+        if (fillError) return Promise.reject(fillError);
+        timeouts.push(options?.timeout);
+        typedCalls++;
+        typed[selector] = (typed[selector] ?? "") + text;
         return Promise.resolve();
       },
       press: (key: string) => {
@@ -91,22 +114,28 @@ function fakeChromium(
       ...frames.map((frame) => ({ locator: locatorIn(frame) })),
     ],
     screenshot: vi.fn(() => Promise.resolve()),
+    evaluate: () => Promise.resolve(CHROME_UA),
   };
+  // The blank page of the probe, which reports the headless user agent.
+  const blank = { evaluate: () => Promise.resolve(HEADLESS_UA) };
   const context = {
     pages: () => [page],
     newPage: () => Promise.resolve(page),
     cookies: vi.fn(() => Promise.resolve([{ name: "a", value: "1" }])),
     close: vi.fn(() => Promise.resolve()),
   };
+  // The launch options each call got, for the assertions.
+  type Options = Record<string, unknown>;
+  const launched = { close: () => Promise.resolve(), newPage: () => Promise.resolve(blank) };
   const chromium = {
-    launch: vi.fn(() =>
-      launchError
-        ? Promise.reject(launchError)
-        : Promise.resolve({ close: () => Promise.resolve() }),
+    launch: vi.fn<(options: Options) => Promise<typeof launched>>(() =>
+      launchError ? Promise.reject(launchError) : Promise.resolve(launched),
     ),
-    launchPersistentContext: vi.fn(() => Promise.resolve(context)),
+    launchPersistentContext: vi.fn<(dir: string, options: Options) => Promise<typeof context>>(() =>
+      Promise.resolve(context),
+    ),
   };
-  return { chromium, actions, timeouts, page, context };
+  return { chromium, actions, timeouts, page, context, typed, typedCalls: () => typedCalls };
 }
 
 // The fake has the shape the adapter uses, not Playwright's full types.
@@ -120,17 +149,22 @@ describe("PlaywrightBrowser", () => {
       {},
       new Error("browserType.launch: Executable doesn't exist at /ms-playwright/x\nRun it"),
     );
-    const noBrowser = new PlaywrightBrowser({ load: loader(chromium) });
+    const noBrowser = new PlaywrightBrowser({ sleep: noSleep, load: loader(chromium) });
     expect(await noBrowser.unavailable()).toBe("Chromium for Playwright is not installed");
     const broken = fakeChromium({}, new Error("\nbrowserType.launch: Target page crashed\nmore"));
-    expect(await new PlaywrightBrowser({ load: loader(broken.chromium) }).unavailable()).toBe(
-      "Chromium does not start",
-    );
+    expect(
+      await new PlaywrightBrowser({ sleep: noSleep, load: loader(broken.chromium) }).unavailable(),
+    ).toBe("Chromium does not start");
     const libraries = fakeChromium(
       {},
       new Error("browserType.launch: error while loading shared libraries: libnss3.so"),
     );
-    expect(await new PlaywrightBrowser({ load: loader(libraries.chromium) }).unavailable()).toBe(
+    expect(
+      await new PlaywrightBrowser({
+        sleep: noSleep,
+        load: loader(libraries.chromium),
+      }).unavailable(),
+    ).toBe(
       "Chromium does not start: system libraries are missing (npx playwright install-deps chromium)",
     );
   });
@@ -149,7 +183,7 @@ describe("PlaywrightBrowser", () => {
       ADMIN_PASSWORD: "admin-password",
     };
     const fake = fakeChromium({});
-    const browser = new PlaywrightBrowser({ load: loader(fake.chromium), env });
+    const browser = new PlaywrightBrowser({ sleep: noSleep, load: loader(fake.chromium), env });
     await browser.unavailable();
     await browser.open({ profileDir: "/tmp/profile", headless: true });
     const expected = {
@@ -158,13 +192,33 @@ describe("PlaywrightBrowser", () => {
       LANG: "C.UTF-8",
       PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright",
     };
+    // Plus a writable configuration directory: a temporary one for the probe, one inside
+    // the profile for the login.
+    const probeEnv = fake.chromium.launch.mock.calls[0]?.[0].env as Record<string, string>;
+    const loginEnv = fake.chromium.launchPersistentContext.mock.calls[0]?.[1].env as Record<
+      string,
+      string
+    >;
+    expect(probeEnv.XDG_CONFIG_HOME).toContain("bridge-chromium-");
+    expect(loginEnv.XDG_CONFIG_HOME).toBe(join("/tmp/profile", "xdg", "config"));
+    expect(loginEnv.XDG_CACHE_HOME).toBe(join("/tmp/profile", "xdg", "cache"));
     if (process.platform !== "win32") {
-      expect(fake.chromium.launch).toHaveBeenCalledWith(expect.objectContaining({ env: expected }));
-      expect(fake.chromium.launchPersistentContext).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ env: expected }),
-      );
+      const own = (value: Record<string, string>) => {
+        const copy = { ...value };
+        delete copy.XDG_CONFIG_HOME;
+        delete copy.XDG_CACHE_HOME;
+        return copy;
+      };
+      expect(own(probeEnv)).toEqual(expected);
+      expect(own(loginEnv)).toEqual(expected);
     }
+    expect(
+      browserEnvironment(env, { platform: "linux", configDir: "/data/tmp/login-a/xdg" }),
+    ).toEqual({
+      ...expected,
+      XDG_CONFIG_HOME: join("/data/tmp/login-a/xdg", "config"),
+      XDG_CACHE_HOME: join("/data/tmp/login-a/xdg", "cache"),
+    });
     expect(browserEnvironment(env, { platform: "linux" })).toEqual(expected);
     expect(
       browserEnvironment({ ...env, DISPLAY: ":0" }, { platform: "linux", headless: false }),
@@ -184,7 +238,10 @@ describe("PlaywrightBrowser", () => {
       { name: "TimeoutError" },
     );
     const fake = fakeChromium({ 'input[type="password"]': [{ visible: true }] }, null, [], leak);
-    const context = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+    const context = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(fake.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
@@ -205,7 +262,7 @@ describe("PlaywrightBrowser", () => {
       Promise.reject(new Error(`launch failed ${marker}`)),
     );
     await expect(
-      new PlaywrightBrowser({ load: loader(failing.chromium) }).open({
+      new PlaywrightBrowser({ sleep: noSleep, load: loader(failing.chromium) }).open({
         profileDir: "/tmp/profile",
         headless: true,
       }),
@@ -242,23 +299,38 @@ describe("PlaywrightBrowser", () => {
   it("probes with a real headless launch, remembers a success and retries a failure later", async () => {
     let now = 0;
     const working = fakeChromium({});
-    const browser = new PlaywrightBrowser({ load: loader(working.chromium), now: () => now });
+    const browser = new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(working.chromium),
+      now: () => now,
+    });
     expect(await browser.unavailable()).toBeNull();
     expect(await browser.unavailable()).toBeNull();
     expect(working.chromium.launch).toHaveBeenCalledTimes(1);
     expect(working.chromium.launch).toHaveBeenCalledWith(
-      expect.objectContaining({ headless: true, args: ["--disable-dev-shm-usage"] }),
+      expect.objectContaining({
+        headless: true,
+        channel: "chromium",
+        args: ["--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+        chromiumSandbox: false,
+      }),
     );
 
     const failing = fakeChromium({}, new Error("Executable doesn't exist"));
-    const later = new PlaywrightBrowser({ load: loader(failing.chromium), now: () => now });
+    const later = new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(failing.chromium),
+      now: () => now,
+    });
     await later.unavailable();
+    // The new headless mode, then the headless shell.
+    expect(failing.chromium.launch).toHaveBeenCalledTimes(2);
     now = 5 * 60_000;
     await later.unavailable();
-    expect(failing.chromium.launch).toHaveBeenCalledTimes(1);
+    expect(failing.chromium.launch).toHaveBeenCalledTimes(2);
     now = 11 * 60_000;
     await later.unavailable();
-    expect(failing.chromium.launch).toHaveBeenCalledTimes(2);
+    expect(failing.chromium.launch).toHaveBeenCalledTimes(4);
     const chrome = fakeChromium({});
     await new PlaywrightBrowser({ channel: "chrome", load: loader(chrome.chromium) }).unavailable();
     expect(chrome.chromium.launch).toHaveBeenCalledWith(
@@ -272,7 +344,7 @@ describe("PlaywrightBrowser", () => {
       for (const lock of PROFILE_LOCKS) writeFileSync(join(temp.dir, lock), "stale");
       writeFileSync(join(temp.dir, "Preferences"), "{}");
       const fake = fakeChromium({});
-      await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+      await new PlaywrightBrowser({ sleep: noSleep, load: loader(fake.chromium) }).open({
         profileDir: temp.dir,
         headless: true,
       });
@@ -296,9 +368,7 @@ describe("PlaywrightBrowser", () => {
         { visible: true, text: "Anmelden" },
       ],
     });
-    const browser = new PlaywrightBrowser({
-      load: loader(fake.chromium),
-    });
+    const browser = new PlaywrightBrowser({ sleep: noSleep, load: loader(fake.chromium) });
     expect(await browser.unavailable()).toBeNull();
     const context = await browser.open({ profileDir: "/tmp/profile", headless: true });
     expect(fake.chromium.launchPersistentContext).toHaveBeenCalledWith(
@@ -319,10 +389,13 @@ describe("PlaywrightBrowser", () => {
     ]);
     await context.close();
     expect(fake.actions).toEqual([
-      'fill input[type="email"] 16',
+      'fill input[type="email"] 0',
       'press input[type="email"] Enter',
       "click Anmelden",
     ]);
+    // Typed one character at a time into the emptied field.
+    expect(fake.typed['input[type="email"]']).toBe("cook@example.com");
+    expect(fake.typedCalls()).toBe(16);
     expect(fake.context.close).toHaveBeenCalled();
   });
 
@@ -348,7 +421,7 @@ describe("PlaywrightBrowser", () => {
       null,
       [{ 'button, [role="button"]': [{ visible: true, text: "Alle ablehnen" }] }],
     );
-    const browser = new PlaywrightBrowser({ load: loader(fake.chromium) });
+    const browser = new PlaywrightBrowser({ sleep: noSleep, load: loader(fake.chromium) });
     const { page } = await browser.open({ profileDir: "/tmp/profile", headless: true });
     expect(await page.clickButtonByText(/^(ablehnen|alle ablehnen)/i, /zustimmen/i)).toBe(
       "Alle ablehnen",
@@ -388,7 +461,10 @@ describe("PlaywrightBrowser", () => {
         { visible: true, text: "Akzeptieren" },
       ],
     });
-    const { page } = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+    const { page } = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(fake.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
@@ -416,7 +492,7 @@ describe("PlaywrightBrowser", () => {
     );
     const open = async (fake: ReturnType<typeof fakeChromium>) =>
       (
-        await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+        await new PlaywrightBrowser({ sleep: noSleep, load: loader(fake.chromium) }).open({
           profileDir: "/tmp/profile",
           headless: true,
         })
@@ -449,7 +525,10 @@ describe("PlaywrightBrowser", () => {
         ],
       },
     ]);
-    const first = await new PlaywrightBrowser({ load: loader(framed.chromium) }).open({
+    const first = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(framed.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
@@ -459,7 +538,10 @@ describe("PlaywrightBrowser", () => {
     expect(framed.actions).toEqual(["click Alle ablehnen"]);
 
     const plain = fakeChromium({ [BUTTONS]: [{ visible: true, text: "Weiter" }] });
-    const second = await new PlaywrightBrowser({ load: loader(plain.chromium) }).open({
+    const second = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(plain.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
@@ -478,6 +560,7 @@ describe("PlaywrightBrowser", () => {
       'input[type="email"]': [{ visible: true }],
     });
     const { page } = await new PlaywrightBrowser({
+      sleep: noSleep,
       load: loader(fake.chromium),
       actionTimeoutMs: 5000,
     }).open({ profileDir: "/tmp/profile", headless: true });
@@ -489,9 +572,10 @@ describe("PlaywrightBrowser", () => {
     expect(fake.actions).toEqual([
       "click Weiter",
       "click Weiter mit Google",
-      'fill input[type="email"] 1',
+      'fill input[type="email"] 0',
     ]);
-    expect(fake.timeouts).toEqual([1000, 5000, 1000]);
+    // The clicks, then the emptying fill and the one typed character.
+    expect(fake.timeouts).toEqual([1000, 5000, 1000, 1000]);
   });
   it("clicks links and cards by their text and skips disabled buttons", async () => {
     const controls =
@@ -511,7 +595,10 @@ describe("PlaywrightBrowser", () => {
         { visible: true, text: "MC SMART" },
       ],
     });
-    const { page } = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+    const { page } = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(fake.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
@@ -544,7 +631,10 @@ describe("PlaywrightBrowser", () => {
         },
       ],
     });
-    const { page } = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+    const { page } = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(fake.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
@@ -566,7 +656,10 @@ describe("PlaywrightBrowser", () => {
       ],
       '[id="terms"]': [linked],
     });
-    const second = await new PlaywrightBrowser({ load: loader(byId.chromium) }).open({
+    const second = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(byId.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
@@ -582,11 +675,105 @@ describe("PlaywrightBrowser", () => {
         },
       ],
     });
-    const third = await new PlaywrightBrowser({ load: loader(custom.chromium) }).open({
+    const third = await new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(custom.chromium),
+    }).open({
       profileDir: "/tmp/profile",
       headless: true,
     });
     expect(await third.page.checkBox(/terms of use/i, /newsletter/i)).toBe(true);
     expect(custom.actions).toEqual([]);
+  });
+});
+
+describe("PlaywrightBrowser fingerprint", () => {
+  it("starts headless in the new mode with the browser's own user agent, without Headless", async () => {
+    const fake = fakeChromium({});
+    const browser = new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(fake.chromium),
+      locale: "de-DE",
+      timezoneId: "Europe/Berlin",
+    });
+    const context = await browser.open({ profileDir: "/tmp/profile", headless: true });
+    // The probe ran first, in the same mode, and read the user agent.
+    expect(fake.chromium.launch).toHaveBeenCalledTimes(1);
+    const options = fake.chromium.launchPersistentContext.mock.calls[0]?.[1];
+    expect(options).toMatchObject({
+      headless: true,
+      channel: "chromium",
+      args: [...LAUNCH_ARGS],
+      chromiumSandbox: false,
+      viewport: { width: 1280, height: 800 },
+      deviceScaleFactor: 1,
+      userAgent: CHROME_UA,
+      locale: "de-DE",
+      timezoneId: "Europe/Berlin",
+      extraHTTPHeaders: { "Accept-Language": "de-DE,de;q=0.9" },
+    });
+    expect(String(options?.userAgent)).not.toContain("Headless");
+    expect(context.browser).toEqual({ userAgent: CHROME_UA, headless: "new" });
+  });
+
+  it("falls back to the headless shell when the full Chromium is missing", async () => {
+    const fake = fakeChromium({});
+    fake.chromium.launch.mockImplementationOnce(() =>
+      Promise.reject(new Error("browserType.launch: Executable doesn't exist at /x/chrome")),
+    );
+    const browser = new PlaywrightBrowser({ sleep: noSleep, load: loader(fake.chromium) });
+    expect(await browser.unavailable()).toBeNull();
+    expect(fake.chromium.launch.mock.calls[1]?.[0]).not.toHaveProperty("channel");
+    const context = await browser.open({ profileDir: "/tmp/profile", headless: true });
+    expect(fake.chromium.launchPersistentContext.mock.calls[0]?.[1]).not.toHaveProperty("channel");
+    expect(context.browser?.headless).toBe("shell");
+  });
+
+  it("leaves a visible window its own size and user agent, and an installed Chrome its channel", async () => {
+    const fake = fakeChromium({});
+    const browser = new PlaywrightBrowser({
+      sleep: noSleep,
+      load: loader(fake.chromium),
+      channel: "chrome",
+      timezoneId: "Not/AZone",
+    });
+    const context = await browser.open({ profileDir: "/tmp/profile", headless: false });
+    expect(fake.chromium.launch).not.toHaveBeenCalled();
+    const options = fake.chromium.launchPersistentContext.mock.calls[0]?.[1] ?? {};
+    expect(options).toMatchObject({ headless: false, channel: "chrome", viewport: null });
+    for (const key of ["userAgent", "deviceScaleFactor", "timezoneId", "locale"]) {
+      expect(options, key).not.toHaveProperty(key);
+    }
+    expect(context.browser).toEqual({ userAgent: CHROME_UA, headless: false });
+  });
+
+  it("types with a pause of 40 to 120 ms after every character", async () => {
+    const delays: number[] = [];
+    const randoms = [0, 1, 0.5];
+    const fake = fakeChromium({ 'input[type="password"]': [{ visible: true }] });
+    const { page } = await new PlaywrightBrowser({
+      load: loader(fake.chromium),
+      sleep: (ms) => {
+        delays.push(ms);
+        return Promise.resolve();
+      },
+      random: () => randoms.shift() ?? 0.5,
+    }).open({ profileDir: "/tmp/profile", headless: true });
+    expect(await page.fillVisible('input[type="password"]', "pw1")).toBe(true);
+    expect(fake.typed['input[type="password"]']).toBe("pw1");
+    expect(delays).toEqual([TYPING_DELAY_MS.min, TYPING_DELAY_MS.max, 80]);
+  });
+
+  it("rewrites the user agent and builds the headers from the settings", () => {
+    expect(presentedUserAgent(HEADLESS_UA)).toBe(CHROME_UA);
+    expect(presentedUserAgent(CHROME_UA)).toBe(CHROME_UA);
+    expect(acceptLanguageHeader("de-DE")).toBe("de-DE,de;q=0.9");
+    expect(acceptLanguageHeader("en-US")).toBe("en-US,en;q=0.9");
+    expect(acceptLanguageHeader("de")).toBe("de");
+    expect(knownTimeZone("Europe/Vienna")).toBe("Europe/Vienna");
+    expect(knownTimeZone("UTC")).toBe("UTC");
+    expect(knownTimeZone("Mars/Olympus")).toBeUndefined();
+    expect(knownTimeZone(":/etc/localtime")).toBeUndefined();
+    expect(knownTimeZone(undefined)).toBeUndefined();
   });
 });

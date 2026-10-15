@@ -2,6 +2,18 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+### Fixed
+
+- When the Lidl page answers the login with "Die Kapazität wurde überschritten" (or "too many attempts", "try again later" and the like, in the sites' languages), the attempt ends as "rate limited" ("Lidl hat die Anmeldung vorübergehend gedrosselt") instead of "the site reported an error". The bridge then waits at least 60 minutes before the next automatic attempt and blocks "Test login now" for 60 minutes; the attempt does not count as a failure for the backoff. The message is also found when the page shows it outside its usual error elements.
+
+### Changed
+
+- The automatic login runs the full Chromium in its new headless mode instead of the headless shell, with the browser's own user agent without "HeadlessChrome", `--disable-blink-features=AutomationControlled`, a 1280x800 window at scale 1, the locale of `MC_LOCALE` with a matching `Accept-Language` header and the time zone of `TZ`. It types the e-mail address and the password one character at a time, 40 to 120 ms apart, and pauses 0.6 to 1.5 seconds before each field. When only the headless shell is installed (outside the image), it falls back to it.
+- The Docker image installs the full Chromium (`playwright install --no-shell chromium`) instead of only the headless shell, so it grows by the difference between the two.
+- Each attempt records the browser it ran in; the settings page shows it under the last attempt ("Browser: Chrome 141, headless (new mode)").
+
 ## 0.3.1 (2026-10-15)
 
 ### Fixed

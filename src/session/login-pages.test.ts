@@ -25,6 +25,7 @@ import {
   OTHER_PROVIDER,
   PHONE_FIELD,
   PHONE_WORDS,
+  RATE_LIMITED,
   SIGN_IN_BUTTON,
   SIGN_IN_EXACT,
   SKIP_BUTTONS,
@@ -125,6 +126,40 @@ describe("answers of the site", () => {
       expect(WRONG_PASSWORD.test(text), text).toBe(true);
     }
     expect(WRONG_PASSWORD.test("Zu viele Versuche. Bitte warte.")).toBe(false);
+  });
+
+  it("recognizes a throttled login in the sites' languages", () => {
+    for (const text of [
+      "Die Kapazität wurde überschritten Bitte warte einen Moment und versuche es erneut",
+      "Kapazität überschritten",
+      "Zu viele Versuche. Bitte warte.",
+      "Zu viele Anmeldeversuche",
+      "Bitte versuche es später erneut.",
+      "Capacity exceeded. Please wait a moment and try again.",
+      "The capacity has been exceeded",
+      "Too many attempts, please try again later",
+      "Too many requests",
+      "Trop de tentatives. Réessayez plus tard.",
+      "La capacité a été dépassée",
+      "Troppi tentativi, riprova più tardi",
+      "Demasiados intentos. Inténtalo más tarde.",
+      "Příliš mnoho pokusů",
+      "Zbyt wiele prób. Spróbuj ponownie później.",
+      "Demasiadas tentativas",
+      "Te veel pogingen. Probeer het later opnieuw.",
+      "Prea multe încercări",
+    ]) {
+      expect(RATE_LIMITED.test(text), text).toBe(true);
+    }
+    for (const text of [
+      "E-Mail-Adresse oder Passwort ist falsch.",
+      "Bitte warte einen Moment",
+      "Anmelden oder registrieren E-Mail Weiter",
+      "Die Kapazität des Akkus",
+      "Incorrect email or password.",
+    ]) {
+      expect(RATE_LIMITED.test(text), text).toBe(false);
+    }
   });
 
   it("recognizes a captcha or a verification request", () => {

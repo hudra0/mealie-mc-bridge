@@ -353,6 +353,12 @@ describe("Docker healthcheck", () => {
     const pinned = /playwright@(\d+\.\d+\.\d+) install-deps/.exec(dockerfile)?.[1];
     expect(pinned).toBe(lock.packages["node_modules/playwright"]?.version);
   });
+
+  it("installs the full Chromium for the new headless mode, not only the headless shell", () => {
+    const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
+    expect(dockerfile).toMatch(/^RUN npx playwright install --no-shell chromium$/m);
+    expect(dockerfile).not.toContain("--only-shell");
+  });
 });
 
 describe("end to end with fake clients", () => {

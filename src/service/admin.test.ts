@@ -1122,6 +1122,31 @@ describe("settings page", () => {
     expect(body).not.toContain("A consent dialog was declined on the way.");
   });
 
+  it("says to wait after a throttled login and names the browser, in German", async () => {
+    svc = testService({
+      config: { UI_LANGUAGE: "de" },
+      browser: {
+        form: "both",
+        siteError: "Die Kapazität wurde überschritten. Bitte warte einen Moment.",
+        browser: {
+          userAgent:
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+          headless: "new",
+        },
+      },
+    });
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    await svc.session.loginNow();
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("Lidl hat die Anmeldung vorübergehend gedrosselt.");
+    expect(body).toContain("Warte mindestens eine Stunde");
+    expect(body).toContain("Browser: Chrome 141, ohne Fenster (neuer Modus)");
+    expect(body).toContain("Nächster manueller Test ab");
+    expect(svc.autoLogin.status().failures).toBe(0);
+    const again = await post("/admin/settings/login", { _csrf: SESSION_CSRF });
+    expect(again.headers.location).toBe("/admin/settings?notice=login-cooldown");
+  });
+
   it("leaves out a stored step it does not know", async () => {
     svc = testService();
     svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);

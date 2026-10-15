@@ -96,7 +96,8 @@ async function main(): Promise<void> {
   // behind and the persistent profile of 0.2.0.
   const autoLogin = new AutoLogin({
     settings: store.settings,
-    browser: new PlaywrightBrowser(),
+    // The pages see the locale of the recipes and the bridge's time zone (TZ).
+    browser: new PlaywrightBrowser({ locale: mcLocale.locale, timezoneId: process.env.TZ }),
     tempDir: join(config.DATA_DIR, "tmp"),
     legacyProfileDir: join(config.DATA_DIR, "browser-profile"),
     screenshotDir: join(config.DATA_DIR, "login-screenshots"),

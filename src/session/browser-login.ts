@@ -24,7 +24,13 @@
 // tries once more with the browser's full timeout. Between actions it pauses a few hundred
 // milliseconds, like a person. After the form is sent it watches for the session, an error
 // message on the form and a captcha or verification step, and ends the attempt with the
-// matching reason.
+// matching reason. A message that the site throttles the login ("Die Kapazität wurde
+// überschritten", "too many attempts") ends it as "rate_limited", before any other reading
+// of the message, and also when the page shows it outside the usual error elements.
+//
+// The browser adapter types the e-mail address and the password one character at a time,
+// and the flow pauses a little longer before each field than between other actions, like a
+// person who reads the page first.
 //
 // The Lidl login comes in two steps: the e-mail address and "Weiter", then the password and
 // "Weiter". The page may open asking for a phone number; the flow then clicks the control
@@ -64,6 +70,7 @@ import {
   OTHER_PROVIDER,
   PHONE_FIELD,
   PHONE_WORDS,
+  RATE_LIMITED,
   SIGN_IN_BUTTON,
   SIGN_IN_EXACT,
   SKIP_BUTTONS,
@@ -101,6 +108,8 @@ export const MAX_CLOSE_CLICKS = 4;
 export const CONSENT_WINDOW_MS = 3000;
 // The pause after each action, between these bounds, like a person.
 export const ACTION_PAUSE_MS = { min: 300, max: 700 } as const;
+// The pause before the e-mail address and the password are typed.
+export const FIELD_PAUSE_MS = { min: 600, max: 1500 } as const;
 // How long the Lidl page may take to show its e-mail field.
 export const EMAIL_WAIT_MS = 15_000;
 // Clicks on the control from the phone login to the e-mail address.
@@ -145,11 +154,47 @@ export const LOGIN_STEP_TEXT: Readonly<Record<LoginStep, string>> = {
   cookies_received: "cookies received",
 };
 
-// How far an attempt got: the steps reached, in LOGIN_STEPS order, and how many dialogs it
-// dismissed on the way.
+// The browser an attempt ran in, for the diagnostics: the user agent it sent (cut to a
+// plain line, see sanitizeUserAgent) and how it ran: in Chromium's new headless mode, in
+// the old headless shell, or in a visible window.
+export interface BrowserInfo {
+  userAgent: string | null;
+  headless: "new" | "shell" | false;
+}
+
+// How far an attempt got: the steps reached, in LOGIN_STEPS order, how many dialogs it
+// dismissed on the way, and the browser it ran in (absent in older records).
 export interface LoginProgress {
   reached: LoginStep[];
   consentDismissals: number;
+  browser?: BrowserInfo;
+}
+
+// A user agent as it may be stored and shown: printable ASCII on one line, at most 200
+// characters.
+export function sanitizeUserAgent(userAgent: string): string {
+  const line = userAgent
+    .replace(/[^\x20-\x7e]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return line.length > 200 ? line.slice(0, 200) : line;
+}
+
+// "Chrome 141" for a Chrome or Chromium user agent; null when it names neither.
+export function browserName(userAgent: string | null): string | null {
+  const match = /(?:HeadlessChrome|Chrome|Chromium)\/(\d+)/.exec(userAgent ?? "");
+  return match ? `Chrome ${match[1]}` : null;
+}
+
+// "Chrome 141, new headless" for the log and the steps of an attempt.
+export function browserLabel(info: BrowserInfo): string {
+  const mode =
+    info.headless === "new"
+      ? "new headless"
+      : info.headless === "shell"
+        ? "headless shell"
+        : "visible window";
+  return `${browserName(info.userAgent) ?? "unknown browser"}, ${mode}`;
 }
 
 // "; stuck after: e-mail entered" for the reason of a failure; empty when no step was reached.
@@ -224,6 +269,8 @@ export interface LoginContext {
   close(): Promise<void>;
   // Ends a browser that did not close in time, with its child processes.
   kill?(): void;
+  // The browser behind the page, for the diagnostics of the attempt.
+  browser?: BrowserInfo;
 }
 
 export interface LoginBrowser {
@@ -243,6 +290,8 @@ export type BrowserLoginFailure =
   | "unknown_account"
   // The site answered the form with a message that the password is wrong.
   | "wrong_password"
+  // The site throttles the login: capacity exceeded, too many attempts, try again later.
+  | "rate_limited"
   // The site asked for a captcha or a verification code.
   | "verification_required"
   // The form was sent, or the person did not log in, but no session followed: another
@@ -410,9 +459,11 @@ function isActionTimeout(error: unknown): boolean {
 export async function browserLogin(options: BrowserLoginOptions): Promise<BrowserLoginResult> {
   const reached = new Set<LoginStep>();
   let consentDismissals = 0;
+  let browserInfo: BrowserInfo | null = null;
   const progress = (): LoginProgress => ({
     reached: LOGIN_STEPS.filter((name) => reached.has(name)),
     consentDismissals,
+    ...(browserInfo ? { browser: browserInfo } : {}),
   });
   const unavailable = await options.browser.unavailable();
   if (unavailable !== null) {
@@ -482,8 +533,9 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
     };
   };
 
-  const pause = () =>
-    sleep(Math.round(ACTION_PAUSE_MS.min + random() * (ACTION_PAUSE_MS.max - ACTION_PAUSE_MS.min)));
+  const pauseWithin = (bounds: { min: number; max: number }) =>
+    sleep(Math.round(bounds.min + random() * (bounds.max - bounds.min)));
+  const pause = () => pauseWithin(ACTION_PAUSE_MS);
 
   // Declines or closes the dialogs in front of the page, a few per look. A dialog that does
   // not take the click does not end the login: the action behind it reports what is wrong.
@@ -539,7 +591,13 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
     let found: Outcome | null = null;
     if (message !== null && message !== messageBefore) {
       const quoted = `"${siteMessage(message, email)}"`;
-      if (passwordSent && WRONG_PASSWORD.test(message)) {
+      if (RATE_LIMITED.test(message)) {
+        found = {
+          code: "rate_limited",
+          detail: `the site throttles the login: ${quoted}`,
+          step: "the site throttles the login",
+        };
+      } else if (passwordSent && WRONG_PASSWORD.test(message)) {
         found = {
           code: "wrong_password",
           detail: `wrong password reported by the site: ${quoted}`,
@@ -558,6 +616,13 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
           step: "the site reported an error",
         };
       }
+    } else if (onLoginHost(page.url(), loginHosts) && RATE_LIMITED.test(await page.text())) {
+      // The message box of the Lidl page is not always one of the usual error elements.
+      found = {
+        code: "rate_limited",
+        detail: "the site throttles the login (message on the page)",
+        step: "the site throttles the login",
+      };
     } else if (await verificationShown(page)) {
       found = {
         code: "verification_required",
@@ -593,9 +658,14 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
   const emailVisible = async (page: LoginPage) =>
     (await page.isVisible(EMAIL_FIELD)) || (await page.isVisible(EMAIL_FIELD_BY_ID));
 
-  const fillEmail = async (page: LoginPage, email: string) =>
-    (await act(page, (o) => page.fillVisible(EMAIL_FIELD, email, o))) ||
-    (await act(page, (o) => page.fillVisible(EMAIL_FIELD_BY_ID, email, o)));
+  const fillEmail = async (page: LoginPage, email: string) => {
+    if (!(await emailVisible(page))) return false;
+    await pauseWithin(FIELD_PAUSE_MS);
+    return (
+      (await act(page, (o) => page.fillVisible(EMAIL_FIELD, email, o))) ||
+      (await act(page, (o) => page.fillVisible(EMAIL_FIELD_BY_ID, email, o)))
+    );
+  };
 
   // The control from the phone login to the e-mail address: a button or a link, else any
   // element that carries one of the switch phrases.
@@ -625,6 +695,7 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
           step: "the site does not know the e-mail address",
         };
       }
+      await pauseWithin(FIELD_PAUSE_MS);
       if (!(await act(page, (o) => page.fillVisible(PASSWORD_FIELD, login.password, o)))) {
         return null;
       }
@@ -719,6 +790,10 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
       profileDir: options.profileDir,
       headless: options.headless,
     });
+    if (context.browser) {
+      browserInfo = context.browser;
+      step(`browser: ${browserLabel(context.browser)}`);
+    }
     step("opening the Monsieur Cuisine login");
     await context.page.goto(ssoLoginUrl(options.editorPath, baseUrl));
 

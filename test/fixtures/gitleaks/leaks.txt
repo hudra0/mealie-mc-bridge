@@ -1,0 +1,16 @@
+SMTP_URL=smtps://bridge:Synthetic-Mail-Pass-71@mail.fixture.invalid:465
+alerts go to smtp://alerts:AnotherSynthetic99@smtp.fixture.invalid:587 every night
+Cookie: wordpress_sec_0123456789abcdef0123456789abcdef=synthuser%7C1999999999%7Csyntheticvalue
+OPENAI_API_KEY=synthetic-openai-key-0001
+ANTHROPIC_API_KEY="synthetic-anthropic-key-0002"
+MEALIE_API_TOKEN=synthetic-mealie-token-0003
+WEBHOOK_TOKEN=synthetic-webhook-token-0004-abcdefgh
+SETTINGS_KEY=c3ludGhldGljLXNldHRpbmdzLWtleS0wMDA1
+ADMIN_PASSWORD=synthetic-admin-0006
+SMTP_URL=smtps://user:password@mail.example.com:465
+OPENAI_API_KEY=
+SETTINGS_KEY=$(openssl rand -base64 32)
+WEBHOOK_TOKEN=<your token>
+MEALIE_API_TOKEN=ci-placeholder
+SETTINGS_KEY=
+WEBHOOK_TOKEN=

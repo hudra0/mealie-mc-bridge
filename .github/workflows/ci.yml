@@ -55,6 +55,16 @@ jobs:
           rm -f "$archive" checksums.txt gitleaks
       - name: Scan the whole history
         run: gitleaks detect --source . --no-banner --redact --exit-code 1
+      # The custom rules must fire on the synthetic leaks under test/fixtures/gitleaks.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Check the custom rules against the fixtures
+        env:
+          GITLEAKS_REQUIRED: "1"
+        run: npx vitest run scripts/gitleaks-rules.test.ts
 
   # Builds the image on pull requests so a broken Dockerfile shows up before the merge.
   docker:
@@ -71,15 +81,20 @@ jobs:
           load: true
           tags: mealie-mc-bridge:ci
           cache-from: type=gha
-      # Starts the image with throwaway settings: the native modules load, migrations run
-      # on the volume and /health answers.
+      # Starts the image with throwaway settings and the hardening of compose.example.yml
+      # (read-only root, tmpfs for /tmp and the home directory, no capabilities): the
+      # native modules load, migrations run on the volume and /health answers.
       - name: Check /health of the image
         run: |
           docker run -d --name bridge -p 127.0.0.1:3000:3000 \
+            --read-only --tmpfs /tmp --tmpfs /home/bridge \
+            --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 --init \
             -e WEBHOOK_TOKEN="$(openssl rand -hex 32)" \
             -e SETTINGS_KEY="$(openssl rand -base64 32)" \
             -e MEALIE_URL=http://127.0.0.1:9 \
             -e MEALIE_API_TOKEN=ci-placeholder \
+            -e ADMIN_USER=ci \
+            -e ADMIN_PASSWORD="$(openssl rand -hex 16)" \
             mealie-mc-bridge:ci
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:3000/health; then
@@ -91,16 +106,22 @@ jobs:
           docker logs bridge
           exit 1
       # The automatic login needs Chromium to start as the unprivileged bridge user, through
-      # the bridge's own adapter: its availability probe must pass, and a persistent profile
-      # must open and close.
+      # the bridge's own adapter and with the same hardening: its availability probe must
+      # pass, and a profile in the data directory must open and close.
       - name: Check the headless browser of the image
         run: |
-          docker run --rm mealie-mc-bridge:ci node --input-type=module -e "
+          docker run --rm \
+            --read-only --tmpfs /tmp --tmpfs /home/bridge \
+            --cap-drop ALL --security-opt no-new-privileges:true --pids-limit 256 \
+            mealie-mc-bridge:ci node --input-type=module -e "
             const { PlaywrightBrowser } = await import('/app/dist/session/playwright-browser.js');
+            const { mkdirSync, mkdtempSync } = await import('node:fs');
             const browser = new PlaywrightBrowser();
             const problem = await browser.unavailable();
             if (problem !== null) { console.error('browser unavailable: ' + problem); process.exit(1); }
-            const context = await browser.open({ profileDir: '/tmp/ci-profile', headless: true });
+            mkdirSync('/data/tmp', { recursive: true, mode: 0o700 });
+            const profileDir = mkdtempSync('/data/tmp/login-');
+            const context = await browser.open({ profileDir, headless: true });
             await context.page.goto('data:text/html,<title>ok</title>');
             await context.close();
             console.log('adapter ok as uid ' + process.getuid());

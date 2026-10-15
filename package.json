@@ -31,6 +31,7 @@
     "corpus:analyze-timing": "tsx scripts/corpus/analyze-timing.ts",
     "corpus:build-knowledge": "tsx scripts/corpus/build-knowledge.ts",
     "mc:smoke": "tsx --env-file-if-exists=.env scripts/mc-smoke.ts",
+    "mc:login": "tsx --env-file-if-exists=.env scripts/mc-login.ts",
     "convert": "tsx --env-file-if-exists=.env scripts/convert.ts",
     "convert:eval": "tsx --env-file-if-exists=.env scripts/convert.ts eval",
     "format:check": "tsx scripts/format.ts --check",

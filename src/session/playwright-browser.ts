@@ -79,11 +79,9 @@ export class PlaywrightBrowser implements LoginBrowser {
     if (this.#channel) return null;
     try {
       const path = chromium.executablePath();
-      return path && existsSync(path)
-        ? null
-        : "Chromium for Playwright is not installed (npx playwright install chromium)";
+      return path && existsSync(path) ? null : "Chromium for Playwright is not installed";
     } catch {
-      return "Chromium for Playwright is not installed (npx playwright install chromium)";
+      return "Chromium for Playwright is not installed";
     }
   }
 

@@ -450,6 +450,8 @@ export const en: Messages = {
         browser_unavailable: "The browser is not available.",
         no_login_form:
           "No login form showed up: the page changed, or a captcha or consent screen came first.",
+        unknown_account:
+          "The site does not know the stored e-mail address. Check the stored account.",
         wrong_password: "The site reported a wrong password. Check the stored account.",
         verification_required:
           "The site asked for a captcha or a verification code. Log in by hand once with the login helper.",
@@ -459,6 +461,8 @@ export const en: Messages = {
         error: "The browser failed.",
       },
       consentDismissed: "A consent dialog was declined on the way.",
+      termsAccepted: "The terms of use were confirmed on your behalf.",
+      deviceChosen: "MC Smart was chosen as the device.",
       screenshot: "Screenshot of the page",
       nextAttempt: "Next automatic attempt not before",
       running: "A login is running.",

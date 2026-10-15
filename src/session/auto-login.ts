@@ -23,6 +23,7 @@ import {
   type BrowserLoginOptions,
   type BrowserLoginResult,
   type LoginBrowser,
+  type LoginNotes,
 } from "./browser-login.js";
 
 export const AUTO_LOGIN_KEYS = {
@@ -57,6 +58,10 @@ export interface LoginAttempt {
   screenshot: string | null;
   // The login declined or closed a consent dialog on the way. Absent in older records.
   consentDismissed?: boolean;
+  // The login confirmed the terms of use of monsieur-cuisine.com on the person's behalf.
+  termsAccepted?: boolean;
+  // The login chose MC Smart in the device chooser of the first login.
+  deviceChosen?: boolean;
 }
 
 export type SkipReason =
@@ -104,6 +109,15 @@ export class InvalidCredentialsError extends Error {
 }
 
 const SCREENSHOT_NAME = /^[0-9TZ-]+\.png$/;
+
+// Only the notes of a result, never its cookie.
+function loginNotes(result: BrowserLoginResult): LoginNotes {
+  return {
+    ...(result.consentDismissed ? { consentDismissed: true } : {}),
+    ...(result.termsAccepted ? { termsAccepted: true } : {}),
+    ...(result.deviceChosen ? { deviceChosen: true } : {}),
+  };
+}
 
 export class AutoLogin {
   readonly #options: AutoLoginOptions;
@@ -287,7 +301,7 @@ export class AutoLogin {
     } catch (error) {
       result = { ok: false, code: "error", detail: errorMessage(error), screenshot: null };
     }
-    const consentDismissed = result.consentDismissed === true;
+    const notes = loginNotes(result);
     if (!result.ok) {
       this.#pruneScreenshots();
       return this.#finish(
@@ -298,7 +312,7 @@ export class AutoLogin {
           detail: result.detail,
           screenshot: result.screenshot === null ? null : screenshot,
         },
-        consentDismissed,
+        notes,
       );
     }
     try {
@@ -312,17 +326,17 @@ export class AutoLogin {
           detail: `the new session was not accepted: ${errorMessage(error)}`,
           screenshot: null,
         },
-        consentDismissed,
+        notes,
       );
     }
-    return this.#finish(started, options.manual, null, consentDismissed);
+    return this.#finish(started, options.manual, null, notes);
   }
 
   #finish(
     started: Date,
     manual: boolean,
     failure: { code: AutoLoginFailure; detail: string; screenshot: string | null } | null,
-    consentDismissed = false,
+    notes: LoginNotes = {},
   ): AutoLoginRun {
     const attempt: LoginAttempt = {
       at: started.toISOString(),
@@ -331,7 +345,7 @@ export class AutoLogin {
       code: failure?.code ?? null,
       detail: failure?.detail ?? null,
       screenshot: failure?.screenshot ?? null,
-      ...(consentDismissed ? { consentDismissed: true } : {}),
+      ...notes,
     };
     this.#settings.setJson(AUTO_LOGIN_KEYS.last, attempt);
     const logger = this.#options.logger;
@@ -344,7 +358,7 @@ export class AutoLogin {
     const failures = this.#failures() + (manual ? 0 : 1);
     this.#settings.set(AUTO_LOGIN_KEYS.failures, String(failures));
     logger.warn(
-      { manual, code: failure.code, detail: failure.detail, failures, consentDismissed },
+      { manual, code: failure.code, detail: failure.detail, failures, ...notes },
       "automatic Monsieur Cuisine login failed",
     );
     return { status: "failed", attempt };

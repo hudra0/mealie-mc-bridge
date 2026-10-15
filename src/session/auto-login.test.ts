@@ -121,6 +121,27 @@ describe("run", () => {
     expect(autoLogin.status().last).toMatchObject({ ok: true, consentDismissed: true });
   });
 
+  it("records confirmed terms and the chosen device, also when the cookie is refused", async () => {
+    const { autoLogin, accept } = setup({
+      script: { form: "continue", loginWorks: true, terms: true, deviceChooser: true },
+    });
+    const run = await autoLogin.run({ manual: true, accept });
+    expect(run).toMatchObject({
+      status: "ok",
+      attempt: { termsAccepted: true, deviceChosen: true },
+    });
+    expect(run.status === "skipped" ? null : run.attempt).not.toHaveProperty("consentDismissed");
+    const refused = setup({
+      script: { form: "continue", loginWorks: true, terms: true },
+    });
+    refused.accept.mockRejectedValueOnce(new Error("HTTP 401"));
+    const failed = await refused.autoLogin.run({ manual: true, accept: refused.accept });
+    expect(failed).toMatchObject({
+      status: "failed",
+      attempt: { code: "verify_failed", termsAccepted: true },
+    });
+  });
+
   it("records a wrong password the site reported", async () => {
     const { autoLogin, accept } = setup({
       script: { form: "both", siteError: "Passwort ist falsch." },

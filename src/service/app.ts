@@ -69,8 +69,10 @@ export function buildService(parts: ServiceParts): Service {
   const { config, store } = parts;
   let worker: Worker | null = null;
   const app = buildServer(parts.server ?? {}, {
-    health: () =>
-      healthReport({
+    health: () => {
+      // Throws when the database or DATA_DIR is unusable; /health then answers 503.
+      store.check();
+      return healthReport({
         session: parts.session,
         jobs: store.jobs,
         worker: worker ?? {
@@ -82,7 +84,8 @@ export function buildService(parts: ServiceParts): Service {
             lastErrorAt: null,
           }),
         },
-      }),
+      });
+    },
   });
   const logger = parts.logger ?? app.log;
 

@@ -15,7 +15,15 @@ import { loadDeviceLimits } from "./recipe/limits.js";
 import { buildService, mealieRecipeLink } from "./service/app.js";
 import { requestLogSerializers } from "./service/security.js";
 import { SessionManager } from "./session/manager.js";
-import { generateSettingsKey, openStore, parseSettingsKey } from "./store/index.js";
+import {
+  checkDataDir,
+  generateSettingsKey,
+  openStore,
+  parseSettingsKey,
+  processIds,
+  storeStartupMessage,
+  type Store,
+} from "./store/index.js";
 
 // A stuck job or converter must not keep the container from stopping.
 const SHUTDOWN_TIMEOUT_MS = 40_000;
@@ -39,8 +47,23 @@ async function main(): Promise<void> {
   const base = loggerOptions(config.LOG_LEVEL);
   const logger = pino({ ...base, serializers: { ...base.serializers, ...requestLogSerializers } });
 
-  const store = openStore({ dataDir: config.DATA_DIR, key: parseSettingsKey(config.SETTINGS_KEY) });
-  const recovered = store.jobs.recoverInterrupted();
+  const settingsKey = parseSettingsKey(config.SETTINGS_KEY);
+  let store: Store;
+  let recovered: number;
+  try {
+    checkDataDir(config.DATA_DIR);
+    store = openStore({ dataDir: config.DATA_DIR, key: settingsKey });
+    // The first write: it fails here, not in the first job, on a read-only database.
+    recovered = store.jobs.recoverInterrupted();
+  } catch (error) {
+    // One line that says what to do, then a non-zero exit so the orchestrator shows it.
+    logger.fatal(
+      { dataDir: config.DATA_DIR, ...processIds() },
+      storeStartupMessage(error, config.DATA_DIR),
+    );
+    process.exitCode = 1;
+    return;
+  }
   if (recovered > 0) {
     logger.warn({ recovered }, "jobs interrupted by the last stop are queued again");
   }

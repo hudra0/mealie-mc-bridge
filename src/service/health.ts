@@ -1,6 +1,7 @@
 // The /health report. The HTTP status stays 200 while the process works, so a container
 // orchestrator does not restart the bridge over an expired session, which a restart cannot
-// fix; "status" says "degraded" instead.
+// fix; "status" says "degraded" instead. A store that cannot serve requests (database
+// closed, DATA_DIR not writable) answers 503, so the container healthcheck fails.
 //
 // /health needs no login, so it carries no free text: the last worker error shows only
 // when it happened. Its message is on the admin dashboard.

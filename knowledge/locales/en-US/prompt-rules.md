@@ -6,6 +6,7 @@ Rules for the English text of the recipe, written from the en-US corpus of offic
 - Text steps are full sentences in the imperative: "Put 200 g water into the blender jug.", "Season to taste with salt and pepper."
 - Count eggs, garlic cloves, herb sprigs and bay leaves without a unit: the amount field holds the count and the unit stays empty, with the item in the name ("garlic cloves", "parsley sprigs", "eggs (medium)").
 - Write units as the Units section spells them: g, tsp, tbsp, pinch or pinches, big pinch or big pinches. Never write cups, ounces or pounds; convert them to g.
+- Text step titles are short imperatives: "Prepare the onion" over the description "Peel the onion, halve it and put it into the blender jug.", "Season" over "Season to taste with salt and pepper.".
 
 ## Ingredient names
 

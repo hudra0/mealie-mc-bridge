@@ -5,6 +5,7 @@
 import type { AdminMessages, SavedStatus } from "../i18n/index.js";
 import type { ScaledIngredient } from "../ingredients/index.js";
 import type { CheckedRecipe, CategoryPlan, PreparedRecipe } from "../pipeline/prepare.js";
+import { formatServingSize } from "../pipeline/serving-size.js";
 import type { ConversionResult } from "../pipeline/converter-port.js";
 import type { WorkerStatus } from "../pipeline/worker.js";
 import type { RecipeStep } from "../recipe/schema.js";
@@ -69,6 +70,19 @@ export function formatTime(
   return `${time} ${zoneAbbreviation(date, timeZone)}`.trim();
 }
 
+// "3 minutes ago" in the language of the pages, from seconds up to days.
+export function relativeTime(iso: string, now: Date, language: string): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return iso;
+  const seconds = Math.round((then - now.getTime()) / 1000);
+  const format = new Intl.RelativeTimeFormat(language, { numeric: "auto" });
+  const abs = Math.abs(seconds);
+  if (abs < 60) return format.format(seconds, "second");
+  if (abs < 3600) return format.format(Math.round(seconds / 60), "minute");
+  if (abs < 86_400) return format.format(Math.round(seconds / 3600), "hour");
+  return format.format(Math.round(seconds / 86_400), "day");
+}
+
 // Catalog text with `code` spans, escaped, the spans as <code>.
 export function withCode(text: string): SafeHtml {
   return new SafeHtml(escapeHtml(text).replace(/`([^`]+)`/g, "<code>$1</code>"));
@@ -88,7 +102,7 @@ export function statusBadge(status: JobStatus, t: AdminMessages): SafeHtml {
   return html`<span class="badge ${STATUS_CLASS[status]}">${t.jobStatus[status]}</span>`;
 }
 
-const SESSION_CLASS: Readonly<Record<SessionStatus["state"], string>> = {
+export const SESSION_CLASS: Readonly<Record<SessionStatus["state"], string>> = {
   valid: "ok",
   invalid: "bad",
   expired: "bad",
@@ -99,7 +113,7 @@ function sessionBadge(state: SessionStatus["state"], t: AdminMessages): SafeHtml
   return html`<span class="badge ${SESSION_CLASS[state]}">${t.sessionState[state]}</span>`;
 }
 
-function csrfField(token: string): SafeHtml {
+export function csrfField(token: string): SafeHtml {
   return html`<input type="hidden" name="_csrf" value="${token}" />`;
 }
 
@@ -260,7 +274,7 @@ export function dashboardView(data: DashboardData, t: AdminMessages): SafeHtml {
     </section>
     <section>
       <h2>${d.dryRun}</h2>
-      ${dryRunForm("", 1, t)}
+      ${dryRunForm({ recipe: "", scale: 1, formToken: data.formToken }, t)}
     </section>`;
 }
 
@@ -271,6 +285,8 @@ export interface JobListData {
   search: string;
   offset: number;
   limit: number;
+  // Whether the page reloads on its own (a listed job is queued or running).
+  refreshing?: boolean;
 }
 
 export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
@@ -305,6 +321,7 @@ export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
       </form>
     </section>
     <section>
+      ${data.refreshing ? html`<p class="muted">${t.autoRefresh}</p>` : ""}
       ${jobsTable(data.jobs, t, data.recipeStatus)}
       <p>
         ${
@@ -322,6 +339,10 @@ export function jobListView(data: JobListData, t: AdminMessages): SafeHtml {
 }
 
 export interface JobDetailData {
+  // For the relative times of the events.
+  now: Date;
+  // Whether the page reloads on its own (the job is queued or running).
+  refreshing?: boolean;
   recipeStatus: SavedStatus;
   job: Job;
   events: JobEvent[];
@@ -371,7 +392,9 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
           }
         </dd>
         <dt>${l.scale}</dt>
-        <dd>${job.scale}${job.servings === null ? "" : l.servings(job.servings)}</dd>
+        <dd>
+          ${job.scale}${job.servings === null ? "" : l.servingSize(job.servings, job.servingUnit)}
+        </dd>
         <dt>${l.attempts}</dt>
         <dd>${job.attempts}${job.force ? l.forced : ""}</dd>
         <dt>${l.created}</dt>
@@ -427,32 +450,54 @@ export function jobDetailView(data: JobDetailData, t: AdminMessages): SafeHtml {
     ${conversionNotes(job, t)}
     <section>
       <h2>${l.events}</h2>
-      <div class="scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>${l.time}</th>
-              <th>${l.level}</th>
-              <th>${l.message}</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.events.map(
-              (event) =>
-                html`<tr>
-                  <td>${formatTime(event.ts)}</td>
-                  <td
-                    class="${event.level === "error" ? "bad" : event.level === "warn" ? "warn" : "muted"}"
-                  >
-                    ${event.level}
-                  </td>
-                  <td>${event.message}</td>
-                </tr>`,
-            )}
-          </tbody>
-        </table>
-      </div>
+      ${data.refreshing ? html`<p class="muted">${t.autoRefresh}</p>` : ""}
+      <ol class="timeline">
+        ${data.events.map(
+          (event) =>
+            html`<li>
+              <span>
+                <time datetime="${event.ts}">${relativeTime(event.ts, data.now, t.htmlLang)}</time>
+                <span class="abs muted">${formatTime(event.ts)}</span>
+              </span>
+              <span
+                class="${event.level === "error" ? "bad" : event.level === "warn" ? "warn" : "muted"}"
+                >${event.level}</span
+              >
+              <span>${event.message}</span>
+            </li>`,
+        )}
+      </ol>
     </section>`;
+}
+
+export function loginView(
+  data: { formToken: string; next: string; user: string },
+  t: AdminMessages,
+): SafeHtml {
+  const l = t.login;
+  return html`<section class="login">
+    <h1>${l.title}</h1>
+    <p class="muted">${l.intro}</p>
+    <form class="fields" method="post" action="/admin/login">
+      ${csrfField(data.formToken)}
+      <input type="hidden" name="next" value="${data.next}" />
+      <label
+        >${l.user}
+        <input
+          type="text"
+          name="user"
+          value="${data.user}"
+          autocomplete="username"
+          autocapitalize="none"
+          required
+      /></label>
+      <label
+        >${l.password}
+        <input type="password" name="password" autocomplete="current-password" required
+      /></label>
+      <button type="submit">${l.submit}</button>
+    </form>
+  </section>`;
 }
 
 // The review hints and converter warnings of the conversion stored on the job.
@@ -509,7 +554,13 @@ function ingredientStats(job: Job, t: AdminMessages): string {
   );
 }
 
-export function dryRunForm(recipe: string, scale: number, t: AdminMessages): SafeHtml {
+// The dry-run form. The form token goes along so "convert right away" works in one step;
+// the URL redaction keeps it out of the request log.
+export function dryRunForm(
+  values: { recipe: string; scale: number; formToken: string },
+  t: AdminMessages,
+): SafeHtml {
+  const { recipe, scale } = values;
   const l = t.dryRun;
   return html`<form method="get" action="/admin/dry-run">
     <label
@@ -524,6 +575,8 @@ export function dryRunForm(recipe: string, scale: number, t: AdminMessages): Saf
     <label
       >${l.scale} <input type="number" name="scale" value="${scale}" min="0.1" max="100" step="any"
     /></label>
+    <label><input type="checkbox" name="convert" value="1" /> ${l.alsoConvert}</label>
+    ${csrfField(values.formToken)}
     <button type="submit">${l.preview}</button>
   </form>`;
 }
@@ -549,7 +602,9 @@ export function dryRunView(data: DryRunData, t: AdminMessages): SafeHtml {
   const l = t.dryRun;
   const body: SafeHtml[] = [
     html`<h1>${t.titles.dryRun}</h1>
-      <section>${dryRunForm(data.recipeParam, data.scale, t)}</section>`,
+      <section>
+        ${dryRunForm({ recipe: data.recipeParam, scale: data.scale, formToken: data.formToken }, t)}
+      </section>`,
   ];
   if (data.loadError) body.push(html`<section><p class="bad">${data.loadError}</p></section>`);
   const prepared = data.prepared;
@@ -559,7 +614,14 @@ export function dryRunView(data: DryRunData, t: AdminMessages): SafeHtml {
         <h2>${data.title ?? ""}</h2>
         <dl>
           <dt>${l.servings}</dt>
-          <dd>${prepared.servings}</dd>
+          <dd>
+            ${formatServingSize(prepared.servingSize)}
+            ${
+              prepared.servingSize.source === "estimate"
+                ? html`<span class="muted">(${l.servingsEstimated})</span>`
+                : ""
+            }
+          </dd>
           <dt>${l.sourceHash}</dt>
           <dd><code>${prepared.hash.slice(0, 16)}</code></dd>
           <dt>${l.alreadySent}</dt>

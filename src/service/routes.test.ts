@@ -1,4 +1,7 @@
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { Writable } from "node:stream";
 import { pino } from "pino";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -233,6 +236,57 @@ describe("GET /health", () => {
     const response = await svc.app.inject({ method: "GET", url: "/health" });
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({ status: "error", version });
+  });
+
+  it("answers 503 when the data directory is no longer writable", async () => {
+    svc = testService();
+    svc.store.check = () => {
+      throw Object.assign(new Error("EACCES: permission denied, access '/data'"), {
+        code: "EACCES",
+      });
+    };
+    const response = await svc.app.inject({ method: "GET", url: "/health" });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ status: "error", version });
+  });
+});
+
+describe("Docker healthcheck", () => {
+  // The command of the Dockerfile's HEALTHCHECK, run against a server answering `status`.
+  async function healthcheckExit(status: number): Promise<number | null> {
+    const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
+    const command = /HEALTHCHECK[^\n]*\\\n\s*CMD (\[.*\])/.exec(dockerfile)?.[1];
+    expect(command).toBeDefined();
+    const [node, flag, script] = JSON.parse(command ?? "[]") as string[];
+    expect([node, flag]).toEqual(["node", "-e"]);
+    const server = createServer((_request, response) => {
+      response.writeHead(status, { "content-type": "application/json" }).end("{}");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      const child = spawn(process.execPath, ["-e", script ?? ""], {
+        env: { ...process.env, PORT: String(port) },
+        stdio: "ignore",
+      });
+      return await new Promise((resolve) => child.on("exit", resolve));
+    } finally {
+      server.close();
+    }
+  }
+
+  it("passes on 200 and fails on 503", async () => {
+    expect(await healthcheckExit(200)).toBe(0);
+    expect(await healthcheckExit(503)).toBe(1);
+  });
+
+  it("installs the browser libraries of the Playwright version the lock file pins", () => {
+    const dockerfile = readFileSync(new URL("../../Dockerfile", import.meta.url), "utf8");
+    const lock = JSON.parse(
+      readFileSync(new URL("../../package-lock.json", import.meta.url), "utf8"),
+    ) as { packages: Record<string, { version?: string }> };
+    const pinned = /playwright@(\d+\.\d+\.\d+) install-deps/.exec(dockerfile)?.[1];
+    expect(pinned).toBe(lock.packages["node_modules/playwright"]?.version);
   });
 });
 

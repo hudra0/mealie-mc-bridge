@@ -95,10 +95,8 @@ describe("createConverter", () => {
     const { log, info, warn } = logger();
     const result = await converter(generator, { logger: log }).convert(request);
     expect(result.recipe.title).toBe("Kürbis-Linsen-Suppe");
-    // Text step titles come from the description, cut at the title length.
-    expect(result.recipe.servingSize.steps[0]?.title).toBe(
-      "Zwiebel schälen und halbieren, Knoblauch schälen und beides in den Mixbehälter",
-    );
+    // The model's short text step titles stay.
+    expect(result.recipe.servingSize.steps[0]?.title).toBe("Zwiebel und Knoblauch schälen");
     expect(result.attempts).toBe(1);
     expect(result.provider).toBe("fake");
     expect(result.model).toBe("gpt-5.5");
@@ -112,6 +110,80 @@ describe("createConverter", () => {
     expect(calls[0]?.feedback).toBeUndefined();
     expect(info).toHaveBeenCalledTimes(1);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("sets the serving unit the source states, but not over an estimate", async () => {
+    const yieldRequest = { ...request, servingUnit: "Scheiben", servingsSource: "yield" as const };
+    const known = await converter(fakeGenerator([soup]).generator).convert(yieldRequest);
+    expect(known.recipe.servingSize.unit).toBe("Scheiben");
+    const estimated = await converter(fakeGenerator([soup]).generator).convert({
+      ...yieldRequest,
+      servingsSource: "estimate",
+    });
+    expect(estimated.recipe.servingSize.unit).toBe("Portionen");
+  });
+
+  it("asks once for a short title when a text step title copies its description", async () => {
+    const copied = soupWith((_, step) => {
+      step(0).title = "Zwiebel schälen und halbieren, Knoblauch schälen";
+    });
+    const { generator, calls } = fakeGenerator([copied, soup]);
+    const result = await converter(generator).convert(request);
+    expect(result.attempts).toBe(2);
+    expect(calls[1]?.feedback?.errors).toEqual([
+      {
+        path: "servingSize.steps[0].title",
+        message: expect.stringContaining("repeats the start of the description") as string,
+      },
+    ]);
+    expect(result.recipe.servingSize.steps[0]?.title).toBe("Zwiebel und Knoblauch schälen");
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("keeps the answer with only a copied title when the title round breaks the recipe", async () => {
+    const copied = soupWith((_, step) => {
+      step(0).title = "Zwiebel schälen und halbieren, Knoblauch schälen";
+    });
+    const broken = soupWith((_, step) => {
+      step(4).speed = 5;
+    });
+    const { generator, calls } = fakeGenerator([copied, broken]);
+    const result = await converter(generator, { maxCorrections: 1 }).convert(request);
+    expect(calls).toHaveLength(2);
+    expect(result.attempts).toBe(2);
+    expect(result.recipe.servingSize.steps[0]?.title).toBe(
+      "Zwiebel schälen und halbieren, Knoblauch schälen",
+    );
+    expect(result.warnings).toEqual([expect.stringMatching(/^The title repeats /) as string]);
+  });
+
+  it("never reports a nudge as an error of a failed conversion", async () => {
+    const both = soupWith((_, step) => {
+      step(0).title = "Zwiebel schälen und halbieren, Knoblauch schälen";
+      step(4).speed = 5;
+    });
+    const { generator, calls } = fakeGenerator([both, both]);
+    const failure = await converter(generator, { maxCorrections: 1 })
+      .convert(request)
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ConversionFailedError);
+    const errors = (failure as ConversionFailedError).errors;
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((issue) => issue.path.endsWith(".title"))).toBe(false);
+    // The model still heard about the title once.
+    expect(calls[1]?.feedback?.errors.some((issue) => issue.path.endsWith(".title"))).toBe(true);
+  });
+
+  it("accepts a copied title after one round and reports it as a warning", async () => {
+    const copied = soupWith((_, step) => {
+      step(0).title = "Zwiebel schälen und halbieren, Knoblauch schälen";
+    });
+    const { generator } = fakeGenerator([copied, copied]);
+    const result = await converter(generator).convert(request);
+    expect(result.attempts).toBe(2);
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/^The title repeats .*\(servingSize\.steps\[0\]\.title\)$/) as string,
+    ]);
   });
 
   it("feeds the errors back and accepts the corrected recipe", async () => {

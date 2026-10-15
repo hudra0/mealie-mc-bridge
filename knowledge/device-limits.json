@@ -97,6 +97,13 @@
       "sources": ["editor", "SmartRecipe"]
     },
     {
+      "id": "text_step_title",
+      "rule": "a text step title is a short imperative summary of at most this many characters, not the start of its description; titles of more than three words that start the description, and longer titles, get one correction round",
+      "value": 60,
+      "severity": "nudge",
+      "sources": ["bridge style choice"]
+    },
+    {
       "id": "mass_limits",
       "rule": "bowl, flour, steaming-water and basket limits live in timing-model.json under massLimits"
     }

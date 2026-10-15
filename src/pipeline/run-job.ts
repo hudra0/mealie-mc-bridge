@@ -44,6 +44,7 @@ import type { McRecipeStore, SentRecipe } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
 import type { ConversionResult, Converter } from "./converter-port.js";
 import { describeResolution, type IngredientResolverPort } from "./ingredient-resolver.js";
+import { formatServingSize } from "./serving-size.js";
 import type { PipelineLocale } from "./locale.js";
 import {
   timelineTexts,
@@ -201,11 +202,15 @@ class JobRun {
         excludeTags: [deps.config.TAG_NAME],
       }),
     );
-    this.#jobs.update(job.id, { servings: prepared.servings });
+    this.#jobs.update(job.id, {
+      servings: prepared.servings,
+      servingUnit: prepared.servingSize.unit,
+    });
     const unparsed = prepared.normalized.filter((item) => item.source === "unparsed").length;
+    const estimated = prepared.servingSize.source === "estimate";
     this.#event(
       "info",
-      `Prepared ${prepared.normalized.length} ingredients (${unparsed} unparsed) for ${prepared.servings} servings at scale ${job.scale}; source hash ${prepared.hash.slice(0, 12)}`,
+      `Prepared ${prepared.normalized.length} ingredients (${unparsed} unparsed) for ${formatServingSize(prepared.servingSize)}${estimated ? " (not stated in the recipe; the converter may estimate)" : ""} at scale ${job.scale}; source hash ${prepared.hash.slice(0, 12)}`,
     );
 
     // The skip check comes before the image download, so a repeated click costs one
@@ -292,10 +297,13 @@ class JobRun {
         false,
       );
     }
-    if (checked.recipe.servingSize.amount !== prepared.servings) {
+    const converted = formatServingSize(checked.recipe.servingSize);
+    if (estimated) {
+      this.#event("info", `The converter estimated the serving size: ${converted}`);
+    } else if (checked.recipe.servingSize.amount !== prepared.servings) {
       this.#event(
         "warn",
-        `The converter set ${checked.recipe.servingSize.amount} servings instead of ${prepared.servings}`,
+        `The converter set ${converted} instead of ${formatServingSize(prepared.servingSize)}`,
       );
     }
     this.#event("info", "Validation passed");
@@ -328,12 +336,14 @@ class JobRun {
       mcRecipeId: ref.id,
       mcRecipeUrl: ref.editorUrl,
     });
-    // The servings the draft carries, which may differ from the requested ones.
+    // The serving size the draft carries, which may differ from the requested one.
     const servings = checked.recipe.servingSize.amount;
+    const servingUnit = checked.recipe.servingSize.unit;
     this.#jobs.update(job.id, {
       mcRecipeId: ref.id,
       mcRecipeUrl: ref.editorUrl,
       servings,
+      servingUnit,
       error: null,
     });
     this.#event("info", `Created draft ${ref.id}: ${ref.editorUrl}`);
@@ -341,12 +351,13 @@ class JobRun {
 
     // The draft exists. Nothing below fails the job.
     const statusFailed = await this.#setStatus(ref.id);
-    await this.#writeBack(recipe, ref.id, ref.editorUrl, servings, prepared.hash);
+    await this.#writeBack(recipe, ref.id, ref.editorUrl, { servings, servingUnit }, prepared.hash);
     await this.#timeline(
       this.#texts.createdSubject(statusFailed ? "draft" : deps.config.MC_RECIPE_STATUS),
       this.#texts.created({
         url: ref.editorUrl,
         servings,
+        servingUnit,
         status: deps.config.MC_RECIPE_STATUS,
         statusFailed,
         provider: result.provider,
@@ -547,7 +558,7 @@ class JobRun {
     recipe: MealieRecipe,
     mcRecipeId: number,
     url: string,
-    servings: number,
+    size: { servings: number; servingUnit: string },
     hash: string,
   ): Promise<void> {
     const deps = this.#deps;
@@ -565,7 +576,8 @@ class JobRun {
           mc_recipe_url: url,
           mc_source_hash: hash,
           mc_synced_at: now.toISOString(),
-          mc_servings: String(servings),
+          mc_servings: String(size.servings),
+          mc_serving_unit: size.servingUnit,
         },
         ...(tag ? { addTags: [tag] } : {}),
       });

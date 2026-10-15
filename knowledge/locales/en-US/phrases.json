@@ -36,6 +36,12 @@
   },
   "stepTitleRules": {
     "workingStepTitles": ["Chop", "Sauté", "Simmer", "Purée"],
+    "textStepTitles": [
+      "Prepare the onion",
+      "Peel the potatoes",
+      "Insert the measuring beaker",
+      "Season"
+    ],
     "turboTitle": "Hold down the turbo button for 2 seconds.",
     "scaleTitle": "<n> g <ingredient>",
     "scaleDescription": "Put <n> g <ingredient> into the blender jug.",

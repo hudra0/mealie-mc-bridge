@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { loadDeviceLimits } from "../recipe/limits.js";
 import { STEP_KINDS } from "../recipe/schema.js";
 import { testKnowledge } from "../testing/locale.js";
-import { loadKnowledge, selectTechniques, techniqueById } from "./knowledge.js";
+import { loadKnowledge, ruleValue, selectTechniques, techniqueById } from "./knowledge.js";
 import {
   SYSTEM_SECTIONS,
   MIN_FORMULA_R2,
@@ -19,6 +19,7 @@ import {
   hasIngredientIndices,
   ingredientIndexLines,
   promptText,
+  servingsLines,
   stepFields,
   techniqueDetail,
   usableModes,
@@ -173,6 +174,10 @@ describe("prompts per locale", () => {
     expect(languageSections(englishSystem)).toMatchSnapshot();
     expect(englishSystem).not.toMatch(/Mixbehälter|Messbecher|Rühraufsatz|German/);
     expect(englishSystem).toContain('locale is "en-US"');
+    // The title length comes from the text_step_title rule of the knowledge base.
+    expect(englishSystem).toContain(
+      `A text step title is a short imperative of at most ${ruleValue(knowledge, "text_step_title")} characters`,
+    );
   });
 
   it("keeps the en-US user message", () => {
@@ -267,9 +272,33 @@ describe("buildUserMessage", () => {
     expect(user).toContain("- 228: Suppen & Eintöpfe");
     const ids = [...user.matchAll(/^- (\d+): /gm)].map((match) => Number(match[1]));
     expect(ids).toEqual([...ids].sort((a, b) => a - b));
-    expect(user).toContain("scaled to 4 servings. Set servingSize.amount to 4.");
+    expect(user).toContain(
+      "The serving size is 4 servings; the amounts below are scaled to it. Set servingSize.amount to 4.",
+    );
     expect(user).toContain("# Mealie categories\n\nSuppe\n");
     expect(user.trimEnd().endsWith(request.rendered.trim())).toBe(true);
+  });
+
+  it("states the serving size with its unit", () => {
+    const user = buildUserMessage(
+      { ...request, servings: 10, servingUnit: "Scheiben", servingsSource: "yield" },
+      categories,
+    );
+    expect(user).toContain(
+      'The serving size is 10 Scheiben; the amounts below are scaled to it. Set servingSize.amount to 10 and servingSize.unit to "Scheiben".',
+    );
+  });
+
+  it("asks for an estimate flagged in a review hint when the recipe states no serving size", () => {
+    const lines = servingsLines({
+      servings: 4,
+      servingUnit: "Portionen",
+      servingsSource: "estimate",
+    });
+    expect(lines.join("\n")).toContain("states neither servings nor a yield");
+    expect(lines.join("\n")).toContain("keep 4 Portionen when nothing points elsewhere");
+    expect(lines.join("\n")).toContain("add a review hint that says the serving size is estimated");
+    expect(lines.join("\n")).not.toContain("Set servingSize.amount to");
   });
 
   it("refuses to ask for category ids without a list", () => {

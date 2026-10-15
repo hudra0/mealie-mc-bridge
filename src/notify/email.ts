@@ -10,8 +10,16 @@ import { messages, type Messages, type UiLanguage } from "../i18n/index.js";
 import type { SessionStatus } from "../session/manager.js";
 import type { Job } from "../store/jobs.js";
 
+// autoLoginFailed: why the automatic login with the stored Lidl account did not work; the
+// mail then says that a manual login is needed.
+// autoLoginNextAttempt: the automatic login has to wait until this time (ISO).
+export interface SessionMailDetails {
+  autoLoginFailed?: string;
+  autoLoginNextAttempt?: string;
+}
+
 export interface Notifier {
-  sessionExpired(status: SessionStatus): Promise<void>;
+  sessionExpired(status: SessionStatus, details?: SessionMailDetails): Promise<void>;
   jobFailed(job: Job, error: string): Promise<void>;
   healthFailed(error: string): Promise<void>;
 }
@@ -75,8 +83,10 @@ export class EmailNotifier implements Notifier {
   }
 
   // One mail per state change: the same state for the same cookie is reported once.
-  async sessionExpired(status: SessionStatus): Promise<void> {
-    const key = `${status.state}:${status.cookieSetAt ?? "none"}`;
+  async sessionExpired(status: SessionStatus, details: SessionMailDetails = {}): Promise<void> {
+    const manual = details.autoLoginFailed !== undefined;
+    const waiting = details.autoLoginNextAttempt !== undefined;
+    const key = `${status.state}:${status.cookieSetAt ?? "none"}${manual ? ":manual" : waiting ? ":waiting" : ""}`;
     if (key === this.#lastSessionKey) return;
     this.#lastSessionKey = key;
     this.#lastHealthError = null;
@@ -84,6 +94,12 @@ export class EmailNotifier implements Notifier {
     const text = status.state === "expired" ? t.session.expired : t.session.invalid;
     const lines = [
       text.lead,
+      ...(details.autoLoginFailed === undefined
+        ? []
+        : ["", t.autoLoginFailed(errorMessage(details.autoLoginFailed))]),
+      ...(details.autoLoginNextAttempt === undefined
+        ? []
+        : ["", t.autoLoginWaiting(this.#date(details.autoLoginNextAttempt))]),
       "",
       t.sessionWaiting,
       "",

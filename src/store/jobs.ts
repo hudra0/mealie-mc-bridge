@@ -55,6 +55,8 @@ export interface Job {
   title: string | null;
   scale: number;
   servings: number | null;
+  // The unit of the serving size ("Portionen", "Scheiben"); null on jobs from before it was stored.
+  servingUnit: string | null;
   status: JobStatus;
   attempts: number;
   error: string | null;
@@ -104,6 +106,7 @@ export interface JobPatch {
   mealieSlug?: string | null;
   title?: string | null;
   servings?: number | null;
+  servingUnit?: string | null;
   attempts?: number;
   error?: string | null;
   mcRecipeId?: number | null;
@@ -149,6 +152,7 @@ interface JobRow {
   title: string | null;
   scale: number;
   servings: number | null;
+  serving_unit: string | null;
   status: JobStatus;
   attempts: number;
   error: string | null;
@@ -181,6 +185,7 @@ const COLUMNS: Readonly<Record<keyof JobPatch, string>> = {
   mealieSlug: "mealie_slug",
   title: "title",
   servings: "servings",
+  servingUnit: "serving_unit",
   attempts: "attempts",
   error: "error",
   mcRecipeId: "mc_recipe_id",
@@ -511,6 +516,7 @@ function toJob(row: JobRow): Job {
     title: row.title,
     scale: row.scale,
     servings: row.servings,
+    servingUnit: row.serving_unit,
     status: row.status,
     attempts: row.attempts,
     error: row.error,

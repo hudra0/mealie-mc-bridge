@@ -24,8 +24,9 @@ describe("migration v3", () => {
       `INSERT INTO jobs (id, mealie_recipe_id, status, created_at, updated_at)
        VALUES ('job-1', ?, 'done', '2026-10-13T10:00:00.000Z', '2026-10-13T10:00:00.000Z')`,
     ).run(RECIPE);
-    expect(migrate(db)).toEqual({ from: 2, to: 3, applied: [3] });
-    expect(migrate(db)).toEqual({ from: 3, to: 3, applied: [] });
+    const upToV3 = MIGRATIONS.filter((migration) => migration.version <= 3);
+    expect(migrate(db, upToV3)).toEqual({ from: 2, to: 3, applied: [3] });
+    expect(migrate(db, upToV3)).toEqual({ from: 3, to: 3, applied: [] });
     const columns = db
       .prepare<[], { name: string }>("PRAGMA table_info(jobs)")
       .all()
@@ -48,7 +49,7 @@ describe("migration v3", () => {
     store.ingredientCache.put("testzutat a", 9001, "search");
     store.close();
     const reopened = openDatabase(store.path);
-    expect(schemaVersion(reopened)).toBe(3);
+    expect(schemaVersion(reopened)).toBeGreaterThanOrEqual(3);
     expect(reopened.prepare("SELECT COUNT(*) AS n FROM ingredient_cache").get()).toEqual({ n: 1 });
     reopened.close();
   });

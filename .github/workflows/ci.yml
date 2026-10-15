@@ -90,6 +90,22 @@ jobs:
           done
           docker logs bridge
           exit 1
+      # The automatic login needs Chromium to start as the unprivileged bridge user, through
+      # the bridge's own adapter: its availability probe must pass, and a persistent profile
+      # must open and close.
+      - name: Check the headless browser of the image
+        run: |
+          docker run --rm mealie-mc-bridge:ci node --input-type=module -e "
+            const { PlaywrightBrowser } = await import('/app/dist/session/playwright-browser.js');
+            const browser = new PlaywrightBrowser();
+            const problem = await browser.unavailable();
+            if (problem !== null) { console.error('browser unavailable: ' + problem); process.exit(1); }
+            const context = await browser.open({ profileDir: '/tmp/ci-profile', headless: true });
+            await context.page.goto('data:text/html,<title>ok</title>');
+            await context.close();
+            console.log('adapter ok as uid ' + process.getuid());
+          "
+          docker image ls mealie-mc-bridge:ci
 
   # Publishes only after format, lint, typecheck, tests, build and the secret scan passed.
   publish:

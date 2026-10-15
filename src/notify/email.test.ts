@@ -30,6 +30,7 @@ const job = (overrides: Partial<Job> = {}): Job => ({
   title: "Kürbis-Linsen-Suppe",
   scale: 1,
   servings: 4,
+  servingUnit: "Portionen",
   status: "failed",
   attempts: 2,
   error: "boom",
@@ -89,6 +90,35 @@ describe("EmailNotifier", () => {
     // A new cookie that expires again is a new state change.
     await n.sessionExpired(status({ cookieSetAt: "2026-10-14T10:00:00.000Z" }));
     expect(transport.sent).toHaveLength(3);
+  });
+
+  it("says when the automatic login failed and a manual login is needed", async () => {
+    const transport = stub();
+    const n = notifier(transport);
+    await n.sessionExpired(status());
+    await n.sessionExpired(status(), { autoLoginFailed: "no login form showed up" });
+    await n.sessionExpired(status(), { autoLoginFailed: "again" });
+    expect(transport.sent).toHaveLength(2);
+    const text = transport.sent[1]?.text ?? "";
+    expect(text).toContain(
+      "Die automatische Anmeldung mit dem hinterlegten Lidl-Konto hat nicht geklappt (no login form showed up)",
+    );
+    expect(text).toContain("npm run mc:login");
+    expect(text).toContain("/admin/settings");
+  });
+
+  it("says when the automatic login tries again, once", async () => {
+    const transport = stub();
+    const n = notifier(transport);
+    await n.sessionExpired(status(), { autoLoginNextAttempt: "2026-10-13T12:00:00.000Z" });
+    await n.sessionExpired(status(), { autoLoginNextAttempt: "2026-10-13T13:00:00.000Z" });
+    expect(transport.sent).toHaveLength(1);
+    expect(transport.sent[0]?.text).toContain(
+      "Die automatische Anmeldung mit dem hinterlegten Lidl-Konto versucht es ab",
+    );
+    // A failed attempt later is news and gets its own mail.
+    await n.sessionExpired(status(), { autoLoginFailed: "no login form showed up" });
+    expect(transport.sent).toHaveLength(2);
   });
 
   it("says when the session was never checked", async () => {
@@ -223,7 +253,7 @@ describe("createNotifier", () => {
     await n.healthFailed("site down");
     const [expired, invalid, failed, health] = transport.sent;
     expect(expired?.subject).toBe("Monsieur Cuisine bridge: Session expired");
-    expect(expired?.text).toContain("What to do:");
+    expect(expired?.text).toContain("What to do, one of three ways:");
     expect(expired?.text).toContain("Last checked: ");
     expect(invalid?.subject).toBe("Monsieur Cuisine bridge: Session invalid");
     expect(invalid?.text).toContain("Last checked: never");

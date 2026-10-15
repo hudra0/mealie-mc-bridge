@@ -36,6 +36,12 @@
   },
   "stepTitleRules": {
     "workingStepTitles": ["Zerkleinern", "Andünsten", "Köcheln", "Pürieren"],
+    "textStepTitles": [
+      "Zwiebel vorbereiten",
+      "Kartoffeln schälen",
+      "Messbecher einsetzen",
+      "Abschmecken"
+    ],
     "turboTitle": "Turbo-Taste für 2 Sekunden",
     "scaleTitle": "<n> g <Zutat>",
     "scaleDescription": "<n> g <Zutat> in den Mixbehälter geben.",

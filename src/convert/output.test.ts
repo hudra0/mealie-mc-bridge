@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { deriveTextStepTitles, extractJson, parseJsonOutput, textStepTitle } from "./output.js";
+import {
+  deriveTextStepTitles,
+  extractJson,
+  parseJsonOutput,
+  setServingUnit,
+  textStepTitle,
+} from "./output.js";
 
 describe("extractJson", () => {
   it("takes plain JSON, fenced JSON and JSON inside a sentence", () => {
@@ -22,11 +28,13 @@ describe("text step titles", () => {
     expect(textStepTitle("x".repeat(100), 80)).toBe("x".repeat(80));
   });
 
-  it("sets the title of every text step of a parsed answer and leaves the rest", () => {
+  it("fills empty text step titles from the description and keeps the model's titles", () => {
     const answer = {
       servingSize: {
         steps: [
           { kind: "text", title: "Kurz", description: "Die Zwiebel schälen und halbieren." },
+          { kind: "text", title: " ", description: "Die Zwiebel schälen und halbieren." },
+          { kind: "text", description: "Servieren." },
           { kind: "scale", title: "200 g Sahne", description: "Einwiegen.", grams: 200 },
           { kind: "text", title: "Leer", description: "" },
           "kaputt",
@@ -35,13 +43,27 @@ describe("text step titles", () => {
     };
     deriveTextStepTitles(answer, 80);
     expect(answer.servingSize.steps.map((step) => (step as { title?: string }).title)).toEqual([
+      "Kurz",
       "Die Zwiebel schälen und halbieren.",
+      "Servieren.",
       "200 g Sahne",
       "Leer",
       undefined,
     ]);
     expect(() => deriveTextStepTitles(null, 80)).not.toThrow();
     expect(() => deriveTextStepTitles({ servingSize: {} }, 80)).not.toThrow();
+  });
+});
+
+describe("setServingUnit", () => {
+  it("sets the unit of the serving size and ignores other shapes", () => {
+    const answer = { servingSize: { amount: 10, unit: "Portionen" } };
+    setServingUnit(answer, "Scheiben");
+    expect(answer.servingSize.unit).toBe("Scheiben");
+    setServingUnit(answer, undefined);
+    expect(answer.servingSize.unit).toBe("Scheiben");
+    expect(() => setServingUnit({ servingSize: [] }, "x")).not.toThrow();
+    expect(() => setServingUnit(null, "x")).not.toThrow();
   });
 });
 

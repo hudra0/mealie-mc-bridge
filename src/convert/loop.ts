@@ -1,15 +1,17 @@
 // The conversion loop: build the prompts, ask the generator, check the answer with the
 // validator and the plausibility rules, and feed the errors back until the recipe passes
 // or the correction rounds are used up. Warnings never trigger a correction; they reach
-// the cook as review hints.
+// the cook as review hints. Nudges (style problems such as a text step title that copies
+// its description) go back to the model once, together with any errors; after that round
+// a recipe whose only problems are nudges is accepted and the nudges become warnings.
 
 import type { DeviceLimits } from "../recipe/limits.js";
-import { RecipeInputSchema, recipeInputJsonSchema } from "../recipe/schema.js";
+import { RecipeInputSchema, recipeInputJsonSchema, type RecipeInput } from "../recipe/schema.js";
 import { validateRecipeInput, type ValidationIssue } from "../recipe/validate.js";
 import { DEFAULT_PRICES, estimateCost, type PriceTable } from "./cost.js";
 import { ConversionFailedError } from "./errors.js";
 import { selectTechniques, type Knowledge } from "./knowledge.js";
-import { deriveTextStepTitles, parseJsonOutput, setLocale } from "./output.js";
+import { deriveTextStepTitles, parseJsonOutput, setLocale, setServingUnit } from "./output.js";
 import { buildSystemPrompt, buildUserMessage, usableModes, type Category } from "./prompt.js";
 import { checkSanity } from "./sanity.js";
 import type {
@@ -76,6 +78,12 @@ function mergeErrors(validation: ValidationIssue[], sanity: ValidationIssue[]): 
   return [...validation, ...sanity.filter((issue) => !paths.has(issue.path))];
 }
 
+// A nudge the model did not fix, as a warning: "The title repeats ... (servingSize.steps[0].title)".
+function nudgeWarning(issue: ValidationIssue): string {
+  const text = `${issue.message} (${issue.path})`;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 export function createConverter(options: ConverterOptions): Converter {
   const {
     generator,
@@ -137,6 +145,36 @@ export function createConverter(options: ConverterOptions): Converter {
       let lastErrors: ValidationIssue[] = [];
       let lastJson = "";
       const corrections: CorrectionRound[] = [];
+      // Whether the model has been told about nudges once already.
+      let nudged = false;
+      let nudgeFallback: { recipe: RecipeInput; warnings: string[] } | null = null;
+      const accept = (
+        accepted: { recipe: RecipeInput; warnings: string[] },
+        attempt: number,
+      ): ConversionResult => {
+        const total: TokenUsage = cost === undefined ? usage : { ...usage, costUsd: cost };
+        logger.info(
+          {
+            ...job,
+            provider: generator.provider,
+            model,
+            attempt,
+            usage: total,
+            warnings: accepted.warnings.length,
+          },
+          "recipe converted",
+        );
+        return {
+          recipe: accepted.recipe,
+          attempts: attempt,
+          corrections,
+          usage: total,
+          warnings: accepted.warnings,
+          reviewHints: [...(accepted.recipe.reviewHints ?? [])],
+          provider: generator.provider,
+          model,
+        };
+      };
 
       for (let attempt = 1; attempt <= maxCorrections + 1; attempt++) {
         if (signal?.aborted) throw abortReason(signal);
@@ -168,12 +206,16 @@ export function createConverter(options: ConverterOptions): Converter {
         const parsed = parseJsonOutput(output.json);
         let errors: ValidationIssue[];
         let warnings: string[] = [];
+        let pendingNudges: ValidationIssue[] = [];
         if (!parsed.ok) {
           errors = [{ path: "(answer)", message: parsed.message }];
         } else {
           lastJson = parsed.text;
           deriveTextStepTitles(parsed.value, limits.recipe.stepTitle.max);
           setLocale(parsed.value, knowledge.locale);
+          if (request.servingsSource !== "estimate") {
+            setServingUnit(parsed.value, request.servingUnit);
+          }
           const validation = validateRecipeInput(parsed.value, limits, {
             knownCategoryIds,
             attachments,
@@ -181,45 +223,44 @@ export function createConverter(options: ConverterOptions): Converter {
           const typed = RecipeInputSchema.safeParse(parsed.value);
           const sanity = typed.success
             ? checkSanity(typed.data, request, knowledge, limits)
-            : { errors: [], warnings: [] };
+            : { errors: [], warnings: [], nudges: [] };
           warnings = [...categoryWarning, ...sanity.warnings];
           errors = mergeErrors(validation.errors, sanity.errors);
+          const nudgeNow = sanity.nudges.length > 0 && !nudged && attempt <= maxCorrections;
+          if (nudgeNow) pendingNudges = sanity.nudges;
           if (errors.length === 0 && validation.recipe) {
-            const total: TokenUsage = cost === undefined ? usage : { ...usage, costUsd: cost };
-            logger.info(
-              {
-                ...job,
-                provider: generator.provider,
-                model,
-                attempt,
-                usage: total,
-                warnings: warnings.length,
-              },
-              "recipe converted",
-            );
-            return {
+            const accepted = {
               recipe: validation.recipe,
-              attempts: attempt,
-              corrections,
-              usage: total,
-              warnings,
-              reviewHints: [...(validation.recipe.reviewHints ?? [])],
-              provider: generator.provider,
-              model,
+              warnings: [...warnings, ...sanity.nudges.map(nudgeWarning)],
             };
+            // A recipe whose only problems are nudges is kept: if the nudge round makes it
+            // worse, this one is the result.
+            if (nudgeNow) nudgeFallback = accepted;
+            else return accept(accepted, attempt);
           }
         }
-        lastErrors = errors;
-        corrections.push({ attempt, errors });
+        if (nudgeFallback && errors.length > 0) {
+          logger.warn(
+            { ...job, provider: generator.provider, model, attempt, errors: errors.length },
+            "the title correction broke the recipe, keeping the previous answer",
+          );
+          return accept(nudgeFallback, attempt);
+        }
+        // Nudges go back to the model, but never count as errors of the conversion.
+        const sent = pendingNudges.length > 0 ? [...errors, ...pendingNudges] : errors;
+        if (pendingNudges.length > 0) nudged = true;
+        if (errors.length > 0) lastErrors = errors;
+        corrections.push({ attempt, errors: sent });
         logger.warn(
-          { ...job, provider: generator.provider, model, attempt, errors: errors.length },
+          { ...job, provider: generator.provider, model, attempt, errors: sent.length },
           attempt <= maxCorrections
             ? "recipe has errors, asking for a correction"
             : "recipe has errors, giving up",
         );
-        feedback = { errors, previousJson: lastJson };
+        feedback = { errors: sent, previousJson: lastJson };
       }
 
+      if (nudgeFallback) return accept(nudgeFallback, maxCorrections + 1);
       throw new ConversionFailedError({
         errors: lastErrors,
         attempts: maxCorrections + 1,

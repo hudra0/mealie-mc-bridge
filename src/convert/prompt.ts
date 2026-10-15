@@ -18,7 +18,13 @@ import type {
   ParamLimit,
 } from "../recipe/limits.js";
 import { StepSchema } from "../recipe/schema.js";
-import { techniqueSummary, type Knowledge, type ModeFilter, type Technique } from "./knowledge.js";
+import {
+  ruleValue,
+  techniqueSummary,
+  type Knowledge,
+  type ModeFilter,
+  type Technique,
+} from "./knowledge.js";
 import type { ConversionRequest, GenerationFeedback } from "./types.js";
 
 export interface Category {
@@ -488,12 +494,13 @@ function outputSection(limits: DeviceLimits, knowledge: Knowledge): string {
     [
       "- Answer with exactly one JSON object that matches the response schema: no prose, no Markdown, no code fences.",
       `- locale is "${knowledge.locale}". complexity is easy, medium or hard.`,
-      "- servingSize.amount is the servings from the user message. Only when a device limit forces a smaller batch, scale the whole recipe down and say so in reviewHints.",
+      "- servingSize.amount and servingSize.unit are the serving size from the user message, for example 4 portions or 10 slices, with the unit written exactly as given. Only when a device limit forces a smaller batch, scale the whole recipe down and say so in reviewHints. When the user message says the recipe states no serving size, estimate amount and unit and add a review hint that the serving size is estimated.",
       `- categoryIds: ${r.categories.min}-${r.categories.max} ids, only from the category list in the user message; prefer categories that match the Mealie category hints.`,
       `- servingSize.instruction (optional): the whole recipe as plain ${language} text for reading without the device.`,
       `- reviewHints: short ${language} notes, at most 200 characters each and 20 in total, for everything guessed, converted with uncertainty or left out. Leave the list empty when nothing is uncertain.`,
       "- ingredientMapping: one entry per ingredient-list name, written exactly as in the list, with the index [i] of the source ingredient line it comes from (the recipe in the user message numbers them), or null for an ingredient the source does not have. Every source line appears at least once.",
       '- Every step has a "kind" from the program list and only the fields of that kind. Set accessory to "butterfly_whisk" on every manual step that runs while the whisk is fitted.',
+      `- A text step title is a short imperative of at most ${ruleValue(knowledge, "text_step_title")} characters that sums the step up; it never repeats the start of the description.`,
       "- Do not set a status, ids or images; the bridge sets them.",
       "- When the user message lists errors in a previous answer, fix every one of them and return the complete corrected recipe, not only the changed parts.",
     ].join("\n"),
@@ -569,7 +576,7 @@ export function buildUserMessage(
     "",
     "# Servings",
     "",
-    `The amounts below are scaled to ${request.servings} servings. Set servingSize.amount to ${request.servings}.`,
+    ...servingsLines(request),
   ];
   if (hints.length > 0) {
     parts.push("", "# Mealie categories", "", hints.join(", "));
@@ -616,6 +623,25 @@ export function buildUserMessage(
     );
   }
   return withFeedback(parts.join("\n"), options.feedback);
+}
+
+// The serving size the recipe states ("10 Scheiben"), or the default the model may
+// replace with its own estimate.
+export function servingsLines(
+  request: Pick<ConversionRequest, "servings" | "servingUnit" | "servingsSource">,
+): string[] {
+  const unit = request.servingUnit?.trim() ?? "";
+  const size = unit ? `${request.servings} ${unit}` : `${request.servings} servings`;
+  if (request.servingsSource === "estimate") {
+    return [
+      `The recipe states neither servings nor a yield. The amounts below are as written; ${size} is only a default.`,
+      `Estimate servingSize.amount and servingSize.unit from the amounts and the kind of dish (keep ${size} when nothing points elsewhere) and add a review hint that says the serving size is estimated.`,
+    ];
+  }
+  const unitRule = unit ? ` and servingSize.unit to "${unit}"` : "";
+  return [
+    `The serving size is ${size}; the amounts below are scaled to it. Set servingSize.amount to ${request.servings}${unitRule}.`,
+  ];
 }
 
 // The catalog-name lines stop before they pass this many characters, so a long recipe

@@ -14,6 +14,12 @@ export interface ConversionRequest {
   rendered: string;
   // The servings the amounts were scaled to.
   servings: number;
+  // The serving unit the bridge sets on the recipe ("Portionen", "Scheiben"), and where
+  // the serving size came from: the Mealie yield, its servings, or neither, in which case
+  // the model estimates amount and unit and flags the estimate in a review hint. Without
+  // them the request counts as servings.
+  servingUnit?: string;
+  servingsSource?: ServingsSource;
   // The output locale; it must be the converter's (MC_LOCALE).
   locale: string;
   // The scaled ingredients, for the plausibility checks.
@@ -24,6 +30,8 @@ export interface ConversionRequest {
   // the Monsieur Cuisine catalog knows.
   catalogNames?: CatalogNameHint[];
 }
+
+export type ServingsSource = "yield" | "servings" | "estimate";
 
 export interface CatalogNameHint {
   // The index of the source ingredient in ingredients.

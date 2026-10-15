@@ -3,6 +3,7 @@ import { McNetworkError, McSessionError, type McUser, type SessionErrorKind } fr
 import { SettingsStore } from "../store/settings.js";
 import { RECIPE_ID, fakeNotifier, silentLogger, type FakeNotifier } from "../testing/fakes.js";
 import { steppingClock, tempStore, type TempStore } from "../testing/temp.js";
+import type { AutoLoginRun, LoginAttempt } from "./auto-login.js";
 import {
   InvalidCookieError,
   SESSION_KEYS,
@@ -342,5 +343,123 @@ describe("cookieIssuedAt", () => {
     // A 2-day login on 2026-10-10, stored an hour later.
     const shortExpiry = new Date("2026-10-12T10:00:00.000Z");
     expect(cookieIssuedAt(shortExpiry, new Date("2026-10-10T11:00:00.000Z"))).toBeNull();
+  });
+});
+
+describe("automatic login", () => {
+  // An AutoLogin stand-in: the stored account and the outcome of the next run.
+  function autoLoginStub(
+    run: AutoLoginRun | ((accept: (cookie: string) => Promise<void>) => Promise<AutoLoginRun>),
+    credentials = true,
+  ) {
+    return {
+      hasCredentials: vi.fn(() => credentials),
+      run: vi.fn((options: { manual: boolean; accept: (cookie: string) => Promise<void> }) =>
+        typeof run === "function" ? run(options.accept) : Promise.resolve(run),
+      ),
+    };
+  }
+  const attempt = (ok: boolean): LoginAttempt => ({
+    at: "2026-10-13T10:00:00.000Z",
+    ok,
+    manual: false,
+    code: ok ? null : "not_logged_in",
+    detail: ok ? null : "the login form was sent, but no session followed",
+    screenshot: null,
+  });
+
+  it("renews an expired session with the stored account and resumes the waiting jobs", async () => {
+    store = tempStore();
+    const fresh = "wordpress_logged_in_new=1; lidl_sso_id_token=2";
+    const autoLogin = autoLoginStub(async (accept) => {
+      await accept(fresh);
+      return { status: "ok", attempt: attempt(true) };
+    });
+    const { manager, validate, notifier } = build({ seedCookie: COOKIE, autoLogin });
+    await manager.check();
+    const { job } = store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    validate.mockRejectedValueOnce(rejected("expired"));
+    await manager.check();
+    await vi.waitFor(() => expect(manager.status().state).toBe("valid"));
+    expect(autoLogin.run).toHaveBeenCalledWith(expect.objectContaining({ manual: false }));
+    await expect(manager.getCookie()).resolves.toBe(fresh);
+    expect(store.jobs.get(job.id)?.status).toBe("queued");
+    // The login worked, so nobody needs a mail.
+    expect(notifier.sent.filter((entry) => entry.kind === "session")).toEqual([]);
+  });
+
+  it("mails that a manual login is needed when the automatic one fails", async () => {
+    store = tempStore();
+    const autoLogin = autoLoginStub({ status: "failed", attempt: attempt(false) });
+    const { manager, validate, notifier } = build({ seedCookie: COOKIE, autoLogin });
+    validate.mockRejectedValue(rejected("expired"));
+    await manager.check();
+    await vi.waitFor(() => expect(notifier.sent).toHaveLength(1));
+    expect(notifier.sent[0]).toMatchObject({
+      kind: "session",
+      detail: { state: "expired" },
+      extra: { autoLoginFailed: "the login form was sent, but no session followed" },
+    });
+    expect(manager.status().state).toBe("expired");
+  });
+
+  it("stays out of the way without a stored account or while the session works", async () => {
+    store = tempStore();
+    const autoLogin = autoLoginStub({ status: "skipped", reason: "no_credentials" }, false);
+    const { manager, validate, notifier } = build({ seedCookie: COOKIE, autoLogin });
+    await manager.check();
+    expect(autoLogin.run).not.toHaveBeenCalled();
+    validate.mockRejectedValue(rejected("invalid"));
+    await manager.check();
+    expect(autoLogin.run).not.toHaveBeenCalled();
+    expect(notifier.sent).toHaveLength(1);
+    expect(notifier.sent[0]?.extra).toBeUndefined();
+  });
+
+  it("tries again on later checks while the session stays unusable", async () => {
+    store = tempStore();
+    const autoLogin = autoLoginStub({ status: "skipped", reason: "too_soon" });
+    const { manager, validate } = build({ seedCookie: COOKIE, autoLogin });
+    validate.mockRejectedValue(rejected("expired"));
+    await manager.check();
+    await manager.check();
+    await vi.waitFor(() => expect(autoLogin.run.mock.calls.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("mails when the automatic login has to wait, with the time of the next attempt", async () => {
+    store = tempStore();
+    const until = "2026-10-13T12:00:00.000Z";
+    const autoLogin = autoLoginStub({ status: "skipped", reason: "backoff", until });
+    const { manager, validate, notifier } = build({ seedCookie: COOKIE, autoLogin });
+    validate.mockRejectedValue(rejected("expired"));
+    await manager.check();
+    await vi.waitFor(() => expect(notifier.sent).toHaveLength(1));
+    expect(notifier.sent[0]).toMatchObject({
+      kind: "session",
+      extra: { autoLoginNextAttempt: until },
+    });
+  });
+
+  it("stays silent while another login runs", async () => {
+    store = tempStore();
+    const autoLogin = autoLoginStub({ status: "skipped", reason: "running" });
+    const { manager, validate, notifier } = build({ seedCookie: COOKIE, autoLogin });
+    validate.mockRejectedValue(rejected("expired"));
+    await manager.check();
+    await vi.waitFor(() => expect(autoLogin.run).toHaveBeenCalled());
+    expect(notifier.sent).toEqual([]);
+  });
+
+  it("runs a manual login on request", async () => {
+    store = tempStore();
+    const autoLogin = autoLoginStub({ status: "ok", attempt: attempt(true) });
+    const { manager } = build({ autoLogin });
+    expect((await manager.loginNow()).status).toBe("ok");
+    expect(autoLogin.run).toHaveBeenCalledWith(expect.objectContaining({ manual: true }));
+    const without = build({});
+    expect(await without.manager.loginNow()).toEqual({
+      status: "skipped",
+      reason: "no_credentials",
+    });
   });
 });

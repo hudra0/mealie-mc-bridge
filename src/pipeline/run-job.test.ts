@@ -179,6 +179,7 @@ describe("runJob happy path", () => {
             mc_source_hash: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
             mc_synced_at: expect.stringMatching(/^2026-10-13T/) as string,
             mc_servings: "4",
+            mc_serving_unit: "Portionen",
           },
           addTags: [TAG],
         },
@@ -193,7 +194,7 @@ describe("runJob happy path", () => {
     expect(entry?.event.eventType).toBe("info");
     const message = entry?.event.eventMessage ?? "";
     expect(message).toContain(`[Im Editor öffnen](${url})`);
-    expect(message).toContain("- Portionen: 4");
+    expect(message).toContain("- Ergibt: 4 Portionen");
     expect(message).toContain("Privat gespeichert");
     expect(message).toContain("- Umgewandelt mit: fake, fake-model");
     expect(message).toContain("**Bitte prüfen:**\n- Garzeit der Linsen prüfen");
@@ -309,12 +310,64 @@ describe("runJob happy path", () => {
     expect(messages(s, job)).toEqual(
       expect.arrayContaining([
         "Converter: Fill level close to the limit",
-        "The converter set 3 servings instead of 4",
+        "The converter set 3 Portionen instead of 4 Portionen",
       ]),
     );
     // Mealie records what the draft carries, like the timeline entry.
     expect(s.mealie.patches[0]?.patch.extras?.mc_servings).toBe("3");
     expect(s.store.jobs.get(job.id)?.servings).toBe(3);
+  });
+
+  it("passes the yield of the recipe through as the serving size", async () => {
+    const converter = fakeConverter(
+      conversionResult({
+        recipe: convertedRecipe({
+          servingSize: { ...convertedRecipe().servingSize, amount: 20, unit: "Scheiben" },
+        }),
+      }),
+    );
+    const s = setup({
+      mealie: {
+        recipe: mealieRecipe({
+          recipeServings: 0,
+          recipeYieldQuantity: 10,
+          recipeYield: "Scheiben",
+        }),
+      },
+      converter,
+    });
+    const job = s.claim({ scale: 2 });
+    await runJob(job, s.deps);
+    const request = converter.requests[0];
+    expect(request).toMatchObject({
+      servings: 20,
+      servingUnit: "Scheiben",
+      servingsSource: "yield",
+    });
+    expect(messages(s, job).join("\n")).toContain("for 20 Scheiben at scale 2");
+    expect(s.store.jobs.get(job.id)).toMatchObject({ servings: 20, servingUnit: "Scheiben" });
+    expect(s.mealie.patches[0]?.patch.extras?.mc_serving_unit).toBe("Scheiben");
+    expect(s.mealie.timeline[0]?.event.eventMessage).toContain("- Ergibt: 20 Scheiben");
+  });
+
+  it("lets the converter estimate the serving size when the recipe states none", async () => {
+    const s = setup({
+      mealie: { recipe: mealieRecipe({ recipeServings: 0, recipeYieldQuantity: 0 }) },
+      converter: fakeConverter(
+        conversionResult({
+          recipe: convertedRecipe({
+            servingSize: { ...convertedRecipe().servingSize, amount: 6, unit: "Stück" },
+          }),
+        }),
+      ),
+    });
+    const job = s.claim();
+    await runJob(job, s.deps);
+    const lines = messages(s, job);
+    expect(lines.join("\n")).toContain("for 4 Portionen (not stated in the recipe");
+    expect(lines).toContain("The converter estimated the serving size: 6 Stück");
+    expect(lines.join("\n")).not.toContain("instead of");
+    expect(s.store.jobs.get(job.id)).toMatchObject({ servings: 6, servingUnit: "Stück" });
   });
 
   it("uses the cached category catalog on the next run", async () => {
@@ -1102,7 +1155,7 @@ describe("runJob in another language", () => {
     const entry = s.mealie.timeline[0]?.event;
     expect(entry?.subject).toBe("Monsieur Cuisine: recipe saved to the device");
     expect(entry?.eventMessage).toContain(`[Open in the editor](${mcEditorUrl(4242)})`);
-    expect(entry?.eventMessage).toContain("- Servings: 4");
+    expect(entry?.eventMessage).toContain("- Serving size: 4");
     expect(entry?.eventMessage).toContain("saved privately, visible on your device only");
     expect(entry?.eventMessage).toContain(
       "**Please check:**\n- Check the cooking time of the lentils",

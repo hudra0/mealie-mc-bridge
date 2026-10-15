@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { pino } from "pino";
 import { loadServiceConfig } from "./config.js";
 import { loadConfiguredCatalog } from "./ingredients/catalog.js";
@@ -14,8 +15,18 @@ import { loadPipelineLocale } from "./pipeline/locale.js";
 import { loadDeviceLimits } from "./recipe/limits.js";
 import { buildService, mealieRecipeLink } from "./service/app.js";
 import { requestLogSerializers } from "./service/security.js";
+import { AutoLogin } from "./session/auto-login.js";
 import { SessionManager } from "./session/manager.js";
-import { generateSettingsKey, openStore, parseSettingsKey } from "./store/index.js";
+import { PlaywrightBrowser } from "./session/playwright-browser.js";
+import {
+  checkDataDir,
+  generateSettingsKey,
+  openStore,
+  parseSettingsKey,
+  processIds,
+  storeStartupMessage,
+  type Store,
+} from "./store/index.js";
 
 // A stuck job or converter must not keep the container from stopping.
 const SHUTDOWN_TIMEOUT_MS = 40_000;
@@ -39,8 +50,23 @@ async function main(): Promise<void> {
   const base = loggerOptions(config.LOG_LEVEL);
   const logger = pino({ ...base, serializers: { ...base.serializers, ...requestLogSerializers } });
 
-  const store = openStore({ dataDir: config.DATA_DIR, key: parseSettingsKey(config.SETTINGS_KEY) });
-  const recovered = store.jobs.recoverInterrupted();
+  const settingsKey = parseSettingsKey(config.SETTINGS_KEY);
+  let store: Store;
+  let recovered: number;
+  try {
+    checkDataDir(config.DATA_DIR);
+    store = openStore({ dataDir: config.DATA_DIR, key: settingsKey });
+    // The first write: it fails here, not in the first job, on a read-only database.
+    recovered = store.jobs.recoverInterrupted();
+  } catch (error) {
+    // One line that says what to do, then a non-zero exit so the orchestrator shows it.
+    logger.fatal(
+      { dataDir: config.DATA_DIR, ...processIds() },
+      storeStartupMessage(error, config.DATA_DIR),
+    );
+    process.exitCode = 1;
+    return;
+  }
   if (recovered > 0) {
     logger.warn({ recovered }, "jobs interrupted by the last stop are queued again");
   }
@@ -59,6 +85,16 @@ async function main(): Promise<void> {
     recipeUrl: (job) => (job.mealieSlug ? mealieRecipeLink(config, job.mealieSlug) : null),
   });
   const transport = new McTransport({ logger, locale: mcLocale });
+  // Logs in with the Lidl account from the settings page when the session expires. Without
+  // Playwright and its Chromium the page says the browser is missing; the rest works.
+  const autoLogin = new AutoLogin({
+    settings: store.settings,
+    browser: new PlaywrightBrowser(),
+    profileDir: join(config.DATA_DIR, "browser-profile"),
+    screenshotDir: join(config.DATA_DIR, "login-screenshots"),
+    editorPath: mcLocale.editorPath,
+    logger,
+  });
   const session = new SessionManager({
     settings: store.settings,
     jobs: store.jobs,
@@ -71,6 +107,7 @@ async function main(): Promise<void> {
     logger,
     seedCookie: config.MC_COOKIE,
     checkIntervalMs: config.SESSION_CHECK_MINUTES * 60_000,
+    autoLogin,
   });
   const mc = new McClient(transport, session, { editorPath: mcLocale.editorPath });
   const converter = await loadConverter({ env: process.env, limits, logger });
@@ -96,6 +133,8 @@ async function main(): Promise<void> {
     notifier,
     ingredients,
     logger,
+    adminSessionKey: settingsKey,
+    autoLogin,
     server: { loggerInstance: logger },
   });
 

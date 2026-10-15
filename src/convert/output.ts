@@ -28,9 +28,10 @@ export function textStepTitle(description: string, maxLength: number): string {
   return cut.replace(/[\s,;:–-]+$/u, "");
 }
 
-// Sets the title of every text step of a parsed answer from its description, in place, so
-// the title follows the official style whatever the model wrote. Anything that is not a
-// text step with a description is left for the validator.
+// Fills the title of a text step the model left empty from its description, in place, the
+// way the device editor would. A title the model wrote stays: it is the short summary the
+// prompt asks for. Anything that is not a text step with a description is left for the
+// validator.
 export function deriveTextStepTitles(value: unknown, maxLength: number): void {
   if (typeof value !== "object" || value === null) return;
   const steps = (value as { servingSize?: { steps?: unknown } }).servingSize?.steps;
@@ -41,6 +42,7 @@ export function deriveTextStepTitles(value: unknown, maxLength: number): void {
     const description = record.description;
     if (record.kind !== "text" || typeof description !== "string" || description.trim() === "")
       continue;
+    if (typeof record.title === "string" && record.title.trim() !== "") continue;
     record.title = textStepTitle(description, maxLength);
   }
 }
@@ -65,4 +67,14 @@ export function parseJsonOutput(answer: string): ParsedOutput {
 export function setLocale(value: unknown, locale: string): void {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return;
   (value as Record<string, unknown>).locale = locale;
+}
+
+// Sets the serving unit of a parsed answer, in place, when the source recipe states it: the
+// unit comes from Mealie ("Scheiben"), so the code decides it, not the model. The amount
+// stays the model's, which may scale a batch down for a device limit.
+export function setServingUnit(value: unknown, unit: string | undefined): void {
+  if (!unit || typeof value !== "object" || value === null) return;
+  const servingSize = (value as { servingSize?: unknown }).servingSize;
+  if (typeof servingSize !== "object" || servingSize === null || Array.isArray(servingSize)) return;
+  (servingSize as Record<string, unknown>).unit = unit;
 }

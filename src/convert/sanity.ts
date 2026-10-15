@@ -2,7 +2,9 @@
 // mass), accessory rules, recipe structure and the balance of amounts against the input.
 // The validator checks every limit of device-programs.json; these rules check what a
 // limit table cannot see. Errors go back to the model for a correction round, warnings
-// become review hints.
+// become review hints. Nudges are style problems worth one correction round: they go back
+// with the errors, but a recipe whose only problems are nudges is accepted after that
+// round, the nudges then reported as warnings.
 //
 // Coverage and amounts are compared through the recipe's ingredientMapping (mapping.ts),
 // which links each ingredient-list entry to the source line it comes from, so the checks
@@ -50,17 +52,23 @@ export { parseListAmount } from "./mass.js";
 export interface SanityResult {
   errors: ValidationIssue[];
   warnings: string[];
+  nudges: ValidationIssue[];
 }
 
 export interface Finding {
-  severity: "error" | "warning";
+  severity: "error" | "warning" | "nudge";
   path: string;
   message: string;
 }
 
+export type SanityRequest = Pick<
+  ConversionRequest,
+  "servings" | "ingredients" | "servingUnit" | "servingsSource"
+>;
+
 export interface SanityContext {
   recipe: RecipeInput;
-  request: Pick<ConversionRequest, "servings" | "ingredients">;
+  request: SanityRequest;
   knowledge: Knowledge;
   limits: DeviceLimits;
   traces: StepTrace[];
@@ -78,6 +86,7 @@ const stepLabel = (index: number, step: RecipeStep) => `step ${index + 1} (${ste
 const seconds = (step: RecipeStep) =>
   "minutes" in step ? step.minutes * 60 + step.seconds : step.kind === "turbo" ? step.seconds : 0;
 const error = (path: string, message: string): Finding => ({ severity: "error", path, message });
+const nudge = (path: string, message: string): Finding => ({ severity: "nudge", path, message });
 const warning = (path: string, message: string): Finding => ({
   severity: "warning",
   path,
@@ -911,16 +920,66 @@ export const duplicateAdditionRule: SanityRule = {
 
 export const servingsRule: SanityRule = {
   id: "servings_changed",
-  description: "The recipe keeps the servings the amounts were scaled to.",
+  description:
+    "The recipe keeps the serving size the amounts were scaled to, when the source states one.",
   check({ recipe, request }) {
+    // Without servings or a yield in the source, the model estimates the serving size.
+    if (request.servingsSource === "estimate") return [];
     const amount = recipe.servingSize.amount;
     if (amount === request.servings) return [];
+    const unit = request.servingUnit?.trim() || "servings";
     return [
       warning(
         "servingSize.amount",
-        `the recipe is for ${amount} servings, but the amounts were scaled to ${request.servings}; check the amounts`,
+        `the recipe is for ${amount} ${recipe.servingSize.unit}, but the amounts were scaled to ${request.servings} ${unit}; check the amounts`,
       ),
     ];
+  },
+};
+
+// Lower case, single spaces, without trailing punctuation: "Zwiebel schälen" and
+// "Zwiebel  schälen." compare equal.
+function comparable(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[\s.,;:!?…–-]+$/u, "");
+}
+
+// Titles of up to this many words may start the description: "Servieren" over
+// "Servieren.", "Mit Salz abschmecken" over "Mit Salz abschmecken.".
+const SHORT_TITLE_WORDS = 3;
+
+export const textStepTitleRule: SanityRule = {
+  id: "text_step_title",
+  description: "A text step title is a short imperative summary, not the start of its description.",
+  check({ recipe, knowledge }) {
+    const maxLength = ruleValue(knowledge, "text_step_title");
+    return recipe.servingSize.steps.flatMap((step, index) => {
+      if (step.kind !== "text") return [];
+      const title = comparable(step.title);
+      const description = comparable(step.description);
+      if (title === "") return [];
+      if (step.title.trim().length > maxLength) {
+        return [
+          nudge(
+            `${stepPath(index)}.title`,
+            `the title has ${step.title.trim().length} characters; write a short imperative summary of at most ${maxLength} characters and keep the full instruction in the description`,
+          ),
+        ];
+      }
+      const words = title.split(" ").length;
+      if (words > SHORT_TITLE_WORDS && description.startsWith(title)) {
+        return [
+          nudge(
+            `${stepPath(index)}.title`,
+            `the title repeats the start of the description; write a short imperative summary of the step instead, at most ${maxLength} characters`,
+          ),
+        ];
+      }
+      return [];
+    });
   },
 };
 
@@ -940,11 +999,12 @@ export const SANITY_RULES: readonly SanityRule[] = [
   temperatureConventionRule,
   duplicateAdditionRule,
   servingsRule,
+  textStepTitleRule,
 ];
 
 export function checkSanity(
   recipe: RecipeInput,
-  request: Pick<ConversionRequest, "servings" | "ingredients">,
+  request: SanityRequest,
   knowledge: Knowledge,
   limits: DeviceLimits,
   rules: readonly SanityRule[] = SANITY_RULES,
@@ -960,15 +1020,18 @@ export function checkSanity(
   };
   const errors: ValidationIssue[] = [];
   const warnings: string[] = [];
+  const nudges: ValidationIssue[] = [];
   for (const rule of rules) {
     for (const finding of rule.check(ctx)) {
       if (finding.severity === "error") {
         errors.push({ path: finding.path, message: finding.message });
+      } else if (finding.severity === "nudge") {
+        nudges.push({ path: finding.path, message: finding.message });
       } else {
         const text = finding.message.charAt(0).toUpperCase() + finding.message.slice(1);
         if (!warnings.includes(text)) warnings.push(text);
       }
     }
   }
-  return { errors, warnings };
+  return { errors, warnings, nudges };
 }

@@ -332,6 +332,8 @@
     }
   },
   "servings": {
+    "portion": { "singular": "Portion", "plural": "Portionen" },
+    "unitCase": "capitalize",
     "default": "4 Portionen (750 of 2221 recipes; median 4 for Portionen recipes)",
     "units": ["Portionen", "Portion", "Stück", "Stücke", "Gläser", "Glas", "Flaschen"],
     "byDishType": {

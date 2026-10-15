@@ -36,6 +36,10 @@ export const FAILURE_STAGES: readonly FailureStage[] = [
 export type JobStatusName =
   "queued" | "running" | "done" | "skipped" | "failed" | "session_expired" | "cancelled";
 
+// Why an automatic login failed (src/session/auto-login.ts).
+export type AutoLoginFailureName =
+  "browser_unavailable" | "no_login_form" | "not_logged_in" | "verify_failed" | "error";
+
 export type SessionStateName = "valid" | "invalid" | "expired" | "unknown";
 
 // How a recipe sits in the Monsieur Cuisine account: a draft, or saved on the device.
@@ -44,6 +48,8 @@ export type SavedStatus = "draft" | "private-publish";
 export interface CreatedText {
   url: string;
   servings: number;
+  // The unit of the serving size: "Portionen", "Scheiben".
+  servingUnit: string;
   status: SavedStatus;
   // The status change to private-publish failed; the recipe stayed a draft.
   statusFailed: boolean;
@@ -74,6 +80,8 @@ export interface EmailMessages {
   session: Readonly<Record<"expired" | "invalid", { subject: string; lead: string }>>;
   sessionWaiting: string;
   sessionNextSteps: readonly string[];
+  autoLoginFailed(reason: string): string;
+  autoLoginWaiting(time: string): string;
   lastChecked(when: string): string;
   never: string;
   lastMessage(message: string): string;
@@ -92,8 +100,20 @@ export interface EmailMessages {
 // The admin pages. Text in backticks is shown as code.
 export interface AdminMessages {
   htmlLang: string;
-  nav: { dashboard: string; jobs: string; dryRun: string };
+  nav: { dashboard: string; jobs: string; dryRun: string; settings: string; logout: string };
+  header: { mcSession: string; signedIn(user: string): string; noPassword: string };
   authBanner: string;
+  login: {
+    title: string;
+    intro: string;
+    user: string;
+    password: string;
+    submit: string;
+    wrongCredentials: string;
+    tooMany(minutes: number): string;
+  };
+  // Under the job list and a running job: the page reloads on its own.
+  autoRefresh: string;
   notices: Readonly<Record<string, string>>;
   plain: { unknownHost: string; authRequired: string; crossOrigin: string };
   titles: {
@@ -114,6 +134,7 @@ export interface AdminMessages {
     recipeNotLoaded(reason: string): string;
     conversionLinkExpired: string;
     conversionFailed(reason: string): string;
+    credentialsInvalid(field: "email" | "password"): string;
   };
   links: { backToDashboard: string; backToJobs: string; allJobs: string };
   jobStatus: Readonly<Record<JobStatusName, string>>;
@@ -171,7 +192,8 @@ export interface AdminMessages {
     monsieurCuisine: string;
     openRecipe(id: number | string, status: SavedStatus): string;
     scale: string;
-    servings(count: number): string;
+    // " (10 Scheiben)"; the unit is null on jobs from before it was stored.
+    servingSize(amount: number, unit: string | null): string;
     attempts: string;
     forced: string;
     created: string;
@@ -202,12 +224,39 @@ export interface AdminMessages {
     level: string;
     message: string;
   };
+  settings: {
+    title: string;
+    account: string;
+    intro: string;
+    email: string;
+    password: string;
+    passwordStored: string;
+    save: string;
+    testNow: string;
+    remove: string;
+    notConfigured: string;
+    configuredAs(email: string): string;
+    browser: string;
+    browserReady: string;
+    browserMissing(reason: string): string;
+    lastAttempt: string;
+    never: string;
+    attempt(time: string, ok: boolean, manual: boolean): string;
+    failure: Readonly<Record<AutoLoginFailureName, string>>;
+    screenshot: string;
+    nextAttempt: string;
+    running: string;
+    manualCooldown(time: string): string;
+    otherWays: string;
+  };
   dryRun: {
     recipe: string;
     recipePlaceholder: string;
     scale: string;
     preview: string;
+    alsoConvert: string;
     servings: string;
+    servingsEstimated: string;
     sourceHash: string;
     alreadySent: string;
     sentAt(time: string): string;

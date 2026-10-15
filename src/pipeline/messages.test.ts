@@ -3,11 +3,24 @@ import { escapeMarkdown, timelineTexts } from "./messages.js";
 
 const de = timelineTexts("de");
 
+const sample = {
+  url: "https://example.com",
+  servings: 4,
+  servingUnit: "portions",
+  status: "draft" as const,
+  statusFailed: false,
+  provider: "x",
+  model: "y",
+  reviewHints: [],
+  imageSkipped: false,
+};
+
 describe("timeline texts", () => {
   it("escapes converter text so it cannot add links or markup", () => {
     const message = de.created({
       url: "https://www.monsieur-cuisine.com/de/create-recipe?recipe-id=1",
       servings: 2,
+      servingUnit: "Portionen",
       status: "draft",
       statusFailed: false,
       provider: "x",
@@ -24,7 +37,8 @@ describe("timeline texts", () => {
   it("leaves out the review section without hints", () => {
     const message = de.created({
       url: "https://example.com",
-      servings: 2,
+      servings: 10,
+      servingUnit: "Scheiben",
       status: "private-publish",
       statusFailed: false,
       provider: "x",
@@ -33,6 +47,10 @@ describe("timeline texts", () => {
       imageSkipped: false,
     });
     expect(message).not.toContain("Bitte prüfen");
+    expect(message).toContain("- Ergibt: 10 Scheiben");
+    expect(
+      timelineTexts("en").created({ ...sample, servings: 12, servingUnit: "muffins" }),
+    ).toContain("- Serving size: 12 muffins");
   });
 
   it("keeps failure details short and on one line", () => {

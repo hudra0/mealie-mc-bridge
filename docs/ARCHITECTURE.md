@@ -20,7 +20,7 @@ The bridge turns a Mealie recipe into a private recipe in a Monsieur Cuisine acc
 7. Ingredient ids (`MC_RESOLVE_INGREDIENTS=exact`): each name is looked up in the pack's `ingredient-catalog.json`, then as an id an earlier search found in `ingredient_cache` (keys carry a rules version), then in the same catalog by a relaxed form (usage notes from the pack's `qualifierSuffixes` removed, a buying form from `buyingFormSuffixes` only when the catalog has no entry in that form, a parenthesis read as the comma form, singular and plural folded; `src/ingredients/catalog-match.ts`), then, unless a recent miss is cached, in the site's quick search (one search per second, misses cached for seven days). A search hit counts only for an equal name after normalization. Before the conversion the user message lists up to three close catalog names per source ingredient. A session error sends the job to `session_expired`; other search errors leave the name without an id. Counts and unmatched names go into `ingredients_json`.
 8. The photo is cropped and uploaded. Then the job is marked (`create_started_at`) and the draft is created with the pack's `languageLocale`, complexity id and default group name. This is the point of no return: the request is never retried, a shutdown no longer requeues the job, and a job found running with the mark on start fails with a "check your drafts" message. Once the draft exists, the job cannot fail.
 9. The status is set to `MC_RECIPE_STATUS` (default `private-publish`). A failure here is a warning; the recipe stays a draft and the timeline entry says so. With `draft` the step is skipped.
-10. Write-back to Mealie: the tag (created on first use) and `extras` (`mc_recipe_id`, `mc_recipe_url`, `mc_source_hash`, `mc_synced_at`, `mc_servings`) in one PATCH, then a timeline entry with the link, servings, model and review hints. A 403 on the PATCH is logged, and the timeline entry, which needs no edit rights, is still written.
+10. Write-back to Mealie: the tag (created on first use) and `extras` (`mc_recipe_id`, `mc_recipe_url`, `mc_source_hash`, `mc_synced_at`, `mc_servings`, `mc_serving_unit`) in one PATCH, then a timeline entry with the link, serving size, model and review hints. A 403 on the PATCH is logged, and the timeline entry, which needs no edit rights, is still written.
 
 Every stage appends a job event, shown as the job's log. Failures before the draft exists end the job as `failed`, with a short timeline entry in `UI_LANGUAGE` and a mail. Network errors and 5xx answers are retried three times with a pause of 2, 4 and 8 seconds; validation and conversion failures fail on the first attempt.
 
@@ -53,7 +53,7 @@ done, skipped, failed and cancelled go back to queued on admin retry or force re
 
 ## Session and security
 
-- `src/session/manager.ts` is the cookie source for the Monsieur Cuisine client. The cookie lives in `settings`, encrypted with AES-256-GCM under `SETTINGS_KEY`. `MC_COOKIE` is stored on the first start and whenever its value changes. The manager checks the session on start and every `SESSION_CHECK_MINUTES` with a cheap account call. States: `unknown`, `valid`, `invalid`, `expired`. A change to `invalid` or `expired` pauses the queue and sends one notification. A cookie pasted on the admin page is checked with a separate client before it replaces the stored one, and a late rejection of a cookie that has since been replaced is ignored.
+- `src/session/manager.ts` is the cookie source for the Monsieur Cuisine client. The cookie lives in `settings`, encrypted with AES-256-GCM under `SETTINGS_KEY`. `MC_COOKIE` is stored on the first start and whenever its value changes. The manager checks the session on start and every `SESSION_CHECK_MINUTES` with a cheap account call. States: `unknown`, `valid`, `invalid`, `expired`. A change to `invalid` or `expired` pauses the queue and sends one notification. A cookie pasted on the admin page is checked with a separate client before it replaces the stored one, and a late rejection of a cookie that has since been replaced is ignored. With a Lidl account stored on the settings page, a change to `invalid` or `expired` first starts `src/session/auto-login.ts`: a headless Chromium logs in through the site's SSO page with a persistent profile under `DATA_DIR/browser-profile`, and the cookie it gets goes through the same check. The notification goes out only when that login fails. Automatic attempts run one at a time, at most hourly and three times in 24 hours, with 1, 4 and 24 hours of backoff after failures.
 - Admin pages use Basic Auth (`ADMIN_USER`, `ADMIN_PASSWORD`). Without it they answer only to an IP address, `localhost` or a name in `ADMIN_HOSTS` (DNS rebinding). Every form carries a per-process token, and a POST with a foreign `Origin` is refused. Pages are server-rendered with an escaping template, a strict Content Security Policy and `X-Frame-Options: DENY`.
 - `/health` and `GET /jobs/:id` need no login. `/health` carries no free text.
 - Request logs replace the webhook token with `[redacted]`; pino redacts cookies, tokens and keys; error texts that reach mails, the timeline or pages pass through `scrubSecrets`.
@@ -76,13 +76,17 @@ src/
   logger.ts         pino options with redaction; app-logger.ts logger type, scrubSecrets
   store/            bridge.db (WAL), versioned migrations, jobs, sent recipes,
                     ingredient cache, encrypted settings
-  session/          manager.ts: stored cookie, checks, state, queue pause and resume
+  session/          manager.ts: stored cookie, checks, state, queue pause and resume;
+                    auto-login.ts: stored Lidl account, limits, screenshots;
+                    browser-login.ts: the SSO login flow behind a small browser
+                    interface; playwright-browser.ts: that interface on Playwright
   pipeline/         run-job.ts (one run, stage by stage), worker.ts (poll, retry, gate,
                     clean stop), prepare.ts (shared with the dry run), categories.ts,
                     ingredient-resolver.ts, source-hash.ts, messages.ts, locale.ts,
                     converter-port.ts (converter contract and lazy loader)
   service/          app.ts (builds app and worker), routes.ts (webhook, GET /jobs/:id),
-                    admin.ts and admin-views.ts, html.ts, health.ts, security.ts
+                    admin.ts and admin-views.ts, admin-auth.ts (login cookie),
+                    admin-settings.ts (settings page), html.ts, health.ts, security.ts
   notify/           email.ts: Notifier, EmailNotifier (nodemailer), NullNotifier
   convert/          the LLM converter, see below
   recipe/           recipe input schema, device limits loader, validator, payload builder,

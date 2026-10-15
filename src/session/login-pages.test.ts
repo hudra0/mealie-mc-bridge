@@ -5,14 +5,18 @@ import {
   CAPTCHA_FRAME,
   CLOSE_LABEL,
   CLOSE_SYMBOL,
+  CONSENT_DIALOG,
   CONTINUE_BUTTON,
+  CONTINUE_EXACT,
   DECLINE_BUTTON,
+  DECLINE_EXACT,
   DECLINE_PHRASES,
   DEVICE_CHOICE,
   DEVICE_PROMPT,
   DIALOG_SELECTOR,
   EMAIL_SWITCH,
   EMAIL_SWITCH_PHRASES,
+  EMAIL_SWITCH_TEXT,
   HINT_BUTTON,
   IGNORED_FRAME,
   NEW_ACCOUNT_TEXT,
@@ -22,6 +26,7 @@ import {
   PHONE_FIELD,
   PHONE_WORDS,
   SIGN_IN_BUTTON,
+  SIGN_IN_EXACT,
   SKIP_BUTTONS,
   TERMS_CONFIRM,
   TERMS_LABEL,
@@ -61,6 +66,22 @@ describe("consent buttons", () => {
     expect(CLOSE_SYMBOL.test("✕")).toBe(true);
     expect(CLOSE_SYMBOL.test("Mehr")).toBe(false);
   });
+
+  it("prefers a button whose whole text declines", () => {
+    expect(DECLINE_EXACT.test("Ablehnen")).toBe(true);
+    expect(DECLINE_EXACT.test(buttonText(" alle  ABLEHNEN "))).toBe(true);
+    expect(DECLINE_EXACT.test("Ablehnen und mehr erfahren")).toBe(false);
+    expect(DECLINE_EXACT.test("Akzeptieren")).toBe(false);
+  });
+
+  it("dismisses the Lidl dialog by its decline button or its close icon, never by accept", () => {
+    expect(CONSENT_DIALOG.decline.test("Ablehnen")).toBe(true);
+    expect(CONSENT_DIALOG.accept.test("Akzeptieren")).toBe(true);
+    // The hidden fallback button of the Lidl page.
+    expect(CONSENT_DIALOG.accept.test("accept")).toBe(true);
+    expect(CONSENT_DIALOG.decline.test("accept")).toBe(false);
+    expect(CONSENT_DIALOG.closeLabel.test("Schließen")).toBe(true);
+  });
 });
 
 describe("login buttons", () => {
@@ -79,6 +100,14 @@ describe("login buttons", () => {
     }
     expect(CONTINUE_BUTTON.test("Weiterleitung")).toBe(false);
     expect(CONTINUE_BUTTON.test("Anmelden")).toBe(false);
+  });
+
+  it("prefers the button whose whole text continues or signs in", () => {
+    expect(CONTINUE_EXACT.test("Weiter")).toBe(true);
+    expect(CONTINUE_EXACT.test("Weiter mit Google")).toBe(false);
+    expect(CONTINUE_BUTTON.test("Weiter mit Google")).toBe(true);
+    expect(SIGN_IN_EXACT.test("Anmelden")).toBe(true);
+    expect(SIGN_IN_EXACT.test("Anmelden mit Apple")).toBe(false);
   });
 });
 
@@ -105,6 +134,14 @@ describe("answers of the site", () => {
       true,
     );
     expect(CAPTCHA_FRAME.test("https://www.youtube.com/embed/x")).toBe(false);
+    // The reCAPTCHA Enterprise anchor the Lidl page loads at once; its challenge is a bframe.
+    expect(IGNORED_FRAME.test("https://www.google.com/recaptcha/enterprise/anchor?ar=1&k=x")).toBe(
+      true,
+    );
+    expect(IGNORED_FRAME.test("https://www.google.com/recaptcha/enterprise/bframe?k=x")).toBe(
+      false,
+    );
+    expect(CAPTCHA_FRAME.test("https://www.google.com/recaptcha/enterprise/bframe?k=x")).toBe(true);
     for (const text of [
       "Bitte gib den Sicherheitscode ein.",
       "Enter the code we sent you",
@@ -126,6 +163,9 @@ describe("phone login", () => {
     }
     expect(EMAIL_SWITCH.test("Mit E-Mail anmelden")).toBe(true);
     expect(EMAIL_SWITCH.test("Use email")).toBe(true);
+    expect(EMAIL_SWITCH_TEXT.test("Verwende stattdessen deine E-Mail-Adresse")).toBe(true);
+    expect(EMAIL_SWITCH_TEXT.test("E-Mail")).toBe(false);
+    expect(EMAIL_SWITCH.test("Verwende stattdessen deine Telefonnummer")).toBe(false);
   });
 
   it("keeps the phone link, the country selector and the phone field apart", () => {

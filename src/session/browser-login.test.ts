@@ -1,10 +1,19 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FAKE_TEXT, fakeBrowser, loopClock, type FakeBrowserScript } from "../testing/browser.js";
+import {
+  ENTERPRISE_ANCHOR,
+  FAKE_TEXT,
+  fakeBrowser,
+  loopClock,
+  type FakeBrowserScript,
+} from "../testing/browser.js";
 import { tempDir } from "../testing/temp.js";
 import { BrowserActionError, UNKNOWN_BROWSER_FAILURE } from "./browser-errors.js";
 import {
+  ACTION_PAUSE_MS,
+  LOGIN_STEPS,
+  LOGIN_STEP_TEXT,
   browserLogin,
   closeWithin,
   buildCookieHeader,
@@ -14,6 +23,7 @@ import {
   siteLanguage,
   siteMessage,
   ssoLoginUrl,
+  stuckAfter,
 } from "./browser-login.js";
 
 const EDITOR = "/de/create-recipe?devices=mc-smart";
@@ -43,8 +53,9 @@ function expectPhoneUntouched(steps: readonly string[]) {
 }
 
 function login(script: FakeBrowserScript, extra: Partial<Parameters<typeof browserLogin>[0]> = {}) {
-  const browser = fakeBrowser(script);
   const clock = loopClock();
+  // The page sees the clock the flow runs on.
+  const browser = fakeBrowser(script, extra.now ?? clock.now);
   const temp = tempDir();
   cleanups.push(temp.cleanup);
   const result = browserLogin({
@@ -55,6 +66,8 @@ function login(script: FakeBrowserScript, extra: Partial<Parameters<typeof brows
     credentials: CREDENTIALS,
     timeoutMs: 30_000,
     screenshotPath: () => join(temp.dir, "shot.png"),
+    // Pauses of 500 ms between actions.
+    random: () => 0.5,
     ...clock,
     ...extra,
   });
@@ -115,6 +128,17 @@ describe("browserLogin", () => {
     expect(outcome).toEqual({
       ok: true,
       cookie: expect.stringContaining("lidl_sso_id_token=id-token") as string,
+      progress: {
+        reached: [
+          "page_reached",
+          "email_entered",
+          "password_page",
+          "password_entered",
+          "redirect_reached",
+          "cookies_received",
+        ],
+        consentDismissals: 0,
+      },
     });
     expect(browser.filled).toEqual({
       'input[type="email"]': CREDENTIALS.email,
@@ -182,8 +206,9 @@ describe("browserLogin", () => {
     expect(await result).toEqual({
       ok: false,
       code: "not_logged_in",
-      detail: "no login within the time limit",
+      detail: "no login within the time limit; stuck after: login page reached",
       screenshot: null,
+      progress: { reached: ["page_reached"], consentDismissals: 0 },
     });
   });
 
@@ -194,6 +219,7 @@ describe("browserLogin", () => {
       code: "browser_unavailable",
       detail: "Playwright is not installed",
       screenshot: null,
+      progress: { reached: [], consentDismissals: 0 },
     });
     expect(browser.opened).toEqual([]);
   });
@@ -232,7 +258,11 @@ describe("browserLogin", () => {
       `locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - fill("${CREDENTIALS.password}")\n  - fill("${CREDENTIALS.email}")`,
     );
     const raw = await login({ form: "both", fillError: leak }).result;
-    expect(raw).toMatchObject({ ok: false, code: "error", detail: UNKNOWN_BROWSER_FAILURE });
+    expect(raw).toMatchObject({
+      ok: false,
+      code: "error",
+      detail: `${UNKNOWN_BROWSER_FAILURE}; stuck after: login page reached`,
+    });
     expect(JSON.stringify(raw)).not.toContain(CREDENTIALS.password);
     expect(JSON.stringify(raw)).not.toContain(CREDENTIALS.email);
 
@@ -241,7 +271,7 @@ describe("browserLogin", () => {
     expect(mapped).toMatchObject({
       ok: false,
       code: "error",
-      detail: "the browser timed out on the login page",
+      detail: "the browser timed out on the login page; stuck after: login page reached",
     });
   });
 });
@@ -314,7 +344,11 @@ describe("browserLogin with consent dialogs", () => {
   it("leaves a page without a dialog alone", async () => {
     const { browser, result } = login({ form: "both", loginWorks: true, consentClose: false });
     const outcome = await result;
-    expect(outcome).toEqual({ ok: true, cookie: expect.any(String) as string });
+    expect(outcome).toEqual({
+      ok: true,
+      cookie: expect.any(String) as string,
+      progress: expect.objectContaining({ consentDismissals: 0 }) as object,
+    });
     expect(browser.steps).not.toContain("close dialog");
   });
 });
@@ -350,7 +384,8 @@ describe("browserLogin form and answers", () => {
     expect(outcome).toMatchObject({
       ok: false,
       code: "unknown_account",
-      detail: 'the site does not know the e-mail address: "Zu <e-mail> gibt es kein Konto."',
+      detail:
+        'the site does not know the e-mail address: "Zu <e-mail> gibt es kein Konto."; stuck after: continue clicked',
     });
     expect(JSON.stringify(outcome)).not.toContain(CREDENTIALS.email);
     expect(onStep).toHaveBeenCalledWith("the site does not know the e-mail address");
@@ -369,7 +404,8 @@ describe("browserLogin form and answers", () => {
     expect(await result).toMatchObject({
       ok: false,
       code: "not_logged_in",
-      detail: "the e-mail address was sent, but no password field followed",
+      detail:
+        "the e-mail address was sent, but no password field followed; stuck after: continue clicked",
     });
     expect(browser.steps).not.toContain("click Zustimmen");
   });
@@ -379,7 +415,7 @@ describe("browserLogin form and answers", () => {
     expect(await result).toMatchObject({
       ok: false,
       code: "not_logged_in",
-      detail: 'the site reported an error: "Bitte warte kurz."',
+      detail: 'the site reported an error: "Bitte warte kurz."; stuck after: continue clicked',
     });
   });
 
@@ -397,7 +433,7 @@ describe("browserLogin form and answers", () => {
       ok: false,
       code: "wrong_password",
       detail:
-        'wrong password reported by the site: "E-Mail-Adresse <e-mail> oder Passwort ist falsch."',
+        'wrong password reported by the site: "E-Mail-Adresse <e-mail> oder Passwort ist falsch."; stuck after: password entered',
     });
     expect(outcome.ok ? null : outcome.screenshot).not.toBeNull();
     expect(JSON.stringify(outcome)).not.toContain(CREDENTIALS.password);
@@ -411,7 +447,8 @@ describe("browserLogin form and answers", () => {
     expect(await result).toMatchObject({
       ok: false,
       code: "not_logged_in",
-      detail: 'the site reported an error: "Zu viele Versuche. Bitte warte."',
+      detail:
+        'the site reported an error: "Zu viele Versuche. Bitte warte."; stuck after: password entered',
     });
   });
 
@@ -421,7 +458,7 @@ describe("browserLogin form and answers", () => {
     expect(await result).toMatchObject({
       ok: false,
       code: "verification_required",
-      detail: "captcha or verification requested",
+      detail: "captcha or verification requested; stuck after: password entered",
     });
     expect(onStep).toHaveBeenCalledWith("captcha or verification requested");
     const plain = login({ form: "both" });
@@ -489,7 +526,7 @@ describe("browserLogin on the phone login", () => {
     expect(await result).toMatchObject({
       ok: false,
       code: "no_login_form",
-      detail: "no e-mail field showed up on the Lidl login page",
+      detail: "no e-mail field showed up on the Lidl login page; stuck after: login page reached",
     });
     expectPhoneUntouched(browser.steps);
     expect(browser.steps.filter((step) => step === `click ${FAKE_TEXT.toEmail}`)).toHaveLength(2);
@@ -502,7 +539,7 @@ describe("browserLogin on the phone login", () => {
     expect(await result).toMatchObject({
       ok: false,
       code: "no_login_form",
-      detail: "no e-mail field showed up on the Lidl login page",
+      detail: "no e-mail field showed up on the Lidl login page; stuck after: login page reached",
     });
     expect(clock.now()).toBeLessThan(20_000);
     expect(browser.steps.some((step) => step.startsWith("enter"))).toBe(false);
@@ -520,6 +557,9 @@ describe("browserLogin on the first login at monsieur-cuisine.com", () => {
       ok: true,
       cookie: expect.any(String) as string,
       termsAccepted: true,
+      progress: expect.objectContaining({
+        reached: expect.arrayContaining(["redirect_reached", "terms_confirmed"]) as string[],
+      }) as object,
     });
     expectInOrder(browser.steps, [
       "click Weiter",
@@ -621,10 +661,11 @@ describe("browserLogin timing", () => {
       },
     );
     expect((await result).ok).toBe(true);
-    expect(filledAt).toBe(0);
+    // The fill at once, then the pause after it.
+    expect(filledAt).toBe(500);
   });
 
-  it("looks at most 3 seconds at a dialog it cannot decline", async () => {
+  it("does not wait at a dialog it cannot dismiss", async () => {
     const clock = loopClock();
     let filledAt = -1;
     const { result } = login(
@@ -637,8 +678,189 @@ describe("browserLogin timing", () => {
       },
     );
     expect((await result).ok).toBe(false);
-    expect(filledAt).toBeGreaterThan(0);
-    expect(filledAt).toBeLessThanOrEqual(3000);
+    expect(filledAt).toBe(500);
+  });
+});
+
+describe("browserLogin with dialogs that come late", () => {
+  const timedOut = (steps: readonly string[]) => steps.filter((step) => step.endsWith("timed out"));
+
+  it.each([300, 800, 1500])(
+    "declines a dialog that comes up %i ms after the navigation",
+    async (delay) => {
+      const { browser, result } = login({
+        form: "continue",
+        loginWorks: true,
+        consent: ["Akzeptieren", "Ablehnen"],
+        consentClose: true,
+        consentDelayMs: delay,
+        coverBlocks: true,
+      });
+      expect(await result).toMatchObject({ ok: true, consentDismissed: true });
+      expect(browser.steps).toContain("click Ablehnen");
+      expect(browser.steps).not.toContain("click Akzeptieren");
+      expect(browser.steps).not.toContain("close dialog");
+      expect(timedOut(browser.steps)).toEqual([]);
+    },
+  );
+
+  it("declines the dialog again when it comes back after the e-mail step", async () => {
+    const { browser, result } = login({
+      form: "continue",
+      loginWorks: true,
+      consent: ["Akzeptieren", "Ablehnen"],
+      consentAgainAfterEmail: true,
+      coverBlocks: true,
+    });
+    const outcome = await result;
+    expect(outcome).toMatchObject({ ok: true, progress: { consentDismissals: 2 } });
+    expectInOrder(browser.steps, [
+      "click Ablehnen",
+      'fill input[type="email"]',
+      "click Weiter",
+      "click Ablehnen",
+      'fill input[type="password"]',
+      "click Weiter",
+    ]);
+    expect(timedOut(browser.steps)).toEqual([]);
+  });
+
+  it("dismisses a dialog that covered a fill and fills once more", async () => {
+    const { browser, result } = login({
+      form: "continue",
+      loginWorks: true,
+      consent: ["Akzeptieren", "Ablehnen"],
+      consentOnFirstFill: true,
+      coverBlocks: true,
+    });
+    expect(await result).toMatchObject({ ok: true, consentDismissed: true });
+    expectInOrder(browser.steps, [
+      'fill input[type="email"] timed out',
+      "click Ablehnen",
+      'fill input[type="email"]',
+      "click Weiter",
+    ]);
+    expect(timedOut(browser.steps)).toHaveLength(1);
+    expect(browser.filled['input[type="email"]']).toBe(CREDENTIALS.email);
+  });
+
+  it("names the last step when a dialog it cannot dismiss covers the continue button", async () => {
+    const { browser, result } = login({
+      form: "continue",
+      consent: ["Zustimmen"],
+      consentDelayMs: 400,
+      coverBlocks: true,
+    });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "error",
+      detail: "the browser timed out on the login page; stuck after: e-mail entered",
+      progress: { reached: ["page_reached", "email_entered"], consentDismissals: 0 },
+    });
+    // The first try, then one more after looking for a dialog.
+    expect(timedOut(browser.steps)).toEqual(["click Weiter timed out", "click Weiter timed out"]);
+    expect(browser.steps).not.toContain("click Zustimmen");
+  });
+
+  it("looks for dialogs only shortly after a navigation when a person logs in", async () => {
+    const early = login(
+      { form: "both", consent: ["Ablehnen"], consentDelayMs: 1500 },
+      { credentials: null, timeoutMs: 10_000 },
+    );
+    expect(await early.result).toMatchObject({ ok: false, consentDismissed: true });
+    const late = login(
+      { form: "both", consent: ["Ablehnen"], consentDelayMs: 5000 },
+      { credentials: null, timeoutMs: 10_000 },
+    );
+    expect(await late.result).not.toHaveProperty("consentDismissed");
+    expect(late.browser.steps).not.toContain("click Ablehnen");
+  });
+});
+
+describe("browserLogin on the Lidl page as it is", () => {
+  it.each(["button", "text"] as const)(
+    "switches to the e-mail address when the switch is a %s",
+    async (kind) => {
+      const { browser, result } = login({
+        form: "continue",
+        phoneMode: true,
+        switchElement: kind,
+        loginWorks: true,
+      });
+      expect((await result).ok).toBe(true);
+      expectInOrder(browser.steps, [
+        `click ${FAKE_TEXT.toEmail}`,
+        'fill input[type="email"]',
+        "click Weiter",
+      ]);
+      expectPhoneUntouched(browser.steps);
+    },
+  );
+
+  it("ignores the reCAPTCHA Enterprise frame the page loads at once", async () => {
+    const works = login({ form: "continue", loginWorks: true, frames: [ENTERPRISE_ANCHOR] });
+    expect((await works.result).ok).toBe(true);
+    const refused = login({ form: "both", frames: [ENTERPRISE_ANCHOR] });
+    expect(await refused.result).toMatchObject({ ok: false, code: "not_logged_in" });
+  });
+
+  it("records every step of a first login with a dialog, in order", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { result } = login(
+      {
+        form: "continue",
+        loginWorks: true,
+        consent: ["Ablehnen"],
+        terms: true,
+        deviceChooser: true,
+      },
+      { onStep, timeoutMs: 60_000 },
+    );
+    const outcome = await result;
+    expect(outcome.ok).toBe(true);
+    expect(outcome.progress).toEqual({ reached: [...LOGIN_STEPS], consentDismissals: 1 });
+    expect(onStep).toHaveBeenCalledWith("logged in");
+  });
+
+  it("records the steps up to a wrong password", async () => {
+    const { result } = login({ form: "continue", siteError: "Passwort ist falsch." });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "wrong_password",
+      progress: {
+        reached: [
+          "page_reached",
+          "email_entered",
+          "continue_clicked",
+          "password_page",
+          "password_entered",
+        ],
+        consentDismissals: 0,
+      },
+    });
+  });
+
+  it("pauses between actions like a person", async () => {
+    const clock = loopClock();
+    const times: Record<string, number> = {};
+    const { result } = login(
+      { form: "continue", loginWorks: true },
+      { ...clock, random: () => 0, onStep: (message) => (times[message] = clock.now()) },
+    );
+    expect((await result).ok).toBe(true);
+    // The fill at once and a pause, then the click on "Weiter" and a pause.
+    expect(times["e-mail address entered"]).toBe(ACTION_PAUSE_MS.min);
+    expect(times["e-mail address sent"]).toBe(2 * ACTION_PAUSE_MS.min);
+  });
+});
+
+describe("stuckAfter", () => {
+  it("names the last step reached, or nothing", () => {
+    expect(stuckAfter({ reached: [], consentDismissals: 0 })).toBe("");
+    expect(
+      stuckAfter({ reached: ["page_reached", "consent_dismissed"], consentDismissals: 2 }),
+    ).toBe("; stuck after: consent dismissed");
+    for (const name of LOGIN_STEPS) expect(LOGIN_STEP_TEXT[name]).not.toBe("");
   });
 });
 

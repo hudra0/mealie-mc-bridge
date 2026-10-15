@@ -17,7 +17,7 @@ import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { browserFailure, type BrowserFailureKind } from "./browser-errors.js";
 import type { BrowserCookie, LoginBrowser, LoginContext, LoginPage } from "./browser-login.js";
-import { buttonText } from "./login-pages.js";
+import { DIALOG_SELECTOR, buttonText, type DialogPatterns } from "./login-pages.js";
 
 // The parts of Playwright the adapter uses, so the bridge compiles without its types.
 interface PwLocator {
@@ -32,6 +32,19 @@ interface PwLocator {
   isEnabled(options?: { timeout?: number }): Promise<boolean>;
   getAttribute(name: string, options?: { timeout?: number }): Promise<string | null>;
   isChecked(options?: { timeout?: number }): Promise<boolean>;
+  locator(selector: string): PwLocator;
+  // The element the locator points at now, to follow it after the locator moves on.
+  elementHandle?(options?: { timeout?: number }): Promise<PwHandle | null>;
+}
+
+interface PwHandle {
+  // "hidden" resolves once the element is not visible or not attached any more.
+  waitForElementState(state: "hidden", options?: { timeout?: number }): Promise<void>;
+  dispose(): Promise<void>;
+}
+
+// What elements can be looked up in: a page, a frame or an element.
+interface PwScope {
   locator(selector: string): PwLocator;
 }
 
@@ -63,13 +76,6 @@ const CONTROLS = [
 ].join(", ");
 // Labels and custom checkboxes, for the terms checkbox.
 const CHECKBOX_LABELS = 'label, [role="checkbox"]';
-// Containers of a dialog, for close buttons that only carry a symbol.
-const DIALOG_BUTTONS = [
-  '[role="dialog"] button',
-  '[role="alertdialog"] button',
-  '[aria-modal="true"] button',
-  "dialog button",
-].join(", ");
 // Elements read per selector, so a long page does not stall a poll.
 const MAX_ELEMENTS = 50;
 
@@ -332,8 +338,8 @@ async function firstVisible(page: PwFrame, selector: string): Promise<PwLocator 
   return null;
 }
 
-function visibleItems(frame: PwFrame, selector: string): AsyncGenerator<PwLocator> {
-  return visibleIn(frame.locator(selector));
+function visibleItems(scope: PwScope, selector: string): AsyncGenerator<PwLocator> {
+  return visibleIn(scope.locator(selector));
 }
 
 async function* visibleIn(all: PwLocator): AsyncGenerator<PwLocator> {
@@ -369,34 +375,116 @@ function framesOf(page: PwPage): PwFrame[] {
   return typeof page.frames === "function" ? page.frames() : [page];
 }
 
+interface Candidate {
+  item: PwLocator;
+  text: string;
+  exact: boolean;
+}
+
 function pageAdapter(page: PwPage, timeout: number): LoginPage {
   const textOf = async (item: PwLocator) =>
     buttonText(await item.innerText({ timeout }).catch(() => ""));
+  // The first visible and enabled button in the scope whose text matches `match` and not
+  // `avoid`; one whose text also matches `exact` comes first.
+  const findButton = async (
+    scope: PwScope,
+    match: RegExp,
+    avoid: RegExp,
+    exact?: RegExp,
+  ): Promise<Candidate | null> => {
+    let fallback: Candidate | null = null;
+    for await (const item of visibleItems(scope, BUTTONS)) {
+      const text = await textOf(item);
+      if (text === "" || !match.test(text) || avoid.test(text)) continue;
+      // A disabled button waits for the click until the timeout; skip it instead.
+      if (!(await item.isEnabled({ timeout }).catch(() => false))) continue;
+      const candidate = { item, text, exact: exact === undefined || exact.test(text) };
+      if (candidate.exact) return candidate;
+      fallback ??= candidate;
+    }
+    return fallback;
+  };
+  // Clicks a control of a dialog and waits until the dialog is hidden or gone.
+  const clickAndWait = async (dialog: PwLocator, control: PwLocator, waitMs: number) => {
+    const handle = (await dialog.elementHandle?.({ timeout }).catch(() => null)) ?? null;
+    await control.click({ timeout });
+    if (handle === null) return;
+    await handle.waitForElementState("hidden", { timeout: waitMs }).catch(() => undefined);
+    await handle.dispose().catch(() => undefined);
+  };
+  // The close control of a dialog: a button whose accessible name closes, or whose text is a
+  // close symbol; never one whose text accepts.
+  const findClose = async (dialog: PwLocator, patterns: DialogPatterns) => {
+    for await (const control of visibleItems(dialog, BUTTONS)) {
+      const text = await textOf(control);
+      if (patterns.accept.test(text)) continue;
+      const label = (await control.getAttribute("aria-label", { timeout }).catch(() => null)) ?? "";
+      if (patterns.closeLabel.test(label) || patterns.closeSymbol.test(text)) return control;
+    }
+    return null;
+  };
   return {
     goto: async (url) => {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
     },
     url: () => page.url(),
-    fillVisible: async (selector, value) => {
+    fillVisible: async (selector, value, options = {}) => {
       for await (const field of visibleItems(page, selector)) {
         // A field behind a consent dialog or still loading can be disabled.
         if (!(await field.isEnabled({ timeout }).catch(() => false))) continue;
-        await field.fill(value, { timeout });
+        await field.fill(value, { timeout: options.timeoutMs ?? timeout });
         return true;
       }
       return false;
     },
     isVisible: async (selector) => (await firstVisible(page, selector)) !== null,
-    clickButtonByText: async (match, avoid) => {
+    clickButtonByText: async (match, avoid, options = {}) => {
+      let fallback: Candidate | null = null;
       for (const frame of framesOf(page)) {
-        for await (const button of visibleItems(frame, BUTTONS)) {
-          const text = await textOf(button);
-          if (text === "" || !match.test(text) || avoid.test(text)) continue;
-          // A disabled button waits for the click until the timeout; skip it instead.
-          if (!(await button.isEnabled({ timeout }).catch(() => false))) continue;
-          await button.click({ timeout });
-          return text;
+        const found = await findButton(frame, match, avoid, options.exact);
+        if (found?.exact) {
+          fallback = found;
+          break;
         }
+        fallback ??= found;
+      }
+      if (fallback === null) return null;
+      await fallback.item.click({ timeout: options.timeoutMs ?? timeout });
+      return fallback.text;
+    },
+    dismissDialog: async (patterns, options) => {
+      const [main, ...children] = framesOf(page);
+      if (main === undefined) return null;
+      // Inside a visible dialog of the page: its decline button, the exact phrase first.
+      for await (const dialog of visibleItems(main, DIALOG_SELECTOR)) {
+        const found = await findButton(
+          dialog,
+          patterns.decline,
+          patterns.accept,
+          patterns.declineExact,
+        );
+        if (found === null) continue;
+        await clickAndWait(dialog, found.item, options.waitMs);
+        return "declined";
+      }
+      // A consent page in a frame of its own: its decline button anywhere in the frame.
+      for (const frame of children) {
+        const found = await findButton(
+          frame,
+          patterns.decline,
+          patterns.accept,
+          patterns.declineExact,
+        );
+        if (found === null) continue;
+        await found.item.click({ timeout });
+        return "declined";
+      }
+      if (!options.close) return null;
+      for await (const dialog of visibleItems(main, DIALOG_SELECTOR)) {
+        const control = await findClose(dialog, patterns);
+        if (control === null) continue;
+        await clickAndWait(dialog, control, options.waitMs);
+        return "closed";
       }
       return null;
     },
@@ -411,14 +499,14 @@ function pageAdapter(page: PwPage, timeout: number): LoginPage {
             const text = await textOf(item);
             if (text === "" || !match.test(text) || avoid.test(text)) continue;
             if (!(await item.isEnabled({ timeout }).catch(() => false))) continue;
-            await item.click({ timeout });
+            await item.click({ timeout: options.timeoutMs ?? timeout });
             return text;
           }
         }
       }
       return null;
     },
-    checkBox: async (label, avoid) => {
+    checkBox: async (label, avoid, options = {}) => {
       for (const frame of framesOf(page)) {
         for await (const item of visibleItems(frame, CHECKBOX_LABELS)) {
           const name =
@@ -429,26 +517,8 @@ function pageAdapter(page: PwPage, timeout: number): LoginPage {
           if (box !== null && (await isTicked(box, timeout))) return true;
           // The box itself when it shows, so a link inside the label is not hit.
           const target = box !== null && (await box.isVisible().catch(() => false)) ? box : item;
-          await target.click({ timeout });
+          await target.click({ timeout: options.timeoutMs ?? timeout });
           return box === null ? true : await isTicked(box, timeout);
-        }
-      }
-      return false;
-    },
-    closeDialog: async (label, symbol) => {
-      for (const frame of framesOf(page)) {
-        for await (const button of visibleItems(frame, DIALOG_BUTTONS)) {
-          if (symbol.test(await textOf(button))) {
-            await button.click({ timeout });
-            return true;
-          }
-        }
-        for await (const button of visibleItems(frame, "button[aria-label]")) {
-          const name =
-            (await button.getAttribute("aria-label", { timeout }).catch(() => null)) ?? "";
-          if (!label.test(name)) continue;
-          await button.click({ timeout });
-          return true;
         }
       }
       return false;
@@ -474,11 +544,11 @@ function pageAdapter(page: PwPage, timeout: number): LoginPage {
         .first()
         .innerText({ timeout })
         .catch(() => ""),
-    pressEnter: async (selector) => {
+    pressEnter: async (selector, options = {}) => {
       const field = await firstVisible(page, selector);
-      await field?.press("Enter", { timeout });
+      await field?.press("Enter", { timeout: options.timeoutMs ?? timeout });
     },
-    clickButton: async (skip) => {
+    clickButton: async (skip, options = {}) => {
       const buttons = page.locator("button");
       const count = await buttons.count();
       for (let index = 0; index < count; index++) {
@@ -486,7 +556,7 @@ function pageAdapter(page: PwPage, timeout: number): LoginPage {
         if (!(await button.isVisible())) continue;
         const text = (await button.innerText({ timeout }).catch(() => "")).trim();
         if (text === "" || skip.test(text)) continue;
-        await button.click({ timeout });
+        await button.click({ timeout: options.timeoutMs ?? timeout });
         return true;
       }
       return false;

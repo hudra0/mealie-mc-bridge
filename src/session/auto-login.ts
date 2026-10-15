@@ -32,6 +32,7 @@ import {
   type BrowserLoginResult,
   type LoginBrowser,
   type LoginNotes,
+  type LoginProgress,
 } from "./browser-login.js";
 
 export const AUTO_LOGIN_KEYS = {
@@ -70,6 +71,8 @@ export interface LoginAttempt {
   termsAccepted?: boolean;
   // The login chose MC Smart in the device chooser of the first login.
   deviceChosen?: boolean;
+  // How far the login got. Absent in older records.
+  progress?: LoginProgress;
 }
 
 export type SkipReason =
@@ -128,6 +131,7 @@ function loginNotes(result: BrowserLoginResult): LoginNotes {
     ...(result.consentDismissed ? { consentDismissed: true } : {}),
     ...(result.termsAccepted ? { termsAccepted: true } : {}),
     ...(result.deviceChosen ? { deviceChosen: true } : {}),
+    ...(result.progress ? { progress: result.progress } : {}),
   };
 }
 
@@ -381,7 +385,14 @@ export class AutoLogin {
     const failures = this.#failures() + (manual ? 0 : 1);
     this.#settings.set(AUTO_LOGIN_KEYS.failures, String(failures));
     logger.warn(
-      { manual, code: failure.code, detail: attempt.detail, failures, ...notes },
+      {
+        manual,
+        code: failure.code,
+        detail: attempt.detail,
+        failures,
+        ...notes,
+        ...(notes.progress ? { progress: notes.progress.reached } : {}),
+      },
       "automatic Monsieur Cuisine login failed",
     );
     return { status: "failed", attempt };

@@ -13,6 +13,11 @@ function startsWithPhrase(phrases: readonly string[]): RegExp {
   return new RegExp(`^(?:${sorted.join("|")})(?!\\p{L})`, "iu");
 }
 
+// Builds a pattern that matches a button text that is exactly one of the phrases.
+function exactPhrase(phrases: readonly string[]): RegExp {
+  return new RegExp(`^(?:${phrases.map(escapeRegExp).join("|")})$`, "iu");
+}
+
 // Builds a pattern that matches one of the words anywhere, as a whole word.
 function anyWord(words: readonly string[]): RegExp {
   const sorted = [...words].sort((a, b) => b.length - a.length).map(escapeRegExp);
@@ -53,6 +58,8 @@ export const DECLINE_PHRASES = [
   "Respinge",
 ] as const;
 export const DECLINE_BUTTON = startsWithPhrase(DECLINE_PHRASES);
+// A button whose whole text is a decline phrase; preferred over one that only starts with it.
+export const DECLINE_EXACT = exactPhrase(DECLINE_PHRASES);
 
 // Buttons that accept or tune a consent dialog. The login never clicks them, neither as a
 // decline nor as a welcome screen button.
@@ -121,7 +128,7 @@ export const CLOSE_LABEL = anyFragment([
 export const CLOSE_SYMBOL = /^[×✕✖✗xX]$/u;
 
 // The button that sends the e-mail address in a login in two steps.
-export const CONTINUE_BUTTON = startsWithPhrase([
+export const CONTINUE_PHRASES = [
   "Weiter",
   "Fortfahren",
   "Continue",
@@ -139,7 +146,10 @@ export const CONTINUE_BUTTON = startsWithPhrase([
   "Doorgaan",
   "Următorul",
   "Continuă",
-]);
+] as const;
+export const CONTINUE_BUTTON = startsWithPhrase(CONTINUE_PHRASES);
+// "Weiter" itself, preferred over "Weiter mit ..." when both show.
+export const CONTINUE_EXACT = exactPhrase(CONTINUE_PHRASES);
 
 // Buttons on the Lidl welcome screen that lead away from the login: a registration.
 export const REGISTRATION_BUTTON = /regist|erstellen|create|sign up|neu/i;
@@ -197,9 +207,10 @@ export const WRONG_PASSWORD = anyFragment([
 ]);
 
 // The source of a frame that shows a captcha or a challenge. Invisible reCAPTCHA frames
-// sit on many login forms without asking anything.
+// sit on many login forms without asking anything: the Lidl login page carries the anchor
+// frame of reCAPTCHA Enterprise from the start. A challenge opens a bframe instead.
 export const CAPTCHA_FRAME = /captcha|challenge|turnstile|arkose|funcaptcha/i;
-export const IGNORED_FRAME = /size=invisible/i;
+export const IGNORED_FRAME = /size=invisible|\/recaptcha\/enterprise\/anchor/i;
 
 // Page text that asks for a captcha or a verification code.
 export const VERIFICATION_TEXT = anyWord([
@@ -232,7 +243,7 @@ export const VERIFICATION_TEXT = anyWord([
 
 // The Lidl login page opens either asking for an e-mail address or for a phone number. In
 // phone mode it shows a country selector and a phone field, which the login never touches;
-// a link switches the page to the e-mail field.
+// a button switches the page to the e-mail field.
 export const PHONE_FIELD = [
   'input[type="tel"]',
   'input[inputmode="tel"]',
@@ -272,7 +283,7 @@ export const PHONE_WORDS = anyFragment([
   "+3",
 ]);
 
-// The link that switches the phone login to the e-mail address, in the sites' languages.
+// The control that switches the phone login to the e-mail address, in the sites' languages.
 export const EMAIL_SWITCH_PHRASES = [
   "Verwende stattdessen deine E-Mail-Adresse",
   "Stattdessen E-Mail-Adresse verwenden",
@@ -292,15 +303,17 @@ export const EMAIL_SWITCH_PHRASES = [
   "Gebruik je e-mailadres",
   "Folosește adresa de e-mail",
 ] as const;
-// The switch link: one of the phrases, or any link or button that names the e-mail
-// address. PHONE_WORDS is the counterpart the click avoids.
+// The switch control: one of the phrases, or any link or button that names the e-mail
+// address. PHONE_WORDS is the counterpart the click avoids. The Lidl page renders it as a
+// button; EMAIL_SWITCH_TEXT finds it as any element that carries one of the phrases.
 export const EMAIL_SWITCH = new RegExp(
   [anyFragment(EMAIL_SWITCH_PHRASES).source, "e-?mail", "correo", "adresse électronique"].join("|"),
   "iu",
 );
+export const EMAIL_SWITCH_TEXT = anyFragment(EMAIL_SWITCH_PHRASES);
 
 // The button that sends the password on a combined form, when no continue button is there.
-export const SIGN_IN_BUTTON = startsWithPhrase([
+export const SIGN_IN_PHRASES = [
   "Anmelden",
   "Einloggen",
   "Login",
@@ -318,7 +331,9 @@ export const SIGN_IN_BUTTON = startsWithPhrase([
   "Aanmelden",
   "Conectare",
   "Autentificare",
-]);
+] as const;
+export const SIGN_IN_BUTTON = startsWithPhrase(SIGN_IN_PHRASES);
+export const SIGN_IN_EXACT = exactPhrase(SIGN_IN_PHRASES);
 // Sign-in buttons of other identity providers, which the login never uses.
 export const OTHER_PROVIDER = anyWord(["Google", "Apple", "Facebook", "Microsoft", "Amazon"]);
 
@@ -510,3 +525,22 @@ export const DIALOG_SELECTOR = [
   '[id*="cookie-banner" i]',
   '[class*="cookie-banner" i]',
 ].join(", ");
+
+// What dismissing a dialog looks for: inside a visible dialog, a button whose text declines
+// (an exact phrase first), else a control whose accessible name or symbol closes it. Accept
+// buttons are never clicked, neither as a decline nor as a close control.
+export interface DialogPatterns {
+  decline: RegExp;
+  declineExact: RegExp;
+  accept: RegExp;
+  closeLabel: RegExp;
+  closeSymbol: RegExp;
+}
+
+export const CONSENT_DIALOG: DialogPatterns = {
+  decline: DECLINE_BUTTON,
+  declineExact: DECLINE_EXACT,
+  accept: ACCEPT_BUTTON,
+  closeLabel: CLOSE_LABEL,
+  closeSymbol: CLOSE_SYMBOL,
+};

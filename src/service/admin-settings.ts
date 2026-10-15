@@ -18,6 +18,7 @@ import {
   type AutoLoginRun,
   type AutoLoginStatus,
 } from "../session/auto-login.js";
+import type { LoginProgress } from "../session/browser-login.js";
 import type { SessionStatus } from "../session/manager.js";
 import type { AdminContext, RenderExtra } from "./admin.js";
 import {
@@ -121,6 +122,24 @@ function sessionSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
   </section>`;
 }
 
+// The steps an attempt reached, in order, the dismissed dialogs with their count. A stored
+// step this version does not know is left out.
+function progressList(progress: LoginProgress, l: AdminMessages["settings"]): SafeHtml {
+  const known = (Array.isArray(progress.reached) ? progress.reached : []).filter((name) =>
+    Object.hasOwn(l.steps, name),
+  );
+  const items = known.map((name) =>
+    name === "consent_dismissed" && progress.consentDismissals > 1
+      ? l.consentSteps(progress.consentDismissals)
+      : l.steps[name],
+  );
+  if (items.length === 0) return html``;
+  return html`<br /><span class="muted">${l.progressTitle}</span>
+    <ol class="small steps">
+      ${items.map((item) => html`<li>${item}</li>`)}
+    </ol>`;
+}
+
 function autoLoginSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
   const l = t.settings;
   const intro = html`<h2 id="autologin-title">${l.account}</h2>
@@ -158,7 +177,8 @@ function autoLoginSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
                 >
                 ${last.code ? html`<br />${l.failure[last.code]}` : ""}
                 ${last.detail ? html`<br /><span class="muted">${last.detail}</span>` : ""}
-                ${last.consentDismissed ? html`<br /><span class="muted">${l.consentDismissed}</span>` : ""}
+                ${last.progress ? progressList(last.progress, l) : ""}
+                ${last.consentDismissed && !last.progress ? html`<br /><span class="muted">${l.consentDismissed}</span>` : ""}
                 ${last.termsAccepted ? html`<br /><span class="muted">${l.termsAccepted}</span>` : ""}
                 ${last.deviceChosen ? html`<br /><span class="muted">${l.deviceChosen}</span>` : ""}
                 ${

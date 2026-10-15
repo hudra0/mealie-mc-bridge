@@ -1,128 +1,222 @@
-// The settings page: the Lidl account for the automatic login, a manual test, deletion,
-// and the last attempt with its screenshot. It runs inside the admin plugin (see
-// AdminOptions.extend), so the login, the form token and the host check apply.
+// The settings page: the Monsieur Cuisine session (state, check, cookie paste), the Lidl
+// account for the automatic login (test, deletion, the last attempt with its screenshot),
+// language and recipe status, and a read-only view of the effective configuration. It runs
+// inside the admin plugin, so the login, the form token and the host check apply.
 //
 // The password is never shown, logged or sent back to the browser; the field stays empty
-// and an empty field keeps the stored password.
+// and an empty field keeps the stored password. Secrets of the configuration arrive here
+// already reduced to "set" or "unset" (src/config-reference.ts).
 
 import { readFile } from "node:fs/promises";
 import type { FastifyReply } from "fastify";
-import type { AdminMessages } from "../i18n/index.js";
+import type { ConfigEntry } from "../config-reference.js";
+import { REQUIRED_DEFAULT } from "../config-reference.js";
+import type { AdminMessages, SavedStatus } from "../i18n/index.js";
 import {
   InvalidCredentialsError,
   type AutoLogin,
   type AutoLoginRun,
   type AutoLoginStatus,
 } from "../session/auto-login.js";
-import type { AdminContext } from "./admin.js";
-import { REFRESH_SECONDS } from "./admin.js";
-import { csrfField, formatTime } from "./admin-views.js";
+import type { SessionStatus } from "../session/manager.js";
+import type { AdminContext, RenderExtra } from "./admin.js";
+import {
+  REFRESH_SECONDS,
+  csrfField,
+  formatTime,
+  pageHead,
+  sessionBadge,
+  withCode,
+} from "./admin-views.js";
 import { html, type SafeHtml } from "./html.js";
 
+export type AutoLoginPort = Pick<
+  AutoLogin,
+  | "status"
+  | "saveCredentials"
+  | "deleteCredentials"
+  | "browserUnavailable"
+  | "screenshotFile"
+  | "hasCredentials"
+>;
+
 export interface SettingsDeps {
-  autoLogin: Pick<
-    AutoLogin,
-    | "status"
-    | "saveCredentials"
-    | "deleteCredentials"
-    | "browserUnavailable"
-    | "screenshotFile"
-    | "hasCredentials"
-  >;
-  session: { loginNow(): Promise<AutoLoginRun> };
+  // Null when the service runs without the automatic login.
+  autoLogin: AutoLoginPort | null;
+  session: { status(): SessionStatus; loginNow(): Promise<AutoLoginRun> };
+  // The effective configuration; null when the caller has none to show.
+  config: readonly ConfigEntry[] | null;
+  locale: { mcLocale: string; verified: boolean; uiLanguage: string; recipeStatus: SavedStatus };
+  now: () => Date;
 }
 
 export interface SettingsViewData {
-  status: AutoLoginStatus;
-  browserUnavailable: string | null;
+  session: SessionStatus;
+  now: Date;
+  autoLogin: { status: AutoLoginStatus; browserUnavailable: string | null } | null;
   formToken: string;
+  config: readonly ConfigEntry[] | null;
+  locale: SettingsDeps["locale"];
 }
 
-export function settingsView(data: SettingsViewData, t: AdminMessages): SafeHtml {
-  const l = t.settings;
-  const { status } = data;
-  const last = status.last;
-  return html`<h1>${l.title}</h1>
-    <section>
-      <h2>${l.account}</h2>
-      <p class="muted">${l.intro}</p>
-      <dl>
-        <dt>${l.account}</dt>
-        <dd>
-          ${status.configured && status.email ? l.configuredAs(status.email) : l.notConfigured}
-        </dd>
-        <dt>${l.browser}</dt>
-        <dd>
-          ${
-            data.browserUnavailable === null
-              ? html`<span class="badge ok">${l.browserReady}</span>`
-              : html`<span class="badge bad">${l.browserMissing(data.browserUnavailable)}</span>`
-          }
-        </dd>
-        <dt>${l.lastAttempt}</dt>
-        <dd>
-          ${
-            last
-              ? html`<span class="badge ${last.ok ? "ok" : "bad"}"
-                    >${l.attempt(formatTime(last.at), last.ok, last.manual)}</span
-                  >
-                  ${last.code ? html`<br />${l.failure[last.code]}` : ""}
-                  ${last.detail ? html`<br /><span class="muted">${last.detail}</span>` : ""}
-                  ${last.consentDismissed ? html`<br /><span class="muted">${l.consentDismissed}</span>` : ""}
-                  ${
-                    last.screenshot
-                      ? html`<br /><a
-                            href="/admin/settings/screenshots/${encodeURIComponent(last.screenshot)}"
-                            >${l.screenshot}</a
-                          >`
-                      : ""
-                  }`
-              : l.never
-          }
-        </dd>
+function sessionSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
+  const l = t.settings.session;
+  const d = t.dashboard;
+  const { session } = data;
+  return html`<section class="card" id="session" aria-labelledby="session-title">
+    <h2 id="session-title">${l.title}</h2>
+    <p class="lead">${withCode(l.lead)}</p>
+    <dl class="facts">
+      <dt>${d.state}</dt>
+      <dd>${sessionBadge(session.state, t)}</dd>
+      <dt>${d.lastCheck}</dt>
+      <dd>${formatTime(session.checkedAt)}</dd>
+      <dt>${d.cookieAge}</dt>
+      <dd>
         ${
-          status.running
-            ? html`<dt></dt>
-                <dd><span class="badge info">${l.running}</span></dd>`
-            : ""
+          session.cookieAgeHours === null
+            ? d.noCookie
+            : d.age(session.cookieAgeHours, session.cookieAgeFrom ?? "stored")
         }
-        ${
-          status.nextAttemptAt
-            ? html`<dt>${l.nextAttempt}</dt>
-                <dd>${formatTime(status.nextAttemptAt)}</dd>`
-            : ""
-        }
-      </dl>
-    </section>
-    <section>
-      <form class="fields" method="post" action="/admin/settings/credentials">
-        ${csrfField(data.formToken)}
-        <label
-          >${l.email}
-          <input
-            type="email"
-            name="email"
-            value="${status.email ?? ""}"
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck="false"
-            required
-        /></label>
-        <label
-          >${l.password}
-          <input
-            type="password"
-            name="password"
-            autocomplete="new-password"
-            placeholder="${status.configured ? l.passwordStored : ""}"
-            ${status.configured ? "" : html`required`}
-        /></label>
-        <button type="submit">${l.save}</button>
-      </form>
+      </dd>
       ${
-        status.configured
-          ? html`<div>
-              <form class="inline" method="post" action="/admin/settings/login">
+        session.cookieExpiresAt
+          ? html`<dt>${d.cookieExpires}</dt>
+              <dd>
+                ${d.expiresAt(
+                  formatTime(session.cookieExpiresAt),
+                  Date.parse(session.cookieExpiresAt) <= data.now.getTime(),
+                )}
+              </dd>`
+          : ""
+      }
+      <dt>${d.lastError}</dt>
+      <dd>${session.lastError ? html`<span class="bad">${session.lastError}</span>` : "–"}</dd>
+    </dl>
+    <form class="buttons" method="post" action="/admin/session/check">
+      ${csrfField(data.formToken)}
+      <button type="submit">${d.checkNow}</button>
+      <span class="help">${withCode(l.checkHelp)}</span>
+    </form>
+    <h3>${l.renewTitle}</h3>
+    <ol>
+      ${l.renewWays.map((way) => html`<li>${withCode(way)}</li>`)}
+    </ol>
+    <form method="post" action="/admin/session">
+      ${csrfField(data.formToken)}
+      <label class="field"
+        ><span class="label">${l.cookieLabel}</span>
+        <textarea
+          id="cookie"
+          name="cookie"
+          rows="4"
+          autocomplete="off"
+          spellcheck="false"
+          required
+        ></textarea>
+        <span class="help">${withCode(d.cookieLabel)}</span></label
+      >
+      <button type="submit" class="primary">${d.saveSession}</button>
+    </form>
+  </section>`;
+}
+
+function autoLoginSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
+  const l = t.settings;
+  const intro = html`<h2 id="autologin-title">${l.account}</h2>
+    <p class="lead">${withCode(l.intro)}</p>
+    <ul class="small">
+      ${l.facts.map((fact) => html`<li>${withCode(fact)}</li>`)}
+    </ul>`;
+  if (data.autoLogin === null) {
+    return html`<section class="card" id="autologin" aria-labelledby="autologin-title">
+      ${intro}
+      <p class="muted">${l.unavailable}</p>
+    </section>`;
+  }
+  const { status, browserUnavailable } = data.autoLogin;
+  const last = status.last;
+  return html`<section class="card" id="autologin" aria-labelledby="autologin-title">
+    ${intro}
+    <dl class="facts">
+      <dt>${l.accountState}</dt>
+      <dd>${status.configured && status.email ? l.configuredAs(status.email) : l.notConfigured}</dd>
+      <dt>${l.browser}</dt>
+      <dd>
+        ${
+          browserUnavailable === null
+            ? html`<span class="badge ok">${l.browserReady}</span>`
+            : html`<span class="badge bad">${l.browserMissing(browserUnavailable)}</span>`
+        }
+      </dd>
+      <dt>${l.lastAttempt}</dt>
+      <dd>
+        ${
+          last
+            ? html`<span class="badge ${last.ok ? "ok" : "bad"}"
+                  >${l.attempt(formatTime(last.at), last.ok, last.manual)}</span
+                >
+                ${last.code ? html`<br />${l.failure[last.code]}` : ""}
+                ${last.detail ? html`<br /><span class="muted">${last.detail}</span>` : ""}
+                ${last.consentDismissed ? html`<br /><span class="muted">${l.consentDismissed}</span>` : ""}
+                ${
+                  last.screenshot
+                    ? html`<br /><a
+                          href="/admin/settings/screenshots/${encodeURIComponent(last.screenshot)}"
+                          >${l.screenshot}</a
+                        >`
+                    : ""
+                }`
+            : l.never
+        }
+      </dd>
+      ${
+        status.running
+          ? html`<dt></dt>
+              <dd><span class="badge info">${l.running}</span></dd>`
+          : ""
+      }
+      ${
+        status.nextAttemptAt
+          ? html`<dt>${l.nextAttempt}</dt>
+              <dd>${formatTime(status.nextAttemptAt)}</dd>`
+          : ""
+      }
+    </dl>
+    <h3>${status.configured ? l.changeAccount : l.storeAccount}</h3>
+    <form method="post" action="/admin/settings/credentials">
+      ${csrfField(data.formToken)}
+      <label class="field"
+        ><span class="label">${l.email}</span>
+        <input
+          type="email"
+          name="email"
+          value="${status.email ?? ""}"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          required
+        />
+        <span class="help">${l.emailHelp}</span></label
+      >
+      <label class="field"
+        ><span class="label">${l.password}</span>
+        <input
+          type="password"
+          name="password"
+          autocomplete="new-password"
+          placeholder="${status.configured ? l.passwordStored : ""}"
+          ${status.configured ? "" : html`required`}
+        />
+        <span class="help">${withCode(l.passwordHelp)}</span></label
+      >
+      <button type="submit" class="primary">${l.save}</button>
+    </form>
+    ${
+      status.configured
+        ? html`<dl class="actions spaced">
+            <dt>
+              <form method="post" action="/admin/settings/login">
                 ${csrfField(data.formToken)}
                 <button
                   type="submit"
@@ -131,56 +225,172 @@ export function settingsView(data: SettingsViewData, t: AdminMessages): SafeHtml
                   ${l.testNow}
                 </button>
               </form>
+            </dt>
+            <dd>
+              ${l.testHelp}
               ${
                 status.manualAvailableAt
-                  ? html`<span class="muted"
-                      >${l.manualCooldown(formatTime(status.manualAvailableAt))}</span
-                    >`
+                  ? html`<br /><span
+                        >${l.manualCooldown(formatTime(status.manualAvailableAt))}</span
+                      >`
                   : ""
               }
-              <form class="inline" method="post" action="/admin/settings/credentials/delete">
+            </dd>
+            <dt>
+              <form method="post" action="/admin/settings/credentials/delete">
                 ${csrfField(data.formToken)}
-                <button type="submit">${l.remove}</button>
+                <button type="submit" class="danger">${l.remove}</button>
               </form>
-            </div>`
-          : ""
-      }
-      <p class="muted">${l.otherWays}</p>
-    </section>`;
+            </dt>
+            <dd>${l.removeHelp}</dd>
+          </dl>`
+        : ""
+    }
+  </section>`;
 }
 
-export function registerSettings(context: AdminContext, deps: SettingsDeps): void {
-  const { app, t, csrf, render, notice } = context;
+function localeSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
+  const l = t.settings.locale;
+  const { locale } = data;
+  return html`<section class="card" id="language" aria-labelledby="language-title">
+    <h2 id="language-title">${l.title}</h2>
+    <p class="lead">${l.lead}</p>
+    <dl class="facts">
+      <dt><code>MC_LOCALE</code></dt>
+      <dd>
+        <code>${locale.mcLocale}</code>
+        ${locale.verified ? "" : html`<span class="badge warn">${l.unverified}</span>`}
+        <span class="help">${l.mcLocale}</span>
+      </dd>
+      <dt><code>UI_LANGUAGE</code></dt>
+      <dd>
+        <code>${locale.uiLanguage}</code>
+        <span class="help">${l.uiLanguage}</span>
+      </dd>
+      <dt><code>MC_RECIPE_STATUS</code></dt>
+      <dd>
+        <code>${locale.recipeStatus}</code>
+        <span class="help">${l.recipeStatus[locale.recipeStatus]}</span>
+      </dd>
+    </dl>
+  </section>`;
+}
 
-  const show = async (
-    reply: FastifyReply,
-    extra: { status?: number; notice?: string | null; error?: string | null } = {},
-  ) => {
-    const status = deps.autoLogin.status();
+function configValue(entry: ConfigEntry, t: AdminMessages): SafeHtml {
+  const l = t.settings.config;
+  if (entry.secret) {
+    return entry.source === "unset"
+      ? html`<span class="muted">${l.unset}</span>`
+      : html`<span class="badge muted">${l.hidden}</span>`;
+  }
+  if (entry.value === null) return html`<span class="muted">${l.unset}</span>`;
+  return html`<code class="url">${entry.value}</code>
+    ${entry.source === "default" ? html` <span class="badge muted">${l.isDefault}</span>` : ""}`;
+}
+
+function configSection(data: SettingsViewData, t: AdminMessages): SafeHtml {
+  const l = t.settings.config;
+  return html`<section class="card" id="config" aria-labelledby="config-title">
+    <h2 id="config-title">${l.title}</h2>
+    <p class="lead">${withCode(l.lead)}</p>
+    ${
+      data.config === null
+        ? html`<p class="muted">${l.unavailable}</p>`
+        : html`<div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>${l.name}</th>
+                  <th>${l.value}</th>
+                  <th>${l.description}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.config.map(
+                  (entry) =>
+                    html`<tr>
+                      <td><code>${entry.name}</code></td>
+                      <td>${configValue(entry, t)}</td>
+                      <td>
+                        ${withCode(entry.description)}
+                        <span class="help"
+                          >${l.defaultLabel}
+                          ${
+                            entry.default === REQUIRED_DEFAULT
+                              ? l.required
+                              : entry.default === "unset"
+                                ? l.unset
+                                : withCode(entry.default)
+                          }${entry.values ? html`; ${l.valuesLabel} ${withCode(entry.values)}` : ""}</span
+                        >
+                      </td>
+                    </tr>`,
+                )}
+              </tbody>
+            </table>
+          </div>`
+    }
+  </section>`;
+}
+
+export function settingsView(data: SettingsViewData, t: AdminMessages): SafeHtml {
+  const l = t.settings;
+  return html`${pageHead(
+    l.title,
+    l.lead,
+    html`<p class="links small">
+      <a href="#session">${l.session.title}</a> · <a href="#autologin">${l.account}</a> ·
+      <a href="#language">${l.locale.title}</a> · <a href="#config">${l.config.title}</a>
+    </p>`,
+  )}
+  ${sessionSection(data, t)} ${autoLoginSection(data, t)} ${localeSection(data, t)}
+  ${configSection(data, t)}`;
+}
+
+// Registers the settings routes and returns the function that renders the page, which
+// the session forms of admin.ts use for their errors.
+export function registerSettings(
+  context: AdminContext,
+  deps: SettingsDeps,
+): (reply: FastifyReply, extra?: RenderExtra) => Promise<FastifyReply> {
+  const { app, t, csrf, render, notice } = context;
+  const autoLogin = deps.autoLogin;
+
+  const show = async (reply: FastifyReply, extra: RenderExtra = {}) => {
+    const status = autoLogin?.status() ?? null;
     return render(
       reply,
       t.settings.title,
       settingsView(
         {
-          status,
-          browserUnavailable: await deps.autoLogin.browserUnavailable(),
+          session: deps.session.status(),
+          now: deps.now(),
+          autoLogin:
+            autoLogin && status
+              ? { status, browserUnavailable: await autoLogin.browserUnavailable() }
+              : null,
           formToken: csrf(reply.request),
+          config: deps.config,
+          locale: deps.locale,
         },
         t,
       ),
       {
         ...extra,
-        refresh: status.running ? { seconds: REFRESH_SECONDS, url: "/admin/settings" } : null,
+        active: "settings",
+        refresh: status?.running ? { seconds: REFRESH_SECONDS, url: "/admin/settings" } : null,
       },
     );
   };
 
   app.get("/admin/settings", (request, reply) => show(reply, { notice: notice(request) }));
 
+  if (autoLogin === null) return show;
+
   app.post("/admin/settings/credentials", (request, reply) => {
     const body = (request.body ?? {}) as { email?: unknown; password?: unknown };
     try {
-      deps.autoLogin.saveCredentials(
+      autoLogin.saveCredentials(
         typeof body.email === "string" ? body.email : "",
         typeof body.password === "string" ? body.password : "",
       );
@@ -194,16 +404,16 @@ export function registerSettings(context: AdminContext, deps: SettingsDeps): voi
   });
 
   app.post("/admin/settings/credentials/delete", (_request, reply) => {
-    deps.autoLogin.deleteCredentials();
+    autoLogin.deleteCredentials();
     return reply.redirect("/admin/settings?notice=credentials-deleted", 303);
   });
 
   // Starts the login in the background; the page reloads until it is done.
   app.post("/admin/settings/login", (_request, reply) => {
-    if (!deps.autoLogin.hasCredentials()) {
+    if (!autoLogin.hasCredentials()) {
       return reply.redirect("/admin/settings?notice=login-no-credentials", 303);
     }
-    const status = deps.autoLogin.status();
+    const status = autoLogin.status();
     if (status.running) {
       return reply.redirect("/admin/settings?notice=login-running", 303);
     }
@@ -217,7 +427,7 @@ export function registerSettings(context: AdminContext, deps: SettingsDeps): voi
   app.get<{ Params: { name: string } }>(
     "/admin/settings/screenshots/:name",
     async (request, reply) => {
-      const file = deps.autoLogin.screenshotFile(request.params.name);
+      const file = autoLogin.screenshotFile(request.params.name);
       if (file === null) {
         return render(reply, t.titles.notFound, html`<p>${t.titles.notFound}</p>`, {
           status: 404,
@@ -230,4 +440,6 @@ export function registerSettings(context: AdminContext, deps: SettingsDeps): voi
         .send(await readFile(file));
     },
   );
+
+  return show;
 }

@@ -1,6 +1,7 @@
 // Builds the whole service on a temp store with fake clients, for route and admin tests.
 
 import { vi } from "vitest";
+import type { ConfigEntry } from "../config-reference.js";
 import type { McUser } from "../mc/index.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
@@ -72,6 +73,10 @@ export interface TestServiceOptions {
   login?: (options: BrowserLoginOptions) => Promise<BrowserLoginResult>;
   logger?: Parameters<typeof buildService>[0]["server"];
   throttle?: LoginThrottle;
+  mealieCheck?: () => Promise<unknown>;
+  configEntries?: readonly ConfigEntry[];
+  // Leaves the automatic login out, as a service without it.
+  noAutoLogin?: boolean;
 }
 
 export function testService(options: TestServiceOptions = {}): TestService {
@@ -130,7 +135,9 @@ export function testService(options: TestServiceOptions = {}): TestService {
     formToken: FORM_TOKEN,
     adminSessionKey: ADMIN_SESSION_KEY,
     ...(options.throttle ? { adminThrottle: options.throttle } : {}),
-    autoLogin,
+    ...(options.noAutoLogin ? {} : { autoLogin }),
+    ...(options.mealieCheck ? { mealieCheck: options.mealieCheck } : {}),
+    ...(options.configEntries ? { configEntries: options.configEntries } : {}),
     workerBackoffMs: () => 1,
     ...(options.ingredients ? { ingredients: options.ingredients } : {}),
     ...(options.logger ? { server: options.logger } : {}),

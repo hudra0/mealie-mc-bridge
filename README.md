@@ -175,7 +175,7 @@ Monsieur Cuisine has no public API for writing recipes. The bridge uses the same
 
 1. **Settings page (recommended).** Store your Lidl account; the bridge logs in by itself whenever the session expires.
 2. **Login helper.** `npm run mc:login` logs in in a browser on your computer and sends the session to the bridge.
-3. **Cookie paste.** Copy the `Cookie` header from your browser's developer tools and paste it on the dashboard.
+3. **Cookie paste.** Copy the `Cookie` header from your browser's developer tools and paste it on the settings page.
 
 Whichever way, the bridge checks the cookie with a separate request before it stores it, encrypted with `SETTINGS_KEY`. A cookie Monsieur Cuisine rejects is not stored, and the working session stays in place. The cookie is a secret: anyone who has it can change the recipes in your account. Keep it out of chats, screenshots and issue reports.
 
@@ -215,7 +215,7 @@ ADMIN_PASSWORD='...' npm run mc:login -- --bridge http://<bridge address>:3000 -
 1. Log in on www.monsieur-cuisine.com and open "Create recipe".
 2. Open the browser's developer tools (F12), Network tab, and reload the page.
 3. Pick any request whose URL contains `proxy-api` and copy the value of its `Cookie` request header. In Chrome and Edge it is under Headers, Request Headers; in Firefox under Headers, Request Headers with "Raw" switched on.
-4. Paste it into the form on the admin dashboard and press "Save session" ("Sitzung speichern").
+4. Paste it into the form under Settings ("Einstellungen"), Monsieur Cuisine session, and press "Save session" ("Sitzung speichern").
 
 Instead of the form you can set `MC_COOKIE` in `.env`. The bridge stores it on the next start, and again whenever that value changes; a cookie pasted on the admin page later wins until you change `MC_COOKIE`. Wrap the value in single quotes in `.env`, so Compose leaves characters like `$` alone.
 
@@ -223,13 +223,13 @@ Instead of the form you can set `MC_COOKIE` in `.env`. The bridge stores it on t
 
 The login cookies carry an expiry date 14 days after the login. Without a stored Lidl account, expect to renew the session about every two weeks. Logging out on the website may end it earlier, so close the tab after copying the cookie instead of logging out.
 
-The bridge checks the session on start and then every `SESSION_CHECK_MINUTES` (60 by default) with a cheap account call. "Check now" ("Jetzt prüfen") on the dashboard runs the check at once, and the dashboard shows the state, the time of the last check and the age of the cookie.
+The bridge checks the session on start and then every `SESSION_CHECK_MINUTES` (60 by default) with a cheap account call. "Check now" ("Jetzt prüfen") on the settings page runs the check at once; that page shows the state, the time of the last check, the age of the cookie and when the login behind it ends.
 
 ### When it expires
 
 When Monsieur Cuisine rejects the cookie:
 
-- the dashboard shows the session as `expired` or `invalid`, and `/health` reports `degraded`
+- the overview and the settings page show the session as `expired` or `invalid`, and `/health` reports `degraded`
 - the worker stops taking jobs; queued jobs and jobs that hit the dead session move to "session expired" instead of failing
 - Mealie gets a timeline entry on the recipe saying the job waits for a new session
 - with a stored Lidl account, the automatic login runs; without one, or when it fails, you get one mail, if mail is configured
@@ -282,7 +282,7 @@ The job flow, the job states and the modules are described in [docs/ARCHITECTURE
 
 ### Admin pages
 
-The dashboard shows the session, the queue and recent jobs. The job list shows every job with its log. A failed job can be retried; "Force rebuild" sends the recipe again even if it has not changed; queued jobs can be cancelled. Temporary failures (network, server errors) are retried three times with a pause of 2, 4 and 8 seconds. Validation and conversion failures are not retried automatically, and neither is creating the recipe on Monsieur Cuisine, so a timeout never leaves two copies behind.
+Overview ("Übersicht") has a getting-started checklist (Mealie reachable, session valid, automatic login, the recipe action URL to paste into Mealie, first recipe sent), the queue, the last ten jobs and the last error. Jobs ("Aufträge") lists every job with duration and cost; a job page shows its timeline, the points to check before cooking, and which ingredients got a Monsieur Cuisine id. Dry run ("Probelauf") converts a recipe without uploading it. Settings ("Einstellungen") holds the session, the automatic login and a read-only view of the effective configuration, secrets hidden. A failed job can be retried; "Force rebuild" sends the recipe again even if it has not changed; queued jobs can be cancelled. Temporary failures (network, server errors) are retried three times with a pause of 2, 4 and 8 seconds. Validation and conversion failures are not retried automatically, and neither is creating the recipe on Monsieur Cuisine, so a timeout never leaves two copies behind.
 
 "Dry run" ("Probelauf") shows what the converter would get for a Mealie recipe and, on request, runs the conversion without uploading anything. That conversion is a paid model call.
 
@@ -290,7 +290,7 @@ The pages need a login with `ADMIN_USER` and `ADMIN_PASSWORD`. A correct login s
 
 Without `ADMIN_USER` and `ADMIN_PASSWORD` the admin pages are open to anyone who reaches the port, and they answer only to an IP address, `localhost` or a host name listed in `ADMIN_HOSTS`.
 
-`/admin/api/session` is the one endpoint for scripts: `GET` returns the session state as JSON, `POST` with `{"cookie": "..."}` checks and stores a new cookie like the dashboard form. Both take HTTP Basic Auth with `ADMIN_USER` and `ADMIN_PASSWORD` or the login cookie, and `POST` needs `Content-Type: application/json`. The login helper uses it.
+`/admin/api/session` is the one endpoint for scripts: `GET` returns the session state as JSON, `POST` with `{"cookie": "..."}` checks and stores a new cookie like the form on the settings page. Both take HTTP Basic Auth with `ADMIN_USER` and `ADMIN_PASSWORD` or the login cookie, and `POST` needs `Content-Type: application/json`. The login helper uses it.
 
 ### Logs
 
@@ -311,7 +311,7 @@ The bridge logs JSON lines to stdout: `docker compose logs -f mc-bridge`. Set `L
 }
 ```
 
-`status` is `degraded` while the session is `invalid` or `expired` or the worker is stopped. A restart fixes neither, so the container health check fails only when the bridge stops answering or its store is unusable: the database does not answer, or the data directory or `bridge.db` is no longer writable. Then `/health` answers 503 and the Docker health check counts that as a failure. `lastError` carries only the time of the last worker error; the message is on the dashboard.
+`status` is `degraded` while the session is `invalid` or `expired` or the worker is stopped. A restart fixes neither, so the container health check fails only when the bridge stops answering or its store is unusable: the database does not answer, or the data directory or `bridge.db` is no longer writable. Then `/health` answers 503 and the Docker health check counts that as a failure. `lastError` carries only the time of the last worker error; the message is on the overview.
 
 `GET /jobs/<id>` returns one job with its log as JSON. It needs no login either; job ids are random UUIDs that appear in the bridge's pages, logs and failure mails, and in its answer to Mealie. Anyone who has a job id can read that job's log.
 
@@ -407,7 +407,7 @@ In a Portainer stack written in the web editor there is no `.env` file next to t
 
 ## Costs
 
-Each job shows its token usage and an estimated cost on the job page and the dashboard. The system prompt is about 9000 tokens and the same for every recipe, so later recipes and correction rounds read most of it from the provider's prompt cache; the recipe and its techniques add about 3000 tokens. Each correction round is another call. To spend less, lower `LLM_MAX_CORRECTIONS` or pick a cheaper model and effort. The estimate uses a built-in price table; `LLM_PRICES_JSON` overrides it when your prices differ. Set a spending limit in your provider account as well.
+Each job shows its token usage and an estimated cost on the job page and the job list. The system prompt is about 9000 tokens and the same for every recipe, so later recipes and correction rounds read most of it from the provider's prompt cache; the recipe and its techniques add about 3000 tokens. Each correction round is another call. To spend less, lower `LLM_MAX_CORRECTIONS` or pick a cheaper model and effort. The estimate uses a built-in price table; `LLM_PRICES_JSON` overrides it when your prices differ. Set a spending limit in your provider account as well.
 
 ## Knowledge base
 

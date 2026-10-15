@@ -46,6 +46,10 @@ describe("message catalogs", () => {
       expect(catalog.email.sessionNextSteps).toHaveLength(
         CATALOGS.de.email.sessionNextSteps.length,
       );
+      expect(catalog.admin.settings.session.renewWays).toHaveLength(
+        CATALOGS.de.admin.settings.session.renewWays.length,
+      );
+      expect(catalog.admin.settings.facts).toHaveLength(CATALOGS.de.admin.settings.facts.length);
       expect(Object.keys(catalog.admin.notices).sort()).toEqual(
         Object.keys(CATALOGS.de.admin.notices).sort(),
       );
@@ -108,7 +112,22 @@ describe("message catalogs", () => {
       expect(admin.dashboard.age(330, "stored")).toMatch(/^13[.,]8 /);
       expect(admin.dashboard.expiresAt("t", true)).toContain("t (");
       expect(admin.dashboard.expiresAt("t", false)).not.toContain("(");
-      expect(admin.dashboard.lastWorkerError("t")).toContain("t");
+      expect(admin.dashboard.workerError("t")).toContain("t");
+      expect(admin.dashboard.jobError("t")).toContain("t");
+      expect(admin.setup.mealie.ok("http://m")).toContain("`http://m`");
+      expect(admin.setup.mealie.failed("http://m")).toContain("`http://m`");
+      expect(admin.setup.mealie.unchecked("http://m")).toContain("`http://m`");
+      expect(admin.setup.mealie.timeout(4)).toContain("4");
+      expect(admin.setup.session.validUntil("t", false)).toContain("t");
+      expect(admin.setup.session.validUntil("t", true)).toContain("t");
+      expect(admin.setup.session.notValid("s")).toContain("s");
+      expect(admin.setup.autoLogin.configured("a@example.com")).toContain("a@example.com");
+      expect(admin.setup.action.seen(1)).toContain("1");
+      expect(admin.setup.action.seen(3)).toContain("3");
+      expect(admin.setup.firstJob.done(1)).toContain("1");
+      expect(admin.setup.firstJob.done(2)).toContain("2");
+      expect(admin.jobDetail.resolved(4)).toContain("4");
+      expect(admin.jobDetail.withoutId(5)).toContain("5");
       expect(admin.dashboard.cookieLabel).toContain("`Cookie`");
       expect(admin.jobDetail.openRecipe(7, "private-publish")).toContain("7");
       expect(admin.jobDetail.servingSize(10, "Scheiben")).toContain("10 Scheiben");

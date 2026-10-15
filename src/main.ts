@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { pino } from "pino";
 import { loadServiceConfig } from "./config.js";
+import { effectiveConfig } from "./config-reference.js";
 import { loadConfiguredCatalog } from "./ingredients/catalog.js";
 import { catalogMatchRules } from "./ingredients/catalog-match.js";
 import { loggerOptions } from "./logger.js";
@@ -134,6 +135,8 @@ async function main(): Promise<void> {
     ingredients,
     logger,
     adminSessionKey: settingsKey,
+    configEntries: effectiveConfig(config, process.env),
+    mealieCheck: () => mealie.getSelf(),
     autoLogin,
     server: { loggerInstance: logger },
   });

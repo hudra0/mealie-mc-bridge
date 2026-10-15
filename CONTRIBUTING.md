@@ -59,7 +59,7 @@ Rules:
 ## Adding a setting
 
 1. Add it to `settingsSchema` in `src/config.ts`, with its default.
-2. Describe it in `scripts/config-reference.ts`. The compiler refuses a setting without a description.
+2. Describe it in `src/config-reference.ts`. The compiler refuses a setting without a description. If the value is a secret, add it to `SECRET_SETTINGS` there, so the admin settings page hides it.
 3. Add it to `.env.example` with an empty or harmless value and a comment. A test fails when a setting is missing there.
 4. Run `npm run docs:config`, which rewrites the configuration table in `README.md`. A test fails when the table and the schema disagree.
 

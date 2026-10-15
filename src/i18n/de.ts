@@ -93,11 +93,13 @@ export const de: Messages = {
     sessionWaiting:
       "Neue Aufträge aus Mealie warten, bis eine gültige Sitzung hinterlegt ist, und laufen dann automatisch weiter.",
     sessionNextSteps: [
-      "So geht es weiter:",
-      "1. Auf www.monsieur-cuisine.com anmelden.",
-      "2. Das Cookie aus den Entwicklerwerkzeugen des Browsers kopieren (siehe README, Abschnitt „Monsieur Cuisine session“).",
-      "3. Auf der Admin-Seite der Bridge (/admin) einfügen und speichern.",
+      "So geht es weiter, eine der drei Möglichkeiten:",
+      "1. Auf der Admin-Seite unter Einstellungen (/admin/settings) das Lidl-Konto hinterlegen; die Bridge meldet sich dann selbst an.",
+      "2. Am Rechner den Anmelde-Helfer starten: npm run mc:login -- --bridge <Adresse der Bridge> (siehe README, Abschnitt „Monsieur Cuisine session“).",
+      "3. Auf www.monsieur-cuisine.com anmelden, das Cookie aus den Entwicklerwerkzeugen kopieren und auf der Admin-Seite (/admin) einfügen.",
     ],
+    autoLoginFailed: (reason) =>
+      `Die automatische Anmeldung mit dem hinterlegten Lidl-Konto hat nicht geklappt (${reason}). Bitte einmal von Hand anmelden: mit dem Anmelde-Helfer oder per Cookie.`,
     lastChecked: (when) => `Zuletzt geprüft: ${when}`,
     never: "noch nie",
     lastMessage: (message) => `Letzte Meldung: ${message}`,
@@ -148,6 +150,11 @@ export const de: Messages = {
         "Der Auftrag steht wieder in der Warteschlange und wird gesendet, auch wenn sich das Rezept nicht geändert hat.",
       "job-cancelled": "Auftrag abgebrochen.",
       "logged-out": "Abgemeldet.",
+      "credentials-saved": "Lidl-Konto verschlüsselt gespeichert.",
+      "credentials-deleted": "Lidl-Konto gelöscht.",
+      "login-started": "Anmeldung gestartet. Die Seite lädt neu, bis sie fertig ist.",
+      "login-running": "Es läuft schon eine Anmeldung.",
+      "login-no-credentials": "Bitte zuerst das Lidl-Konto hinterlegen.",
     },
     plain: {
       unknownHost: "Unbekannter Hostname. Trage ihn in ADMIN_HOSTS ein oder nutze die IP-Adresse.",
@@ -176,6 +183,10 @@ export const de: Messages = {
       conversionLinkExpired:
         "Der Link zur Umwandlung ist abgelaufen (die Bridge wurde neu gestartet, oder der Link stammt von woanders). Nutze den Knopf unten.",
       conversionFailed: (reason) => `Die Umwandlung ist fehlgeschlagen: ${reason}`,
+      credentialsInvalid: (field) =>
+        field === "email"
+          ? "Das Konto wurde nicht gespeichert: Die E-Mail-Adresse ist ungültig."
+          : "Das Konto wurde nicht gespeichert: Das Passwort fehlt.",
     },
     links: {
       backToDashboard: "Zurück zur Übersicht",
@@ -281,6 +292,41 @@ export const de: Messages = {
       time: "Zeit",
       level: "Stufe",
       message: "Meldung",
+    },
+    settings: {
+      title: "Einstellungen",
+      account: "Automatische Anmeldung",
+      intro:
+        "Mit E-Mail-Adresse und Passwort deines Lidl-Kontos für monsieur-cuisine.com meldet sich die Bridge selbst in einem Browser ohne Fenster an, sobald die Sitzung abgelaufen ist. Beides wird mit SETTINGS_KEY verschlüsselt gespeichert und nie wieder angezeigt. Eine Anmeldung läuft höchstens einmal pro Stunde und dreimal am Tag; nach einem Fehlschlag wartet sie länger. Ein Captcha oder ein zweiter Faktor hält sie auf, dann kommt die Sitzungs-Mail.",
+      email: "E-Mail-Adresse",
+      password: "Passwort",
+      passwordStored: "gespeichert; leer lassen, um es zu behalten",
+      save: "Konto speichern",
+      testNow: "Anmeldung jetzt testen",
+      remove: "Konto löschen",
+      notConfigured: "Kein Konto hinterlegt.",
+      configuredAs: (email) => `Hinterlegtes Konto: ${email}`,
+      browser: "Browser",
+      browserReady: "Chromium ohne Fenster verfügbar",
+      browserMissing: (reason) => `nicht verfügbar: ${reason}`,
+      lastAttempt: "Letzter Anmeldeversuch",
+      never: "noch keiner",
+      attempt: (time, ok, manual) =>
+        `${time}: ${ok ? "erfolgreich" : "fehlgeschlagen"}${manual ? " (manueller Test)" : ""}`,
+      failure: {
+        browser_unavailable: "Der Browser ist nicht verfügbar.",
+        no_login_form:
+          "Es kam kein Anmeldeformular: Die Seite hat sich geändert, oder ein Captcha oder eine Zustimmungsseite kam dazwischen.",
+        not_logged_in:
+          "Das Formular wurde abgeschickt, aber es kam keine Sitzung: falsches Passwort, Captcha oder zweiter Faktor.",
+        verify_failed: "Die Anmeldung lief durch, aber Monsieur Cuisine lehnt die neue Sitzung ab.",
+        error: "Der Browser ist ausgefallen.",
+      },
+      screenshot: "Bildschirmfoto der Seite",
+      nextAttempt: "Nächster automatischer Versuch frühestens",
+      running: "Eine Anmeldung läuft.",
+      otherWays:
+        "Andere Wege, die Sitzung zu erneuern: der Anmelde-Helfer am Rechner (npm run mc:login) oder das Cookie auf der Übersicht einfügen.",
     },
     dryRun: {
       recipe: "Rezept",

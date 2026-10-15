@@ -338,7 +338,7 @@ describe("runJob happy path", () => {
     });
     const job = s.claim({ scale: 2 });
     await runJob(job, s.deps);
-    const request = (converter).requests[0];
+    const request = converter.requests[0];
     expect(request).toMatchObject({
       servings: 20,
       servingUnit: "Scheiben",

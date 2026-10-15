@@ -6,14 +6,15 @@ Source: https://github.com/gerkensm/smart-recipe (MIT)
 
 Parts of the Monsieur Cuisine client and the recipe format are ported from SmartRecipe and changed. Each of these files names its source files in a header comment:
 
-| File in this repository | SmartRecipe source                                                 |
-| ----------------------- | ------------------------------------------------------------------ |
-| `src/mc/transport.ts`   | `src/mc/client.ts` (proxy transport, headers, session error codes) |
-| `src/mc/client.ts`      | `src/mc/client.ts` (endpoints, image upload)                       |
-| `src/mc/types.ts`       | `src/recipes/schema.ts` (`SmartRecipePayloadSchema`)               |
-| `src/recipe/schema.ts`  | `src/recipes/schema.ts` (`RecipeInputSchema`)                      |
-| `src/recipe/modes.ts`   | `src/recipes/modes.ts`, `src/recipes/constants.ts`                 |
-| `src/recipe/payload.ts` | `src/recipes/payload.ts`, `src/catalogs/catalogs.ts`               |
+| File in this repository        | SmartRecipe source                                                                                                |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `src/mc/transport.ts`          | `src/mc/client.ts` (proxy transport, headers, session error codes)                                                |
+| `src/mc/client.ts`             | `src/mc/client.ts` (endpoints, image upload)                                                                      |
+| `src/mc/types.ts`              | `src/recipes/schema.ts` (`SmartRecipePayloadSchema`)                                                              |
+| `src/recipe/schema.ts`         | `src/recipes/schema.ts` (`RecipeInputSchema`)                                                                     |
+| `src/recipe/modes.ts`          | `src/recipes/modes.ts`, `src/recipes/constants.ts`                                                                |
+| `src/recipe/payload.ts`        | `src/recipes/payload.ts`, `src/catalogs/catalogs.ts`                                                              |
+| `src/session/browser-login.ts` | `src/mc/browser-login.ts` (SSO start, Lidl form selectors, welcome-screen button rule, cookie polling and header) |
 
 ```text
 MIT License

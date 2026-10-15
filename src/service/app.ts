@@ -15,7 +15,9 @@ import type { DeviceLimits } from "../recipe/limits.js";
 import { buildServer } from "../server.js";
 import type { SessionManager } from "../session/manager.js";
 import type { Store } from "../store/index.js";
+import type { AutoLogin } from "../session/auto-login.js";
 import { admin } from "./admin.js";
+import { registerSettings } from "./admin-settings.js";
 import { healthReport } from "./health.js";
 import { routes } from "./routes.js";
 
@@ -50,6 +52,8 @@ export interface ServiceParts {
   formToken?: string;
   // Signs the admin login cookie: SETTINGS_KEY. Random when left out.
   adminSessionKey?: Buffer;
+  // The automatic login and its settings page; without it the page is missing.
+  autoLogin?: AutoLogin;
 }
 
 export interface Service {
@@ -146,6 +150,15 @@ export function buildService(parts: ServiceParts): Service {
     worker: activeWorker,
     mealieRecipeUrl: (slug) => mealieRecipeLink(config, slug),
     ...(parts.formToken ? { formToken: parts.formToken } : {}),
+    ...(parts.autoLogin
+      ? {
+          extend: (context) =>
+            registerSettings(context, {
+              autoLogin: parts.autoLogin as AutoLogin,
+              session: parts.session,
+            }),
+        }
+      : {}),
   });
 
   return {

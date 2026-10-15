@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { McNetworkError, McSessionError } from "../mc/index.js";
 import { ConverterNotConfiguredError } from "../pipeline/converter-port.js";
 import { relativeTime } from "./admin-views.js";
@@ -872,5 +872,96 @@ describe("relativeTime", () => {
     expect(relativeTime("2026-10-15T09:00:00.000Z", now, "de")).toBe("vor 3 Stunden");
     expect(relativeTime("2026-10-13T12:00:00.000Z", now, "en")).toBe("2 days ago");
     expect(relativeTime("not a date", now, "en")).toBe("not a date");
+  });
+});
+
+describe("settings page", () => {
+  const PASSWORD = "not-a-real-password";
+
+  it("stores the Lidl account and never shows the password", async () => {
+    svc = testService();
+    const empty = await get("/admin/settings");
+    expect(empty.statusCode).toBe(200);
+    expect(empty.body).toContain("No account stored.");
+    expect(empty.body).toContain("headless Chromium available");
+    const saved = await post("/admin/settings/credentials", {
+      _csrf: FORM_TOKEN,
+      email: "cook@example.com",
+      password: PASSWORD,
+    });
+    expect(saved.statusCode).toBe(303);
+    expect(saved.headers.location).toBe("/admin/settings?notice=credentials-saved");
+    const body = (await get("/admin/settings?notice=credentials-saved")).body;
+    expect(body).toContain("Stored account: cook@example.com");
+    expect(body).toContain("Lidl account saved, encrypted.");
+    expect(body).toContain("stored; leave empty to keep it");
+    expect(body).not.toContain(PASSWORD);
+    expect(body).toContain('action="/admin/settings/login"');
+    expect(svc.store.settings.get("autologin.password")).not.toContain(PASSWORD);
+  });
+
+  it("refuses an invalid address and needs the form token", async () => {
+    svc = testService();
+    const invalid = await post("/admin/settings/credentials", {
+      _csrf: FORM_TOKEN,
+      email: "nope",
+      password: PASSWORD,
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.body).toContain("the e-mail address is not valid");
+    const forged = await post("/admin/settings/credentials", {
+      email: "a@example.com",
+      password: "x",
+    });
+    expect(forged.statusCode).toBe(403);
+    expect(svc.autoLogin.hasCredentials()).toBe(false);
+  });
+
+  it("deletes the account", async () => {
+    svc = testService();
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    const response = await post("/admin/settings/credentials/delete", { _csrf: FORM_TOKEN });
+    expect(response.headers.location).toBe("/admin/settings?notice=credentials-deleted");
+    expect(svc.autoLogin.hasCredentials()).toBe(false);
+  });
+
+  it("tests the login in the background and stores the new session", async () => {
+    svc = testService();
+    expect((await post("/admin/settings/login", { _csrf: FORM_TOKEN })).headers.location).toBe(
+      "/admin/settings?notice=login-no-credentials",
+    );
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    const response = await post("/admin/settings/login", { _csrf: FORM_TOKEN });
+    expect(response.headers.location).toBe("/admin/settings?notice=login-started");
+    await vi.waitFor(() => expect(svc?.session.status().state).toBe("valid"));
+    expect(svc.validate).toHaveBeenCalledWith(
+      expect.stringContaining("lidl_sso_id_token=id-token"),
+    );
+    const body = (await get("/admin/settings")).body;
+    expect(body).toMatch(/succeeded \(manual test\)/);
+    expect(body).not.toContain('http-equiv="refresh"');
+  });
+
+  it("shows a failed attempt with its reason and serves the screenshot", async () => {
+    svc = testService({ browser: { form: "none" } });
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    await svc.session.loginNow();
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("failed (manual test)");
+    expect(body).toContain("No login form showed up");
+    const link = /href="(\/admin\/settings\/screenshots\/[^"]+)"/.exec(body)?.[1];
+    expect(link).toBeDefined();
+    const image = await get(link ?? "");
+    expect(image.statusCode).toBe(200);
+    expect(image.headers["content-type"]).toBe("image/png");
+    expect((await get("/admin/settings/screenshots/..%2Fbridge.db")).statusCode).toBe(404);
+    expect((await get(link ?? "", {})).statusCode).toBe(303);
+  });
+
+  it("says when the browser is missing", async () => {
+    svc = testService({ browser: { unavailable: "Playwright is not installed" } });
+    expect((await get("/admin/settings")).body).toContain(
+      "not available: Playwright is not installed",
+    );
   });
 });

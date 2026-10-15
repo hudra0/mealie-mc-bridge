@@ -15,7 +15,7 @@ import {
   type RecipePatch,
   type TimelineEventInput,
 } from "../mealie/index.js";
-import type { Notifier } from "../notify/email.js";
+import type { Notifier, SessionMailDetails } from "../notify/email.js";
 import type { SessionStatus } from "../session/manager.js";
 import type { Job } from "../store/jobs.js";
 import type { ConversionRequest, ConversionResult, Converter } from "../pipeline/converter-port.js";
@@ -286,15 +286,15 @@ export function fakeMc(options: FakeMcOptions = {}): FakeMc {
 }
 
 export interface FakeNotifier extends Notifier {
-  sent: Array<{ kind: string; detail: unknown }>;
+  sent: Array<{ kind: string; detail: unknown; extra?: unknown }>;
 }
 
 export function fakeNotifier(): FakeNotifier {
   const sent: FakeNotifier["sent"] = [];
   return {
     sent,
-    sessionExpired: vi.fn((status: SessionStatus) => {
-      sent.push({ kind: "session", detail: status });
+    sessionExpired: vi.fn((status: SessionStatus, extra?: SessionMailDetails) => {
+      sent.push({ kind: "session", detail: status, ...(extra ? { extra } : {}) });
       return Promise.resolve();
     }),
     jobFailed: vi.fn((job: Job, error: string) => {

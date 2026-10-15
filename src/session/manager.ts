@@ -7,6 +7,11 @@
 // extend the cookie's lifetime. When Monsieur Cuisine rejects the cookie, the manager records the state,
 // pauses the queue and sends one notification per state change. A new valid cookie puts
 // the waiting jobs back into the queue.
+//
+// With a stored Lidl account (auto-login.ts), a rejected session first triggers an
+// automatic login in a headless browser; the notification goes out only when that fails,
+// with the hint that a manual login is needed. The periodic check tries again while the
+// session stays unusable, within the limits of the automatic login.
 
 import { createHash } from "node:crypto";
 import { errorMessage, type AppLogger } from "../app-logger.js";
@@ -20,6 +25,7 @@ import {
 import type { Notifier } from "../notify/email.js";
 import type { JobStore } from "../store/jobs.js";
 import type { SettingsStore } from "../store/settings.js";
+import type { AutoLogin, AutoLoginRun } from "./auto-login.js";
 
 export type SessionState = "valid" | "invalid" | "expired" | "unknown";
 
@@ -124,6 +130,8 @@ export interface SessionManagerOptions {
   seedCookie?: string | undefined;
   checkIntervalMs?: number;
   now?: () => Date;
+  // Logs in with the stored Lidl account when the session is rejected.
+  autoLogin?: Pick<AutoLogin, "hasCredentials" | "run"> | undefined;
 }
 
 const STATES: readonly SessionState[] = ["valid", "invalid", "expired", "unknown"];
@@ -136,6 +144,7 @@ export class SessionManager implements SessionProvider {
   readonly #logger: AppLogger;
   readonly #checkIntervalMs: number;
   readonly #now: () => Date;
+  readonly #autoLogin: SessionManagerOptions["autoLogin"];
   #cookie: string | null | undefined;
   #timer: NodeJS.Timeout | null = null;
   #checking: Promise<SessionStatus> | null = null;
@@ -149,6 +158,7 @@ export class SessionManager implements SessionProvider {
     this.#logger = options.logger;
     this.#checkIntervalMs = options.checkIntervalMs ?? 60 * 60_000;
     this.#now = options.now ?? (() => new Date());
+    this.#autoLogin = options.autoLogin;
     this.#seed(options.seedCookie);
   }
 
@@ -246,7 +256,49 @@ export class SessionManager implements SessionProvider {
     }
   }
 
+  // "Test login now" on the settings page: one login with the stored account, whatever the
+  // state of the session, but never next to a running one.
+  loginNow(): Promise<AutoLoginRun> {
+    if (!this.#autoLogin) return Promise.resolve({ status: "skipped", reason: "no_credentials" });
+    return this.#autoLogin.run({ manual: true, accept: (cookie) => this.#acceptLogin(cookie) });
+  }
+
+  // Starts an automatic login when the session is unusable and an account is stored. The
+  // automatic login decides whether it may run now. Never throws.
+  async #tryAutoLogin(): Promise<void> {
+    const autoLogin = this.#autoLogin;
+    if (!autoLogin?.hasCredentials()) return;
+    try {
+      const run = await autoLogin.run({
+        manual: false,
+        accept: (cookie) => this.#acceptLogin(cookie),
+      });
+      if (run.status === "failed") {
+        const reason = run.attempt.detail ?? run.attempt.code ?? "unknown";
+        await this.#safely(() =>
+          this.#notifier.sessionExpired(this.status(), { autoLoginFailed: reason }),
+        );
+      }
+    } catch (error) {
+      this.#logger.error({ err: errorMessage(error) }, "automatic login failed unexpectedly");
+    }
+  }
+
+  async #acceptLogin(cookie: string): Promise<void> {
+    await this.setCookie(cookie);
+    this.#logger.info({}, "Monsieur Cuisine session renewed by the automatic login");
+  }
+
   async #check(): Promise<SessionStatus> {
+    const before = this.isPaused();
+    const status = await this.#checkCookie();
+    // While the session stays unusable, each check is a chance for the automatic login. A
+    // session that just became unusable has started one already (#markRejected).
+    if (before && this.isPaused()) void this.#tryAutoLogin();
+    return status;
+  }
+
+  async #checkCookie(): Promise<SessionStatus> {
     const cookie = await this.getCookie();
     if (cookie === null) {
       const reason =
@@ -297,6 +349,11 @@ export class SessionManager implements SessionProvider {
     const paused = this.#jobs.pauseQueued();
     if (previous === state) return;
     this.#logger.warn({ previous, state, paused }, "Monsieur Cuisine session is not usable");
+    // With a stored account, the automatic login goes first; it notifies when it fails.
+    if (this.#autoLogin?.hasCredentials()) {
+      void this.#tryAutoLogin();
+      return;
+    }
     await this.#safely(() => this.#notifier.sessionExpired(this.status()));
   }
 

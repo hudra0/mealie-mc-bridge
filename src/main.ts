@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { pino } from "pino";
 import { loadServiceConfig } from "./config.js";
 import { loadConfiguredCatalog } from "./ingredients/catalog.js";
@@ -14,7 +15,9 @@ import { loadPipelineLocale } from "./pipeline/locale.js";
 import { loadDeviceLimits } from "./recipe/limits.js";
 import { buildService, mealieRecipeLink } from "./service/app.js";
 import { requestLogSerializers } from "./service/security.js";
+import { AutoLogin } from "./session/auto-login.js";
 import { SessionManager } from "./session/manager.js";
+import { PlaywrightBrowser } from "./session/playwright-browser.js";
 import {
   checkDataDir,
   generateSettingsKey,
@@ -82,6 +85,16 @@ async function main(): Promise<void> {
     recipeUrl: (job) => (job.mealieSlug ? mealieRecipeLink(config, job.mealieSlug) : null),
   });
   const transport = new McTransport({ logger, locale: mcLocale });
+  // Logs in with the Lidl account from the settings page when the session expires. Without
+  // Playwright and its Chromium the page says the browser is missing; the rest works.
+  const autoLogin = new AutoLogin({
+    settings: store.settings,
+    browser: new PlaywrightBrowser(),
+    profileDir: join(config.DATA_DIR, "browser-profile"),
+    screenshotDir: join(config.DATA_DIR, "login-screenshots"),
+    editorPath: mcLocale.editorPath,
+    logger,
+  });
   const session = new SessionManager({
     settings: store.settings,
     jobs: store.jobs,
@@ -94,6 +107,7 @@ async function main(): Promise<void> {
     logger,
     seedCookie: config.MC_COOKIE,
     checkIntervalMs: config.SESSION_CHECK_MINUTES * 60_000,
+    autoLogin,
   });
   const mc = new McClient(transport, session, { editorPath: mcLocale.editorPath });
   const converter = await loadConverter({ env: process.env, limits, logger });
@@ -120,6 +134,7 @@ async function main(): Promise<void> {
     ingredients,
     logger,
     adminSessionKey: settingsKey,
+    autoLogin,
     server: { loggerInstance: logger },
   });
 

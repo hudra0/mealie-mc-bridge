@@ -95,11 +95,13 @@ export const en: Messages = {
     sessionWaiting:
       "New jobs from Mealie wait until a valid session is saved, then they continue on their own.",
     sessionNextSteps: [
-      "What to do:",
-      "1. Log in on www.monsieur-cuisine.com.",
-      "2. Copy the cookie from the browser's developer tools (see the README, section “Monsieur Cuisine session”).",
-      "3. Paste it on the bridge's admin page (/admin) and save.",
+      "What to do, one of three ways:",
+      "1. Store the Lidl account on the admin page under Settings (/admin/settings); the bridge then logs in by itself.",
+      "2. Run the login helper on your computer: npm run mc:login -- --bridge <bridge address> (see the README, section “Monsieur Cuisine session”).",
+      "3. Log in on www.monsieur-cuisine.com, copy the cookie from the browser's developer tools and paste it on the admin page (/admin).",
     ],
+    autoLoginFailed: (reason) =>
+      `The automatic login with the stored Lidl account did not work (${reason}). Please log in by hand once: with the login helper or by pasting the cookie.`,
     lastChecked: (when) => `Last checked: ${when}`,
     never: "never",
     lastMessage: (message) => `Last message: ${message}`,
@@ -146,6 +148,11 @@ export const en: Messages = {
       "job-forced": "Job queued again; it will be sent even if the recipe is unchanged.",
       "job-cancelled": "Job cancelled.",
       "logged-out": "Logged out.",
+      "credentials-saved": "Lidl account saved, encrypted.",
+      "credentials-deleted": "Lidl account deleted.",
+      "login-started": "Login started. This page reloads until it is done.",
+      "login-running": "A login is already running.",
+      "login-no-credentials": "Store the Lidl account first.",
     },
     plain: {
       unknownHost: "Unknown host name. Add it to ADMIN_HOSTS or use the IP address.",
@@ -174,6 +181,10 @@ export const en: Messages = {
       conversionLinkExpired:
         "The conversion link has expired (the bridge restarted, or the link came from elsewhere). Use the button below.",
       conversionFailed: (reason) => `The conversion failed: ${reason}`,
+      credentialsInvalid: (field) =>
+        field === "email"
+          ? "The account was not saved: the e-mail address is not valid."
+          : "The account was not saved: the password is empty.",
     },
     links: {
       backToDashboard: "Back to the dashboard",
@@ -279,6 +290,41 @@ export const en: Messages = {
       time: "Time",
       level: "Level",
       message: "Message",
+    },
+    settings: {
+      title: "Settings",
+      account: "Automatic login",
+      intro:
+        "With the e-mail address and password of your Lidl account for monsieur-cuisine.com, the bridge logs in by itself in a headless browser whenever the session has expired. Both are stored encrypted with SETTINGS_KEY and never shown again. A login runs at most once per hour and three times a day; after a failure it waits longer. A captcha or a second factor stops it, and you get the session mail.",
+      email: "E-mail address",
+      password: "Password",
+      passwordStored: "stored; leave empty to keep it",
+      save: "Save account",
+      testNow: "Test login now",
+      remove: "Delete account",
+      notConfigured: "No account stored.",
+      configuredAs: (email) => `Stored account: ${email}`,
+      browser: "Browser",
+      browserReady: "headless Chromium available",
+      browserMissing: (reason) => `not available: ${reason}`,
+      lastAttempt: "Last login attempt",
+      never: "none yet",
+      attempt: (time, ok, manual) =>
+        `${time}: ${ok ? "succeeded" : "failed"}${manual ? " (manual test)" : ""}`,
+      failure: {
+        browser_unavailable: "The browser is not available.",
+        no_login_form:
+          "No login form showed up: the page changed, or a captcha or consent screen came first.",
+        not_logged_in:
+          "The form was sent, but no session followed: a wrong password, a captcha or a second factor.",
+        verify_failed: "The site logged in, but Monsieur Cuisine refused the new session.",
+        error: "The browser failed.",
+      },
+      screenshot: "Screenshot of the page",
+      nextAttempt: "Next automatic attempt not before",
+      running: "A login is running.",
+      otherWays:
+        "Other ways to renew the session: the login helper on your computer (npm run mc:login) or pasting the cookie on the dashboard.",
     },
     dryRun: {
       recipe: "Recipe",

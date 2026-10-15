@@ -36,6 +36,10 @@ export const FAILURE_STAGES: readonly FailureStage[] = [
 export type JobStatusName =
   "queued" | "running" | "done" | "skipped" | "failed" | "session_expired" | "cancelled";
 
+// Why an automatic login failed (src/session/auto-login.ts).
+export type AutoLoginFailureName =
+  "browser_unavailable" | "no_login_form" | "not_logged_in" | "verify_failed" | "error";
+
 export type SessionStateName = "valid" | "invalid" | "expired" | "unknown";
 
 // How a recipe sits in the Monsieur Cuisine account: a draft, or saved on the device.
@@ -76,6 +80,7 @@ export interface EmailMessages {
   session: Readonly<Record<"expired" | "invalid", { subject: string; lead: string }>>;
   sessionWaiting: string;
   sessionNextSteps: readonly string[];
+  autoLoginFailed(reason: string): string;
   lastChecked(when: string): string;
   never: string;
   lastMessage(message: string): string;
@@ -127,6 +132,7 @@ export interface AdminMessages {
     recipeNotLoaded(reason: string): string;
     conversionLinkExpired: string;
     conversionFailed(reason: string): string;
+    credentialsInvalid(field: "email" | "password"): string;
   };
   links: { backToDashboard: string; backToJobs: string; allJobs: string };
   jobStatus: Readonly<Record<JobStatusName, string>>;
@@ -215,6 +221,30 @@ export interface AdminMessages {
     time: string;
     level: string;
     message: string;
+  };
+  settings: {
+    title: string;
+    account: string;
+    intro: string;
+    email: string;
+    password: string;
+    passwordStored: string;
+    save: string;
+    testNow: string;
+    remove: string;
+    notConfigured: string;
+    configuredAs(email: string): string;
+    browser: string;
+    browserReady: string;
+    browserMissing(reason: string): string;
+    lastAttempt: string;
+    never: string;
+    attempt(time: string, ok: boolean, manual: boolean): string;
+    failure: Readonly<Record<AutoLoginFailureName, string>>;
+    screenshot: string;
+    nextAttempt: string;
+    running: string;
+    otherWays: string;
   };
   dryRun: {
     recipe: string;

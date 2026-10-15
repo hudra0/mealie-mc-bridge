@@ -129,8 +129,8 @@ export interface AdminContext {
   app: FastifyInstance;
   t: AdminMessages;
   formToken: string;
-  render(reply: FastifyReply, title: string, body: SafeHtml, extra?: RenderExtra): FastifyReply;
-  notice(request: FastifyRequest): string | null;
+  render: (reply: FastifyReply, title: string, body: SafeHtml, extra?: RenderExtra) => FastifyReply;
+  notice: (request: FastifyRequest) => string | null;
 }
 
 // The session state as the JSON endpoints report it. The cookie itself never leaves.

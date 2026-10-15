@@ -6,7 +6,15 @@ import type { Converter } from "../pipeline/converter-port.js";
 import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
 import { ADMIN_COOKIE, adminSessions } from "../service/admin-auth.js";
 import { buildService, type Service, type ServiceConfig } from "../service/app.js";
+import { join } from "node:path";
+import { AutoLogin } from "../session/auto-login.js";
+import {
+  browserLogin,
+  type BrowserLoginOptions,
+  type BrowserLoginResult,
+} from "../session/browser-login.js";
 import { SessionManager } from "../session/manager.js";
+import { fakeBrowser, loopClock, type FakeBrowser, type FakeBrowserScript } from "./browser.js";
 import {
   fakeConverter,
   fakeMc,
@@ -37,6 +45,8 @@ export interface TestService extends Service {
   session: SessionManager;
   validate: ReturnType<typeof vi.fn<(cookie: string) => Promise<McUser>>>;
   config: ServiceConfig;
+  autoLogin: AutoLogin;
+  browser: FakeBrowser;
   dispose(): Promise<void>;
 }
 
@@ -48,6 +58,8 @@ export interface TestServiceOptions {
   ingredients?: IngredientResolverPort;
   config?: Partial<ServiceConfig>;
   seedCookie?: string;
+  browser?: FakeBrowserScript;
+  login?: (options: BrowserLoginOptions) => Promise<BrowserLoginResult>;
   logger?: Parameters<typeof buildService>[0]["server"];
 }
 
@@ -60,6 +72,18 @@ export function testService(options: TestServiceOptions = {}): TestService {
   const validate = vi.fn<(cookie: string) => Promise<McUser>>(() =>
     Promise.resolve({ id: 1, displayName: "test-user" }),
   );
+  const browser = fakeBrowser(options.browser ?? { form: "both", loginWorks: true });
+  const autoLogin = new AutoLogin({
+    settings: store.settings,
+    browser,
+    profileDir: join(store.dir, "browser-profile"),
+    screenshotDir: join(store.dir, "login-screenshots"),
+    editorPath: "/de/create-recipe?devices=mc-smart",
+    logger: silentLogger(),
+    timeoutMs: 30_000,
+    // The real flow on a clock that jumps with every poll.
+    login: options.login ?? ((login) => browserLogin({ ...login, ...loopClock() })),
+  });
   const session = new SessionManager({
     settings: store.settings,
     jobs: store.jobs,
@@ -67,6 +91,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     notifier,
     logger: silentLogger(),
     seedCookie: options.seedCookie,
+    autoLogin,
   });
   const config: ServiceConfig = {
     WEBHOOK_TOKEN,
@@ -93,6 +118,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     logger: silentLogger(),
     formToken: FORM_TOKEN,
     adminSessionKey: ADMIN_SESSION_KEY,
+    autoLogin,
     workerBackoffMs: () => 1,
     ...(options.ingredients ? { ingredients: options.ingredients } : {}),
     ...(options.logger ? { server: options.logger } : {}),
@@ -107,6 +133,8 @@ export function testService(options: TestServiceOptions = {}): TestService {
     session,
     validate,
     config,
+    autoLogin,
+    browser,
     dispose: async () => {
       await service.stop();
       store.dispose();

@@ -92,6 +92,21 @@ describe("EmailNotifier", () => {
     expect(transport.sent).toHaveLength(3);
   });
 
+  it("says when the automatic login failed and a manual login is needed", async () => {
+    const transport = stub();
+    const n = notifier(transport);
+    await n.sessionExpired(status());
+    await n.sessionExpired(status(), { autoLoginFailed: "no login form showed up" });
+    await n.sessionExpired(status(), { autoLoginFailed: "again" });
+    expect(transport.sent).toHaveLength(2);
+    const text = transport.sent[1]?.text ?? "";
+    expect(text).toContain(
+      "Die automatische Anmeldung mit dem hinterlegten Lidl-Konto hat nicht geklappt (no login form showed up)",
+    );
+    expect(text).toContain("npm run mc:login");
+    expect(text).toContain("/admin/settings");
+  });
+
   it("says when the session was never checked", async () => {
     const transport = stub();
     await notifier(transport).sessionExpired(
@@ -224,7 +239,7 @@ describe("createNotifier", () => {
     await n.healthFailed("site down");
     const [expired, invalid, failed, health] = transport.sent;
     expect(expired?.subject).toBe("Monsieur Cuisine bridge: Session expired");
-    expect(expired?.text).toContain("What to do:");
+    expect(expired?.text).toContain("What to do, one of three ways:");
     expect(expired?.text).toContain("Last checked: ");
     expect(invalid?.subject).toBe("Monsieur Cuisine bridge: Session invalid");
     expect(invalid?.text).toContain("Last checked: never");

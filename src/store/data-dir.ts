@@ -26,7 +26,8 @@ export function checkDataDir(dataDir: string): void {
   const dir = resolve(dataDir);
   const probe = join(dir, PROBE_FILE);
   try {
-    mkdirSync(dir, { recursive: true });
+    // Outside Docker nothing else sets the mode: only the bridge user may read the data.
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
     writeFileSync(probe, "");
     rmSync(probe, { force: true });
   } catch (error) {

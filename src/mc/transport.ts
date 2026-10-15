@@ -28,6 +28,32 @@ export const DEFAULT_MC_LOCALE: McLocaleSettings = {
 };
 export const MC_EDITOR_REFERER = `${MC_BASE_URL}${DEFAULT_MC_LOCALE.editorPath}`;
 export const DEFAULT_TIMEOUT_MS = 30_000;
+// Where a signed image upload URL may point: Google Cloud Storage and the Tecpal hosts.
+// "*.example.com" covers the subdomains of example.com, not example.com itself.
+export const DEFAULT_UPLOAD_HOSTS: readonly string[] = ["*.googleapis.com", "*.tecpal.com"];
+
+export function uploadHostAllowed(host: string, patterns: readonly string[]): boolean {
+  const name = host.toLowerCase();
+  return patterns.some((pattern) => {
+    const entry = pattern.trim().toLowerCase();
+    if (entry.startsWith("*."))
+      return name.endsWith(entry.slice(1)) && name.length > entry.length - 1;
+    return entry !== "" && name === entry;
+  });
+}
+
+// The signed upload URL names a host that is not on MC_UPLOAD_HOSTS, or is not https. The
+// image is not sent; retrying does not help.
+export class McUploadHostError extends Error {
+  readonly host: string;
+  constructor(host: string) {
+    super(
+      `The image upload URL (${host}) is not an https URL on MC_UPLOAD_HOSTS; the image was not sent`,
+    );
+    this.name = "McUploadHostError";
+    this.host = host;
+  }
+}
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -137,6 +163,8 @@ export interface McTransportOptions {
   userAgent?: string;
   requestId?: () => string;
   logger?: TransportLogger;
+  // MC_UPLOAD_HOSTS; DEFAULT_UPLOAD_HOSTS when left out.
+  uploadHosts?: readonly string[];
 }
 
 export interface ProxyRequest {
@@ -198,8 +226,10 @@ export class McTransport implements McHttp {
   private readonly userAgent: string;
   private readonly requestId: () => string;
   private readonly logger: TransportLogger | undefined;
+  private readonly uploadHosts: readonly string[];
 
   constructor(options: McTransportOptions = {}) {
+    this.uploadHosts = options.uploadHosts ?? DEFAULT_UPLOAD_HOSTS;
     this.fetchImpl = options.fetch ?? ((url, init) => fetch(url, init));
     this.baseUrl = (options.baseUrl ?? MC_BASE_URL).replace(/\/+$/, "");
     this.publicApiUrl = (options.publicApiUrl ?? MC_PUBLIC_API_URL).replace(/\/+$/, "");
@@ -271,6 +301,8 @@ export class McTransport implements McHttp {
 
   // PUT raw bytes to a pre-signed storage URL. No cookie and no proxy headers: the
   // signature in the URL is the authorization. The URL never appears in errors or logs.
+  // Only https hosts on MC_UPLOAD_HOSTS get the bytes, and a redirect is an error: the URL
+  // comes from monsieur-cuisine.com and must not point the bridge anywhere else.
   async putSignedUrl(
     url: string,
     bytes: Uint8Array,
@@ -278,6 +310,19 @@ export class McTransport implements McHttp {
     extraHeaders: Record<string, string> = {},
   ): Promise<void> {
     const label = `PUT signed upload URL on ${safeHost(url)}`;
+    let target: URL | null = null;
+    try {
+      target = new URL(url);
+    } catch {
+      // Reported below like any host that is not allowed.
+    }
+    if (
+      target === null ||
+      target.protocol !== "https:" ||
+      !uploadHostAllowed(target.hostname, this.uploadHosts)
+    ) {
+      throw new McUploadHostError(target?.hostname || safeHost(url));
+    }
     // The same bytes to the same URL: safe to send twice.
     const exchange = await this.exchange(
       label,
@@ -286,6 +331,7 @@ export class McTransport implements McHttp {
         method: "PUT",
         headers: { ...extraHeaders, "Content-Type": contentType },
         body: bytes,
+        redirect: "error",
       }),
       true,
     );

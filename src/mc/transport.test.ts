@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MC_LOCALE,
+  DEFAULT_UPLOAD_HOSTS,
   MC_PROXY_BYPASS,
   McApiError,
   McNetworkError,
   McSessionError,
   McTransport,
+  McUploadHostError,
   classifySessionError,
+  uploadHostAllowed,
   type FetchLike,
 } from "./transport.js";
 
@@ -500,7 +503,8 @@ describe("McTransport.publicGet", () => {
 });
 
 describe("McTransport.putSignedUrl", () => {
-  const signedUrl = "https://storage.example.com/upload/a.jpeg?X-Goog-Signature=secret-signature";
+  const signedUrl =
+    "https://storage.googleapis.com/upload/a.jpeg?X-Goog-Signature=secret-signature";
 
   it("puts the bytes without cookie or proxy headers", async () => {
     const { fetch, calls } = mockFetch(new Response(null, { status: 200 }));
@@ -512,6 +516,36 @@ describe("McTransport.putSignedUrl", () => {
     expect(calls[0]?.init.method).toBe("PUT");
     expect(calls[0]?.headers).toEqual({ "x-goog-meta": "1", "Content-Type": "image/jpeg" });
     expect(calls[0]?.init.body).toBe(bytes);
+    expect(calls[0]?.init.redirect).toBe("error");
+  });
+
+  it.each([
+    ["a host off the list", "https://storage.example.com/upload/a.jpeg?sig=1"],
+    ["a look-alike host", "https://storage.googleapis.com.example.com/a.jpeg"],
+    ["the bare domain of a wildcard", "https://googleapis.com/a.jpeg"],
+    ["plain http", "http://storage.googleapis.com/a.jpeg"],
+    ["an IP address", "https://192.0.2.10/a.jpeg"],
+  ])("refuses %s before sending anything", async (_name, url) => {
+    const { fetch, calls } = mockFetch(new Response(null, { status: 200 }));
+    const error = await rejectionOf(
+      new McTransport({ fetch }).putSignedUrl(url, new Uint8Array([1]), "image/jpeg"),
+    );
+    expect(error).toBeInstanceOf(McUploadHostError);
+    expect(String(error)).not.toContain("sig=1");
+    expect(calls).toEqual([]);
+  });
+
+  it("takes the hosts from MC_UPLOAD_HOSTS", async () => {
+    const { fetch, calls } = mockFetch(new Response(null, { status: 200 }));
+    await new McTransport({ fetch, uploadHosts: ["upload.example.com"] }).putSignedUrl(
+      "https://upload.example.com/a.jpeg",
+      new Uint8Array([1]),
+      "image/jpeg",
+    );
+    expect(calls).toHaveLength(1);
+    expect(uploadHostAllowed("a.b.tecpal.com", DEFAULT_UPLOAD_HOSTS)).toBe(true);
+    expect(uploadHostAllowed("tecpal.com", DEFAULT_UPLOAD_HOSTS)).toBe(false);
+    expect(uploadHostAllowed("eviltecpal.com", DEFAULT_UPLOAD_HOSTS)).toBe(false);
   });
 
   it("reports a failed upload without the signed URL or the storage response", async () => {
@@ -524,19 +558,19 @@ describe("McTransport.putSignedUrl", () => {
     expect(error).toMatchObject({
       name: "McApiError",
       status: 403,
-      endpoint: "PUT signed upload URL on storage.example.com",
+      endpoint: "PUT signed upload URL on storage.googleapis.com",
     });
     expect(JSON.stringify(error) + String(error)).not.toContain("secret-signature");
   });
 
-  it("describes an unparsable URL without echoing it", async () => {
-    const { fetch } = mockFetch(
-      new TypeError("Failed to parse URL"),
-      new TypeError("Failed to parse URL"),
-    );
+  it("refuses an unparsable URL without echoing it", async () => {
+    const { fetch, calls } = mockFetch(new Response(null, { status: 200 }));
     await expect(
       new McTransport({ fetch }).putSignedUrl("not a url", new Uint8Array([1]), "image/jpeg"),
-    ).rejects.toThrow("PUT signed upload URL on an invalid URL: network error (TypeError)");
+    ).rejects.toThrow(
+      "The image upload URL (an invalid URL) is not an https URL on MC_UPLOAD_HOSTS; the image was not sent",
+    );
+    expect(calls).toEqual([]);
   });
 });
 

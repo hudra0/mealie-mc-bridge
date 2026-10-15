@@ -19,7 +19,8 @@ describe("migration v4", () => {
         `INSERT INTO jobs (id, mealie_recipe_id, status, servings, created_at, updated_at)
          VALUES ('job-1', ?, 'done', 4, '2026-10-13T10:00:00.000Z', '2026-10-13T10:00:00.000Z')`,
       ).run(RECIPE);
-      expect(migrate(db)).toEqual({ from: 3, to: 4, applied: [4] });
+      const upToV4 = MIGRATIONS.filter((migration) => migration.version <= 4);
+      expect(migrate(db, upToV4)).toEqual({ from: 3, to: 4, applied: [4] });
       expect(schemaVersion(db)).toBe(4);
       const columns = db
         .prepare<[], { name: string }>("PRAGMA table_info(jobs)")
@@ -31,7 +32,7 @@ describe("migration v4", () => {
       expect(jobs.get("job-1")).toMatchObject({ servings: 4, servingUnit: null });
       jobs.update("job-1", { servingUnit: "Scheiben" });
       expect(jobs.get("job-1")?.servingUnit).toBe("Scheiben");
-      expect(migrate(db)).toEqual({ from: 4, to: 4, applied: [] });
+      expect(migrate(db, upToV4)).toEqual({ from: 4, to: 4, applied: [] });
     } finally {
       db.close();
       cleanup();

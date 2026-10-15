@@ -6,7 +6,12 @@ export type {
   RecipePatch,
   TimelineEventInput,
 } from "./client.js";
-export { parseRecipeActionBody, InvalidRecipeActionError, MAX_SCALE } from "./webhook.js";
+export {
+  parseRecipeActionBody,
+  InvalidRecipeActionError,
+  MAX_SCALE,
+  quantizeScale,
+} from "./webhook.js";
 export type { RecipeAction } from "./webhook.js";
 export { renderRecipeForLlm, renderLabels, formatNumber, plainText } from "./render.js";
 export type { RenderLabels, RenderOptions } from "./render.js";

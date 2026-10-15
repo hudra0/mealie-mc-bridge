@@ -260,9 +260,9 @@ describe("mc-smoke", () => {
     expect(endpoints).toEqual([
       "GET api/v1/categories",
       "POST api/v1/media/image/upload-url",
-      "PUT storage.example.com",
+      "PUT storage.googleapis.com",
       "POST api/v1/media/image/upload-url",
-      "PUT storage.example.com",
+      "PUT storage.googleapis.com",
       "GET api/v1/media?ids[]=700002&ids[]=700001",
       "POST api/v3/auth/user/recipes/",
     ]);

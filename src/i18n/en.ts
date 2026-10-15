@@ -74,6 +74,12 @@ export const en: Messages = {
     session() {
       return "The bridge is not logged in to Monsieur Cuisine right now. The job waits and continues on its own as soon as a new session is saved on the admin page.";
     },
+    limitSubject: "Monsieur Cuisine: not sent, daily limit reached",
+    limit(text) {
+      return text.kind === "jobs"
+        ? `The bridge accepts at most ${formatNumber(text.limit, INTL)} recipes in 24 hours, and that many arrived. Please try again later; the operator can raise JOB_DAILY_LIMIT.`
+        : `The language model costs of the last 24 hours have reached the limit of ${formatNumber(text.limit, INTL)} USD. Please try again later; the operator can raise JOB_DAILY_COST_LIMIT_USD.`;
+    },
     failureReasons: FAILURE_REASONS,
   },
   jobEvents: {
@@ -322,6 +328,8 @@ export const en: Messages = {
           "No login form showed up: the page changed, or a captcha or consent screen came first.",
         not_logged_in:
           "The form was sent, but no session followed: a wrong password, a captcha or a second factor.",
+        unexpected_page:
+          "A login form showed up on a page that is not the Lidl login; nothing was typed into it.",
         verify_failed: "The site logged in, but Monsieur Cuisine refused the new session.",
         error: "The browser failed.",
       },

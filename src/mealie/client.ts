@@ -76,6 +76,42 @@ export class MealieApiError extends Error {
 export interface MealieClientOptions {
   logger?: Pick<Logger, "debug">;
   timeoutMs?: number;
+  // The largest recipe image the client reads; MAX_IMAGE_BYTES by default.
+  maxImageBytes?: number;
+}
+
+// Recipe images above this size are not read into memory.
+export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+
+export class ImageTooLargeError extends Error {
+  constructor(limit: number) {
+    super(`The recipe image is larger than ${Math.round(limit / 1024 / 1024)} MB`);
+    this.name = "ImageTooLargeError";
+  }
+}
+
+// Reads a response body, but no more than limit bytes.
+async function readCapped(response: Response, limit: number): Promise<Buffer> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new ImageTooLargeError(limit);
+  }
+  if (!response.body) return Buffer.alloc(0);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = (await reader.read()) as { done: boolean; value?: Uint8Array };
+    if (done || value === undefined) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      throw new ImageTooLargeError(limit);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
 
 export interface RecipePatch {
@@ -164,6 +200,7 @@ export class MealieClient {
   readonly #fetch: FetchLike;
   readonly #logger: Pick<Logger, "debug"> | undefined;
   readonly #timeoutMs: number;
+  readonly #maxImageBytes: number;
 
   constructor(
     baseUrl: string,
@@ -181,6 +218,7 @@ export class MealieClient {
     this.#fetch = fetchImpl;
     this.#logger = options.logger;
     this.#timeoutMs = options.timeoutMs ?? 15_000;
+    this.#maxImageBytes = options.maxImageBytes ?? MAX_IMAGE_BYTES;
   }
 
   getSelf(): Promise<MealieUser> {
@@ -192,12 +230,13 @@ export class MealieClient {
     return this.#json("GET", `/api/recipes/${encodeURIComponent(idOrSlug)}`, mealieRecipeSchema);
   }
 
-  // The full-size image, or null when the recipe has none.
+  // The full-size image, or null when the recipe has none. Throws ImageTooLargeError for an
+  // image above the size limit; the job then goes on without it.
   async getRecipeImage(recipeId: string): Promise<Buffer | null> {
     const path = `/api/media/recipes/${encodeURIComponent(recipeId)}/images/original.webp`;
     const response = await this.#request("GET", path, { allowNotFound: true });
     if (response.status === 404) return null;
-    return Buffer.from(await response.arrayBuffer());
+    return await readCapped(response, this.#maxImageBytes);
   }
 
   // Returns the tag with this name, creating it when it does not exist yet.

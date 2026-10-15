@@ -12,11 +12,19 @@
 //   limit nor toward the backoff.
 // A failed attempt keeps a screenshot of the page (the last five stay) and its reason, so
 // the admin page can show what got in the way: a captcha, a second factor, a changed page.
+// A screenshot can show the Lidl account page with the e-mail address; deleting the account
+// removes them.
+//
+// Every attempt runs in a fresh browser profile under DATA_DIR/tmp that is removed when the
+// attempt ends, so no Lidl or Monsieur Cuisine session stays on disk outside the encrypted
+// settings. The reason of a failure is stored and shown only after scrubLoginDetail: never a
+// call log of the browser, never the account's own e-mail address or password.
 
-import { mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { errorMessage, type AppLogger } from "../app-logger.js";
 import type { SettingsStore } from "../store/settings.js";
+import { scrubLoginDetail } from "./browser-errors.js";
 import {
   browserLogin,
   type BrowserLoginFailure,
@@ -80,10 +88,14 @@ export interface AutoLoginStatus {
 export interface AutoLoginOptions {
   settings: SettingsStore;
   browser: LoginBrowser;
-  // DATA_DIR/browser-profile.
-  profileDir: string;
+  // DATA_DIR/tmp: each attempt gets a fresh profile directory below it.
+  tempDir: string;
+  // DATA_DIR/browser-profile, the persistent profile of 0.2.0; removed by cleanUp().
+  legacyProfileDir?: string;
   // DATA_DIR/login-screenshots.
   screenshotDir: string;
+  // LIDL_LOGIN_HOSTS: where the browser may fill in the account.
+  loginHosts?: readonly string[];
   editorPath: string;
   logger: AppLogger;
   now?: () => Date;
@@ -149,15 +161,20 @@ export class AutoLogin {
     this.#options.logger.info({}, "Lidl account for the automatic login saved");
   }
 
-  // Removes the account and what it left behind: the browser profile with the Lidl
-  // session (unless a login is using it right now) and the screenshots.
+  // Removes the account and what it left behind: the screenshots, a browser profile of an
+  // earlier release and the temporary profiles (unless a login is using one right now).
   deleteCredentials(): void {
     for (const key of Object.values(AUTO_LOGIN_KEYS)) this.#settings.delete(key);
-    rmSync(this.#options.screenshotDir, { recursive: true, force: true });
-    if (this.#running === null) {
-      rmSync(this.#options.profileDir, { recursive: true, force: true });
-    }
+    removeDir(this.#options.screenshotDir);
+    if (this.#running === null) this.cleanUp();
     this.#options.logger.info({}, "Lidl account for the automatic login deleted");
+  }
+
+  // Removes browser profiles left behind: the persistent profile of 0.2.0 and temporary
+  // profiles of attempts a crash or a stop interrupted. Call it at start, before any login.
+  cleanUp(): void {
+    if (this.#options.legacyProfileDir) removeDir(this.#options.legacyProfileDir);
+    removeDir(this.#options.tempDir);
   }
 
   status(): AutoLoginStatus {
@@ -266,30 +283,36 @@ export class AutoLogin {
       });
     }
     let screenshot: string | null = null;
+    let profile: string | null = null;
     try {
-      // The profile holds the Lidl session: only the bridge user may read it.
-      mkdirSync(this.#options.profileDir, { recursive: true, mode: 0o700 });
+      // A fresh profile per attempt, readable by the bridge user only (mkdtemp: 0700).
+      mkdirSync(this.#options.tempDir, { recursive: true, mode: 0o700 });
+      profile = mkdtempSync(join(this.#options.tempDir, "login-"));
       result = await (this.#options.login ?? browserLogin)({
         browser: this.#options.browser,
-        profileDir: this.#options.profileDir,
+        profileDir: profile,
         headless: true,
         editorPath: this.#options.editorPath,
         credentials: { email, password },
+        ...(this.#options.loginHosts ? { loginHosts: this.#options.loginHosts } : {}),
         timeoutMs: this.#options.timeoutMs ?? LOGIN_TIMEOUT_MS,
         screenshotPath: () => {
-          mkdirSync(this.#options.screenshotDir, { recursive: true });
+          mkdirSync(this.#options.screenshotDir, { recursive: true, mode: 0o700 });
           screenshot = `${started.toISOString().replace(/[:.]/g, "-")}.png`;
           return join(this.#options.screenshotDir, screenshot);
         },
       });
     } catch (error) {
       result = { ok: false, code: "error", detail: errorMessage(error), screenshot: null };
+    } finally {
+      // The profile holds the Lidl and Monsieur Cuisine session of this attempt.
+      if (profile !== null) removeDir(profile);
     }
     if (!result.ok) {
       this.#pruneScreenshots();
       return this.#finish(started, options.manual, {
         code: result.code,
-        detail: result.detail,
+        detail: scrubLoginDetail(result.detail, [email, password]),
         screenshot: result.screenshot === null ? null : screenshot,
       });
     }
@@ -315,7 +338,7 @@ export class AutoLogin {
       ok: failure === null,
       manual,
       code: failure?.code ?? null,
-      detail: failure?.detail ?? null,
+      detail: failure ? scrubLoginDetail(failure.detail) : null,
       screenshot: failure?.screenshot ?? null,
     };
     this.#settings.setJson(AUTO_LOGIN_KEYS.last, attempt);
@@ -329,7 +352,7 @@ export class AutoLogin {
     const failures = this.#failures() + (manual ? 0 : 1);
     this.#settings.set(AUTO_LOGIN_KEYS.failures, String(failures));
     logger.warn(
-      { manual, code: failure.code, detail: failure.detail, failures },
+      { manual, code: failure.code, detail: attempt.detail, failures },
       "automatic Monsieur Cuisine login failed",
     );
     return { status: "failed", attempt };
@@ -371,5 +394,15 @@ export class AutoLogin {
     for (const name of names.slice(0, Math.max(0, names.length - KEEP_SCREENSHOTS))) {
       rmSync(join(this.#options.screenshotDir, name), { force: true });
     }
+  }
+}
+
+// Removes a directory and everything in it. A browser that was killed a moment ago can
+// still hold a file, so it tries a few times and gives up quietly.
+function removeDir(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  } catch {
+    // Removed at the next start (cleanUp).
   }
 }

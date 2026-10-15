@@ -32,8 +32,13 @@ interface Entry {
 const REFERENCE = {
   PORT: { description: "TCP port the bridge listens on. The image's health check reads it too." },
   HOST: {
+    default: "`127.0.0.1`; `0.0.0.0` in the image",
     description:
-      "Interface to bind. Keep `0.0.0.0` in a container; `127.0.0.1` keeps a local run off the network.",
+      "Interface to listen on. Outside a container the bridge answers on this machine only unless you set it; in the container the port mapping in the compose file decides who reaches it.",
+  },
+  BRIDGE_IN_CONTAINER: {
+    default: "`1` in the image",
+    description: "Set by the Docker image; makes `HOST` default to `0.0.0.0`. Leave it alone.",
   },
   LOG_LEVEL: {
     description:
@@ -50,7 +55,7 @@ const REFERENCE = {
   },
   SETTINGS_KEY: {
     description:
-      "Base64 of 32 random bytes; `generate-secrets` prints one. Encrypts the Monsieur Cuisine cookie in `bridge.db`. With another key the stored cookie cannot be read, and you paste it again.",
+      "Base64 of 32 random bytes; `generate-secrets` prints one. Encrypts the Monsieur Cuisine cookie and the Lidl account in `bridge.db`. With another key they cannot be read, and you enter them again.",
   },
   WEBHOOK_TOKEN: {
     description:
@@ -140,19 +145,54 @@ const REFERENCE = {
     description: "Seconds between queue polls. A webhook call wakes the worker at once.",
   },
   ADMIN_USER: {
+    default: "**required** unless `ADMIN_AUTH=off`",
     description:
-      "Basic Auth user for the admin pages. Set it together with `ADMIN_PASSWORD`; without both the pages are open to anyone who reaches the port.",
+      "User of the admin login form (and of Basic Auth on `/admin/api/`). Set it together with `ADMIN_PASSWORD`.",
   },
   ADMIN_PASSWORD: {
-    description: "Basic Auth password for the admin pages. A secret.",
+    default: "**required** unless `ADMIN_AUTH=off`",
+    description:
+      "Password of the admin login, at least 12 characters. A secret. It travels to the bridge on every login, so put a TLS reverse proxy in front when the admin pages leave the machine.",
+  },
+  ADMIN_AUTH: {
+    description:
+      "`off` lets the bridge start without `ADMIN_USER` and `ADMIN_PASSWORD`; then anyone who reaches the port can use the admin pages, replace the session and store a Lidl account. Only for a port that answers on this machine alone.",
   },
   ADMIN_HOSTS: {
     description:
-      "Host names the admin pages answer to, comma-separated, without ports. IP addresses and `localhost` always work. Without Basic Auth other names are refused, which blocks DNS rebinding.",
+      "Host names the admin pages answer to, comma-separated, without ports. IP addresses and `localhost` always work. Without a login other names are refused, which blocks DNS rebinding.",
+  },
+  TRUST_PROXY: {
+    description:
+      "Reverse proxies whose `X-Forwarded-For` and `X-Forwarded-Proto` the bridge believes: `false`, `true` (any sender, only when nothing but the proxy reaches the port) or a comma-separated list of proxy addresses or CIDR ranges, for example `192.0.2.0/24`. Behind a proxy it gives the login throttle the real client address, and over HTTPS it marks the session cookie `Secure` and sends HSTS.",
+  },
+  JOB_DAILY_LIMIT: {
+    description:
+      "Jobs the webhook accepts in 24 hours, counted over every recipe; above it Mealie gets 429 and the recipe's timeline says why. `0` turns the limit off.",
+  },
+  JOB_DAILY_COST_LIMIT_USD: {
+    description:
+      "Estimated language model cost in USD of the jobs of the last 24 hours at which the webhook stops accepting jobs. `0` turns the limit off. The estimate uses the price table (`LLM_PRICES_JSON`).",
+  },
+  LLM_MAX_RECIPE_KB: {
+    description:
+      "Largest recipe text, in kB, sent to the language model. A longer recipe fails its job with a message instead of being sent.",
+  },
+  MC_UPLOAD_HOSTS: {
+    description:
+      "Hosts the signed image upload URL from Monsieur Cuisine may point to, comma-separated; `*.example.com` covers the subdomains. Other hosts get no image bytes, and the upload follows no redirect.",
+  },
+  LIDL_LOGIN_HOSTS: {
+    description:
+      "Hosts of the Lidl login page, comma-separated and matched exactly. The automatic login types the account only into an https page on one of them; a password field anywhere else ends the attempt.",
   },
   SMTP_URL: {
     description:
-      "`smtp://` or `smtps://` URL with credentials, for example `smtps://user:password@mail.example.com:465`. Without it no mail is sent.",
+      "`smtp://` or `smtps://` URL with credentials, for example `smtps://user:password@mail.example.com:465`. `smtp://` must upgrade with STARTTLS. Without it no mail is sent.",
+  },
+  SMTP_ALLOW_INSECURE: {
+    description:
+      "`true` lets `smtp://` send without STARTTLS, password and mails in plain text; only for a mail server on the same host or a trusted network.",
   },
   NOTIFY_EMAIL: {
     default: "required with `SMTP_URL`",
@@ -210,10 +250,10 @@ function valuesCell(schema: z.ZodType): string {
   return "";
 }
 
-// Defaults are strings, numbers or string lists.
+// Defaults are strings, numbers, flags or string lists.
 const schemaDefaults = settingsSchema.parse({}) as Record<
   string,
-  string | number | string[] | undefined
+  string | number | boolean | string[] | undefined
 >;
 
 function defaultCell(name: ReferenceName, entry: Entry): string {

@@ -84,17 +84,26 @@ async function main(): Promise<void> {
   const notifier = createNotifier(config, logger, {
     recipeUrl: (job) => (job.mealieSlug ? mealieRecipeLink(config, job.mealieSlug) : null),
   });
-  const transport = new McTransport({ logger, locale: mcLocale });
+  const transport = new McTransport({
+    logger,
+    locale: mcLocale,
+    uploadHosts: config.MC_UPLOAD_HOSTS,
+  });
   // Logs in with the Lidl account from the settings page when the session expires. Without
-  // Playwright and its Chromium the page says the browser is missing; the rest works.
+  // Playwright and its Chromium the page says the browser is missing; the rest works. Each
+  // attempt runs in a fresh profile under DATA_DIR/tmp; cleanUp removes what a crash left
+  // behind and the persistent profile of 0.2.0.
   const autoLogin = new AutoLogin({
     settings: store.settings,
     browser: new PlaywrightBrowser(),
-    profileDir: join(config.DATA_DIR, "browser-profile"),
+    tempDir: join(config.DATA_DIR, "tmp"),
+    legacyProfileDir: join(config.DATA_DIR, "browser-profile"),
     screenshotDir: join(config.DATA_DIR, "login-screenshots"),
     editorPath: mcLocale.editorPath,
+    loginHosts: config.LIDL_LOGIN_HOSTS,
     logger,
   });
+  autoLogin.cleanUp();
   const session = new SessionManager({
     settings: store.settings,
     jobs: store.jobs,
@@ -135,7 +144,9 @@ async function main(): Promise<void> {
     logger,
     adminSessionKey: settingsKey,
     autoLogin,
-    server: { loggerInstance: logger },
+    // TRUST_PROXY decides whose X-Forwarded-For and X-Forwarded-Proto count: the client
+    // address of the login throttle and the https detection behind a reverse proxy.
+    server: { loggerInstance: logger, trustProxy: config.TRUST_PROXY },
   });
 
   let stopping = false;

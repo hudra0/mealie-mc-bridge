@@ -554,15 +554,14 @@ function ingredientStats(job: Job, t: AdminMessages): string {
   );
 }
 
-// The dry-run form. The form token goes along so "convert right away" works in one step;
-// the URL redaction keeps it out of the request log.
+// The dry-run form. A POST, so the form token of "convert right away" stays out of URLs.
 export function dryRunForm(
   values: { recipe: string; scale: number; formToken: string },
   t: AdminMessages,
 ): SafeHtml {
   const { recipe, scale } = values;
   const l = t.dryRun;
-  return html`<form method="get" action="/admin/dry-run">
+  return html`<form method="post" action="/admin/dry-run">
     <label
       >${l.recipe}
       <input
@@ -573,7 +572,8 @@ export function dryRunForm(
         required
     /></label>
     <label
-      >${l.scale} <input type="number" name="scale" value="${scale}" min="0.1" max="100" step="any"
+      >${l.scale}
+      <input type="number" name="scale" value="${scale}" min="0.25" max="10" step="0.25"
     /></label>
     <label><input type="checkbox" name="convert" value="1" /> ${l.alsoConvert}</label>
     ${csrfField(values.formToken)}
@@ -637,7 +637,7 @@ export function dryRunView(data: DryRunData, t: AdminMessages): SafeHtml {
             }
           </dd>
         </dl>
-        <form method="get" action="/admin/dry-run">
+        <form method="post" action="/admin/dry-run">
           <input type="hidden" name="recipe" value="${data.recipeParam}" />
           <input type="hidden" name="scale" value="${data.scale}" />
           <input type="hidden" name="convert" value="1" />

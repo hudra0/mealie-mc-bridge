@@ -5,12 +5,21 @@ import {
   isSettingsKey,
   loadConfig,
   loadServiceConfig,
+  parseTrustProxy,
   resolveLlmConfig,
 } from "./config.js";
 
 const defaults = {
   PORT: 3000,
-  HOST: "0.0.0.0",
+  HOST: "127.0.0.1",
+  ADMIN_AUTH: "on",
+  TRUST_PROXY: false,
+  SMTP_ALLOW_INSECURE: false,
+  JOB_DAILY_LIMIT: 50,
+  JOB_DAILY_COST_LIMIT_USD: 10,
+  LLM_MAX_RECIPE_KB: 40,
+  MC_UPLOAD_HOSTS: ["*.googleapis.com", "*.tecpal.com"],
+  LIDL_LOGIN_HOSTS: ["accounts.lidl.com"],
   LOG_LEVEL: "info",
   DEVICE_PROGRAMS_PATH: "./knowledge/device-programs.json",
   LLM_PROVIDER: "openai",
@@ -38,6 +47,8 @@ const service = {
   MEALIE_URL: "http://mealie:9000",
   MEALIE_API_TOKEN: "test-token-not-a-secret",
   SETTINGS_KEY: settingsKey,
+  ADMIN_USER: "admin",
+  ADMIN_PASSWORD: "a-long-test-password",
 };
 
 describe("loadConfig", () => {
@@ -119,6 +130,49 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ KNOWLEDGE_DIR: "/nonexistent" })).toThrow("(available: none)");
   });
 
+  it("binds to localhost outside the container and to every interface inside", () => {
+    expect(loadConfig({}).HOST).toBe("127.0.0.1");
+    expect(loadConfig({ BRIDGE_IN_CONTAINER: "1" }).HOST).toBe("0.0.0.0");
+    expect(loadConfig({ BRIDGE_IN_CONTAINER: "0" }).HOST).toBe("127.0.0.1");
+    expect(loadConfig({ BRIDGE_IN_CONTAINER: "1", HOST: "192.0.2.10" }).HOST).toBe("192.0.2.10");
+  });
+
+  it("reads the limits, the host lists and the flags", () => {
+    expect(
+      loadConfig({
+        JOB_DAILY_LIMIT: "0",
+        JOB_DAILY_COST_LIMIT_USD: "2.5",
+        LLM_MAX_RECIPE_KB: "80",
+        MC_UPLOAD_HOSTS: "Storage.Example.com, *.cdn.example.com",
+        LIDL_LOGIN_HOSTS: "accounts.lidl.com,login.example.com",
+        SMTP_ALLOW_INSECURE: "true",
+      }),
+    ).toMatchObject({
+      JOB_DAILY_LIMIT: 0,
+      JOB_DAILY_COST_LIMIT_USD: 2.5,
+      LLM_MAX_RECIPE_KB: 80,
+      MC_UPLOAD_HOSTS: ["storage.example.com", "*.cdn.example.com"],
+      LIDL_LOGIN_HOSTS: ["accounts.lidl.com", "login.example.com"],
+      SMTP_ALLOW_INSECURE: true,
+    });
+    expect(() => loadConfig({ JOB_DAILY_LIMIT: "-1" })).toThrow(/JOB_DAILY_LIMIT/);
+    expect(() => loadConfig({ SMTP_ALLOW_INSECURE: "sometimes" })).toThrow(/SMTP_ALLOW_INSECURE/);
+  });
+
+  it("reads TRUST_PROXY as false, true or a list of proxy addresses", () => {
+    expect(loadConfig({ TRUST_PROXY: "true" }).TRUST_PROXY).toBe(true);
+    expect(loadConfig({ TRUST_PROXY: "false" }).TRUST_PROXY).toBe(false);
+    expect(loadConfig({ TRUST_PROXY: "192.0.2.2, 198.51.100.0/24,::1" }).TRUST_PROXY).toEqual([
+      "192.0.2.2",
+      "198.51.100.0/24",
+      "::1",
+    ]);
+    expect(() => loadConfig({ TRUST_PROXY: "proxy.example.com" })).toThrow(/TRUST_PROXY/);
+    expect(parseTrustProxy("192.0.2.0/33")).toBeNull();
+    expect(parseTrustProxy("fd00::/64")).toEqual(["fd00::/64"]);
+    expect(parseTrustProxy("1.2.3.4/8/1")).toBeNull();
+  });
+
   it("rejects an invalid port", () => {
     expect(() => loadConfig({ PORT: "not-a-number" })).toThrow(/Invalid configuration: PORT/);
   });
@@ -178,13 +232,17 @@ describe("isSettingsKey", () => {
   });
 });
 
+// The service configuration without the given settings.
+const without = (...keys: string[]): Record<string, string> =>
+  Object.fromEntries(Object.entries(service).filter(([key]) => !keys.includes(key)));
+
 describe("loadServiceConfig", () => {
   it("accepts a complete service configuration", () => {
     expect(loadServiceConfig(service)).toMatchObject(service);
   });
 
   it("names every missing required setting", () => {
-    expect(() => loadServiceConfig({})).toThrow(
+    expect(() => loadServiceConfig({ ADMIN_AUTH: "off" })).toThrow(
       "Invalid configuration: WEBHOOK_TOKEN: is required; MEALIE_URL: is required; MEALIE_API_TOKEN: is required; SETTINGS_KEY: is required",
     );
   });
@@ -194,12 +252,28 @@ describe("loadServiceConfig", () => {
       loadServiceConfig({ ...service, ADMIN_HOSTS: " Bridge.example.com, ,mc.example.com" })
         .ADMIN_HOSTS,
     ).toEqual(["bridge.example.com", "mc.example.com"]);
-    expect(() => loadServiceConfig({ ...service, ADMIN_USER: "admin" })).toThrow(
+    expect(() => loadServiceConfig(without("ADMIN_PASSWORD"))).toThrow(
       /ADMIN_USER, ADMIN_PASSWORD: set both or neither/,
     );
-    expect(
-      loadServiceConfig({ ...service, ADMIN_USER: "admin", ADMIN_PASSWORD: "pw" }),
-    ).toBeTruthy();
+  });
+
+  it("requires admin credentials unless ADMIN_AUTH=off", () => {
+    const open = without("ADMIN_USER", "ADMIN_PASSWORD");
+    expect(() => loadServiceConfig(open)).toThrow(
+      /ADMIN_USER, ADMIN_PASSWORD: are required .*set ADMIN_AUTH=off/,
+    );
+    expect(loadServiceConfig({ ...open, ADMIN_AUTH: "off" }).ADMIN_AUTH).toBe("off");
+    expect(() => loadServiceConfig({ ...open, ADMIN_AUTH: "maybe" })).toThrow(/ADMIN_AUTH/);
+  });
+
+  it("wants an admin password of at least 12 characters", () => {
+    expect(() => loadServiceConfig({ ...service, ADMIN_PASSWORD: "short-pw" })).toThrow(
+      "ADMIN_PASSWORD: must be at least 12 characters",
+    );
+    expect(() => loadServiceConfig({ ...service, ADMIN_PASSWORD: "short-pw" })).toThrow(
+      expect.objectContaining({ message: expect.not.stringContaining("short-pw") as unknown }),
+    );
+    expect(loadServiceConfig({ ...service, ADMIN_PASSWORD: "x".repeat(12) })).toBeTruthy();
   });
 
   it("wants a recipient when mail is configured", () => {

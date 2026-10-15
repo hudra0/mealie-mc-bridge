@@ -64,6 +64,21 @@ describe("scrubSecrets and errorMessage", () => {
     expect(scrubSecrets("nothing secret here")).toBe("nothing secret here");
   });
 
+  it("drops Playwright call logs and the values of fill()", () => {
+    const marker = "MARKER-PASSWORD-91";
+    const playwright = [
+      "locator.fill: Timeout 1500ms exceeded.",
+      "Call log:",
+      "  - waiting for locator('input[type=\"password\"]').first()",
+      `    - fill("${marker}")`,
+    ].join("\n");
+    expect(scrubSecrets(playwright)).toBe("locator.fill: Timeout 1500ms exceeded.");
+    expect(errorMessage(new Error(playwright))).not.toContain(marker);
+    expect(scrubSecrets(`retrying fill("${marker}") and type('x\\'y')`)).toBe(
+      'retrying fill("[redacted]") and type("[redacted]")',
+    );
+  });
+
   it("turns any error into one short line", () => {
     expect(errorMessage(new Error("a\n  b"))).toBe("a b");
     expect(errorMessage("plain")).toBe("plain");

@@ -72,6 +72,8 @@ export interface TestServiceOptions {
   login?: (options: BrowserLoginOptions) => Promise<BrowserLoginResult>;
   logger?: Parameters<typeof buildService>[0]["server"];
   throttle?: LoginThrottle;
+  // TRUST_PROXY, passed to Fastify.
+  trustProxy?: boolean | string[];
 }
 
 export function testService(options: TestServiceOptions = {}): TestService {
@@ -87,7 +89,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
   const autoLogin = new AutoLogin({
     settings: store.settings,
     browser,
-    profileDir: join(store.dir, "browser-profile"),
+    tempDir: join(store.dir, "tmp"),
     screenshotDir: join(store.dir, "login-screenshots"),
     editorPath: "/de/create-recipe?devices=mc-smart",
     logger: silentLogger(),
@@ -133,7 +135,14 @@ export function testService(options: TestServiceOptions = {}): TestService {
     autoLogin,
     workerBackoffMs: () => 1,
     ...(options.ingredients ? { ingredients: options.ingredients } : {}),
-    ...(options.logger ? { server: options.logger } : {}),
+    ...(options.logger || options.trustProxy !== undefined
+      ? {
+          server: {
+            ...options.logger,
+            ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
+          },
+        }
+      : {}),
   });
   return {
     ...service,

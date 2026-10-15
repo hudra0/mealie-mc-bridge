@@ -33,12 +33,17 @@ FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 ENV DATA_DIR=/data
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# HOST defaults to 0.0.0.0 inside the container; the port mapping decides who reaches it.
+ENV BRIDGE_IN_CONTAINER=1
 WORKDIR /app
 # The Debian libraries Chromium needs (a few hundred MB), first, so a change to the npm
 # dependencies does not rebuild this layer. The version matches package-lock.json (a test
 # checks it). Without them or the browser the bridge still runs; the settings page then says
-# the browser is not available.
-RUN npx --yes playwright@1.63.0 install-deps chromium \
+# the browser is not available. tini runs as PID 1 and reaps the processes a crashed
+# Chromium leaves behind.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends tini \
+  && npx --yes playwright@1.63.0 install-deps chromium \
   && rm -rf /var/lib/apt/lists/* /root/.npm
 COPY package.json ./
 COPY --from=deps /app/node_modules ./node_modules
@@ -60,4 +65,7 @@ EXPOSE 3000
 # /health answers 503 when the database or DATA_DIR is unusable; anything but 200 fails.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.status===200?0:1),()=>process.exit(1))"]
+# Under "init: true" or "docker run --init" tini is not PID 1; as a subreaper it still reaps.
+ENV TINI_SUBREAPER=1
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "dist/main.js"]

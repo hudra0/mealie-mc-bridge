@@ -72,6 +72,12 @@ export const de: Messages = {
     session() {
       return "Die Bridge ist gerade nicht bei Monsieur Cuisine angemeldet. Der Auftrag wartet und läuft automatisch weiter, sobald auf der Admin-Seite eine neue Sitzung hinterlegt ist.";
     },
+    limitSubject: "Monsieur Cuisine: nicht gesendet, Tageslimit erreicht",
+    limit(text) {
+      return text.kind === "jobs"
+        ? `Die Bridge nimmt höchstens ${formatNumber(text.limit, INTL)} Rezepte in 24 Stunden an, und so viele sind eingegangen. Bitte später erneut versuchen; der Betreiber kann JOB_DAILY_LIMIT erhöhen.`
+        : `Die Kosten des Sprachmodells der letzten 24 Stunden haben das Limit von ${formatNumber(text.limit, INTL)} USD erreicht. Bitte später erneut versuchen; der Betreiber kann JOB_DAILY_COST_LIMIT_USD erhöhen.`;
+    },
     failureReasons: FAILURE_REASONS,
   },
   jobEvents: {
@@ -325,6 +331,8 @@ export const de: Messages = {
           "Es kam kein Anmeldeformular: Die Seite hat sich geändert, oder ein Captcha oder eine Zustimmungsseite kam dazwischen.",
         not_logged_in:
           "Das Formular wurde abgeschickt, aber es kam keine Sitzung: falsches Passwort, Captcha oder zweiter Faktor.",
+        unexpected_page:
+          "Ein Anmeldeformular erschien auf einer Seite, die nicht die Lidl-Anmeldung ist; dort wurde nichts eingetragen.",
         verify_failed: "Die Anmeldung lief durch, aber Monsieur Cuisine lehnt die neue Sitzung ab.",
         error: "Der Browser ist ausgefallen.",
       },

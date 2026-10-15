@@ -9,11 +9,23 @@
 // wordpress_logged_in_* and lidl_sso_id_token exist. The Cookie header is every cookie of
 // the site plus wp-wpml_current_language, which the proxy expects.
 //
+// The e-mail address and the password go only into a page served over https from one of
+// the login hosts (LIDL_LOGIN_HOSTS, exact host names). A password field anywhere else ends
+// the attempt as "unexpected_page" with a screenshot, before anything is typed.
+//
+// No error message of the browser reaches the result: a thrown error becomes a fixed text
+// (browser-errors.ts), because Playwright's messages can carry the typed password.
+//
 // The browser sits behind LoginBrowser, so tests drive the flow with a fake and the bridge
-// starts without Playwright. A persistent profile keeps the Lidl login between runs, so a
-// later run often finishes without the password.
+// starts without Playwright. The automatic login gives every attempt a fresh profile;
+// npm run mc:login keeps a persistent one on the operator's computer.
+
+import { browserFailureDetail } from "./browser-errors.js";
 
 export const MC_BASE_URL = "https://www.monsieur-cuisine.com";
+
+// The hosts of the Lidl account pages the login form may be filled on.
+export const DEFAULT_LOGIN_HOSTS: readonly string[] = ["accounts.lidl.com"];
 
 // Selectors of the Lidl login form.
 export const EMAIL_FIELD = 'input[type="email"]';
@@ -32,6 +44,8 @@ export interface LoginPage {
   url(): string;
   // Fills the first visible element matching the CSS selector; false when none is visible.
   fillVisible(selector: string, value: string): Promise<boolean>;
+  // Whether an element matching the selector is visible.
+  isVisible(selector: string): Promise<boolean>;
   // Presses Enter in the first visible element matching the selector.
   pressEnter(selector: string): Promise<void>;
   // Clicks the first visible button whose text does not match `skip`; false when none.
@@ -43,12 +57,15 @@ export interface LoginContext {
   page: LoginPage;
   cookies(url: string): Promise<BrowserCookie[]>;
   close(): Promise<void>;
+  // Ends a browser that did not close in time, with its child processes.
+  kill?(): void;
 }
 
 export interface LoginBrowser {
   // Null when a browser can be started, otherwise why not.
   unavailable(): Promise<string | null>;
-  // A browser with a persistent profile: cookies and the Lidl login survive between runs.
+  // A browser with its profile in profileDir: cookies and logins stay there until the
+  // directory is removed.
   open(options: { profileDir: string; headless: boolean }): Promise<LoginContext>;
 }
 
@@ -60,6 +77,8 @@ export type BrowserLoginFailure =
   // The form was sent, or the person did not log in, but no session followed: a wrong
   // password, a captcha or a second factor.
   | "not_logged_in"
+  // A password field showed up on a page that is not a login host over https.
+  | "unexpected_page"
   // The browser failed.
   | "error";
 
@@ -78,6 +97,8 @@ export interface BrowserLoginOptions {
   // Filled into the Lidl form when given. Without them the person logs in, or a saved
   // profile logs in on its own.
   credentials?: { email: string; password: string } | null;
+  // The hosts the form may be filled on; DEFAULT_LOGIN_HOSTS when left out.
+  loginHosts?: readonly string[];
   timeoutMs: number;
   pollMs?: number;
   // Where to save a screenshot when the login fails; null skips it.
@@ -136,18 +157,46 @@ function hostOf(url: string): string {
   }
 }
 
+// True when the page is served over https from one of the hosts, compared exactly:
+// "accounts.lidl.com" matches neither "evil-accounts.lidl.com" nor "accounts.lidl.com.evil".
+export function onLoginHost(url: string, hosts: readonly string[] = DEFAULT_LOGIN_HOSTS): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  return hosts.some((allowed) => allowed.trim().toLowerCase() === host);
+}
+
 export const CLOSE_TIMEOUT_MS = 10_000;
 
-export async function closeWithin(context: Pick<LoginContext, "close">, ms: number): Promise<void> {
+// Closes the browser, and kills it when it does not close within ms.
+export async function closeWithin(
+  context: Pick<LoginContext, "close" | "kill">,
+  ms: number,
+): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
-  await Promise.race([
-    context.close().catch(() => undefined),
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, ms);
+  const closed = await Promise.race([
+    context.close().then(
+      () => true,
+      () => true,
+    ),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), ms);
       timer.unref();
     }),
   ]);
   clearTimeout(timer);
+  if (!closed) {
+    try {
+      context.kill?.();
+    } catch {
+      // Nothing more to do; the next login starts a browser of its own.
+    }
+  }
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -163,6 +212,7 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
   const step = options.onStep ?? (() => undefined);
   const baseUrl = options.baseUrl ?? MC_BASE_URL;
   const credentials = options.credentials ?? null;
+  const loginHosts = options.loginHosts ?? DEFAULT_LOGIN_HOSTS;
   const deadline = now() + options.timeoutMs;
 
   let context: LoginContext | null = null;
@@ -200,7 +250,16 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
         step("logged in");
         return { ok: true, cookie };
       }
-      if (credentials && !passwordSent) {
+      if (credentials && !passwordSent && !onLoginHost(context.page.url(), loginHosts)) {
+        // Never type the account into a page that is not the Lidl login.
+        if (await context.page.isVisible(PASSWORD_FIELD)) {
+          step("login form on an unexpected page");
+          return await fail(
+            "unexpected_page",
+            `a login form showed up on an unexpected page (${hostOf(context.page.url()) || "no host"})`,
+          );
+        }
+      } else if (credentials && !passwordSent) {
         const page = context.page;
         if (!emailFilled && (await page.fillVisible(EMAIL_FIELD, credentials.email))) {
           emailFilled = true;
@@ -216,7 +275,7 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
           // A login in two steps: the address first, the password on the next screen.
           await page.pressEnter(EMAIL_FIELD);
           emailSent = true;
-        } else if (!emailFilled && clicks < 3 && hostOf(page.url()).endsWith("lidl.com")) {
+        } else if (!emailFilled && clicks < 3) {
           if (await page.clickButton(SKIP_BUTTONS)) clicks++;
         }
       }
@@ -232,7 +291,8 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
         : "no login within the time limit",
     );
   } catch (error) {
-    return await fail("error", error instanceof Error ? error.message : String(error));
+    // A fixed text: the browser's own message can carry the typed password.
+    return await fail("error", browserFailureDetail(error));
   } finally {
     // A browser that hangs on close must not keep the login marked as running.
     if (context) await closeWithin(context, CLOSE_TIMEOUT_MS);

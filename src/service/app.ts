@@ -19,8 +19,10 @@ import type { AutoLogin } from "../session/auto-login.js";
 import { admin } from "./admin.js";
 import type { LoginThrottle } from "./admin-auth.js";
 import { registerSettings } from "./admin-settings.js";
+import { errorMessage } from "../app-logger.js";
+import { timelineTexts } from "../pipeline/messages.js";
 import { healthReport } from "./health.js";
-import { routes } from "./routes.js";
+import { routes, type LimitHit } from "./routes.js";
 
 export interface ServiceConfig extends PipelineConfig {
   WEBHOOK_TOKEN: string;
@@ -31,6 +33,9 @@ export interface ServiceConfig extends PipelineConfig {
   MEALIE_URL: string;
   MEALIE_PUBLIC_URL?: string | undefined;
   MEALIE_GROUP_SLUG: string;
+  // Daily limits of the webhook; without them it queues every click.
+  JOB_DAILY_LIMIT?: number | undefined;
+  JOB_DAILY_COST_LIMIT_USD?: number | undefined;
 }
 
 export interface ServiceParts {
@@ -126,10 +131,35 @@ export function buildService(parts: ServiceParts): Service {
   });
   const activeWorker = worker;
 
+  // A refused click leaves a note in the recipe's timeline, so the person who clicked
+  // learns why nothing happens.
+  const onLimited = (recipeId: string, hit: LimitHit): void => {
+    const texts = timelineTexts(config.UI_LANGUAGE);
+    parts.mealie
+      .addTimelineEvent(recipeId, {
+        subject: texts.limitSubject,
+        eventMessage: texts.limit(hit),
+        eventType: "info",
+      })
+      .catch((error: unknown) => {
+        logger.warn({ recipeId, err: errorMessage(error) }, "Mealie timeline entry failed");
+      });
+  };
+  const limited =
+    config.JOB_DAILY_LIMIT !== undefined || config.JOB_DAILY_COST_LIMIT_USD !== undefined;
   void app.register(routes, {
     webhookToken: config.WEBHOOK_TOKEN,
     jobs: store.jobs,
     onEnqueued: () => activeWorker.nudge(),
+    ...(limited
+      ? {
+          limits: {
+            jobs: config.JOB_DAILY_LIMIT ?? 0,
+            costUsd: config.JOB_DAILY_COST_LIMIT_USD ?? 0,
+          },
+          onLimited,
+        }
+      : {}),
   });
   void app.register(admin, {
     auth:

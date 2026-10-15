@@ -38,7 +38,12 @@ export type JobStatusName =
 
 // Why an automatic login failed (src/session/auto-login.ts).
 export type AutoLoginFailureName =
-  "browser_unavailable" | "no_login_form" | "not_logged_in" | "verify_failed" | "error";
+  | "browser_unavailable"
+  | "no_login_form"
+  | "not_logged_in"
+  | "unexpected_page"
+  | "verify_failed"
+  | "error";
 
 export type SessionStateName = "valid" | "invalid" | "expired" | "unknown";
 
@@ -71,6 +76,9 @@ export interface TimelineMessages {
   failed(text: { stage: FailureStage; detail: string }): string;
   sessionSubject: string;
   session(): string;
+  // The webhook refused a click because a daily limit is reached.
+  limitSubject: string;
+  limit(text: { kind: "jobs" | "cost"; limit: number }): string;
   failureReasons: Readonly<Record<FailureStage, string>>;
 }
 

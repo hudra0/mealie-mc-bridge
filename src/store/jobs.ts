@@ -263,6 +263,17 @@ export class JobStore {
     return row ? toJob(row) : null;
   }
 
+  // How many jobs were queued since the given time, and the estimated LLM cost of those
+  // jobs in USD. The daily limits of the webhook count with this.
+  usageSince(since: Date): { jobs: number; costUsd: number } {
+    const row = this.#db
+      .prepare<[string], { jobs: number; cost: number }>(
+        "SELECT COUNT(*) AS jobs, COALESCE(SUM(cost_usd), 0) AS cost FROM jobs WHERE created_at >= ?",
+      )
+      .get(since.toISOString());
+    return { jobs: row?.jobs ?? 0, costUsd: row?.cost ?? 0 };
+  }
+
   // Takes the oldest queued job and marks it running, in one transaction.
   claimNext(): Job | null {
     return this.#db

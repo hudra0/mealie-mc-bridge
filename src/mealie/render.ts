@@ -57,6 +57,18 @@ export function formatNumber(value: number, separator: "," | "." = ","): string 
   return String(Math.round(value * 1000) / 1000).replace(".", separator);
 }
 
+// A numeric character reference as text. Code points outside Unicode, NUL and lone
+// surrogates become U+FFFD, the replacement character, as an HTML parser does.
+function numericEntity(digits: string, radix: 10 | 16): string {
+  const code = Number.parseInt(digits, radix);
+  const valid =
+    Number.isSafeInteger(code) &&
+    code > 0 &&
+    code <= 0x10ffff &&
+    !(code >= 0xd800 && code <= 0xdfff);
+  return valid ? String.fromCodePoint(code) : "\uFFFD";
+}
+
 // Mealie text is Markdown, but imported recipes sometimes carry HTML. Tags are dropped,
 // line breaks and paragraphs become newlines, common entities are decoded.
 export function plainText(text: string | null | undefined): string {
@@ -66,8 +78,9 @@ export function plainText(text: string | null | undefined): string {
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?(?:p|div|li|ul|ol|h[1-6])(?:\s[^>]*)?>/gi, "\n")
     .replace(/<[^>]+>/g, "")
-    .replace(/&(#\d+|[a-z]+);/gi, (entity, name: string) => {
-      if (name.startsWith("#")) return String.fromCodePoint(Number(name.slice(1)));
+    .replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (entity, name: string) => {
+      if (/^#x/i.test(name)) return numericEntity(name.slice(2), 16);
+      if (name.startsWith("#")) return numericEntity(name.slice(1), 10);
       return ENTITIES[name.toLowerCase()] ?? entity;
     })
     .replace(/[ \t]+\n/g, "\n")

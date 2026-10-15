@@ -24,6 +24,8 @@ export interface FakeBrowserScript {
   loggedInProfile?: boolean;
   // The URL the page reports.
   url?: string;
+  // Thrown by fillVisible, the way Playwright throws on a field that does not take input.
+  fillError?: Error;
 }
 
 export const LOGIN_COOKIES: BrowserCookie[] = [
@@ -66,11 +68,13 @@ export function fakeBrowser(script: FakeBrowserScript = {}): FakeBrowser {
           },
           url: () => script.url ?? "https://accounts.lidl.com/Account/Login",
           fillVisible: (selector, value) => {
+            if (script.fillError) return Promise.reject(script.fillError);
             if (!visible(selector)) return Promise.resolve(false);
             filled[selector] = value;
             steps.push(`fill ${selector}`);
             return Promise.resolve(true);
           },
+          isVisible: (selector) => Promise.resolve(visible(selector)),
           pressEnter: (selector) => {
             steps.push(`enter ${selector}`);
             if (selector.includes("email") && script.form === "two-step") passwordShown = true;

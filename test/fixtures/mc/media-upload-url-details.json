@@ -2,7 +2,7 @@
   "code": 0,
   "message": "Success",
   "data": {
-    "url": "https://storage.example.com/upload/sample-details.jpeg?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=synthetic",
+    "url": "https://storage.googleapis.com/upload/sample-details.jpeg?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=synthetic",
     "extraHeaders": {},
     "mediaId": 700002
   }

@@ -136,14 +136,15 @@ export function parseCookieHeader(header: string | undefined): Record<string, st
   return cookies;
 }
 
-// HTTPS directly, or behind a reverse proxy that says so. The header can be forged, but
-// a forged one only adds the Secure flag, which helps no attacker.
+// HTTPS directly, or behind a reverse proxy listed in TRUST_PROXY: Fastify takes the
+// protocol from X-Forwarded-Proto only when the request comes from a trusted proxy.
 export function isHttps(request: FastifyRequest): boolean {
-  if (request.protocol === "https") return true;
-  const forwarded = request.headers["x-forwarded-proto"];
-  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
-  return first?.toLowerCase() === "https";
+  return request.protocol === "https";
 }
+
+// Strict-Transport-Security for a request that arrived over HTTPS: browsers then refuse
+// plain HTTP to this host for a year.
+export const HSTS_VALUE = "max-age=31536000";
 
 export function sessionCookie(value: string, secure: boolean): string {
   return [

@@ -428,7 +428,7 @@ describe("McClient.uploadImage", () => {
       },
     });
     expect(calls[1]).toMatchObject({
-      url: "https://storage.example.com/upload/sample-details.jpeg?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=synthetic",
+      url: "https://storage.googleapis.com/upload/sample-details.jpeg?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Signature=synthetic",
       method: "PUT",
       headers: { "Content-Type": "image/jpeg" },
       body: details,
@@ -516,7 +516,7 @@ describe("McClient.uploadImage", () => {
 
   it("refuses an upload URL that is not https", async () => {
     const { client, calls } = setup([
-      json(201, { code: 0, data: { url: "http://storage.example.com/x", mediaId: 1 } }),
+      json(201, { code: 0, data: { url: "http://storage.googleapis.com/x", mediaId: 1 } }),
     ]);
     await expect(client.uploadImage(new Uint8Array([1]))).rejects.toBeInstanceOf(
       McResponseShapeError,

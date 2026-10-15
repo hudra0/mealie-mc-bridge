@@ -255,10 +255,12 @@ export interface ConfigEntry {
   description: string;
 }
 
+// Parsed settings are strings, numbers, booleans or string lists.
 function asText(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  if (Array.isArray(value)) return value.map(String).join(",");
-  return String(value);
+  if (Array.isArray(value)) return value.map((item) => asText(item) ?? "").join(",");
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
 }
 
 // The configuration the service runs with, one entry per variable of the reference, with

@@ -18,12 +18,13 @@ import type { Store } from "../store/index.js";
 import type { AutoLogin } from "../session/auto-login.js";
 import { admin } from "./admin.js";
 import type { LoginThrottle } from "./admin-auth.js";
-import { registerSettings } from "./admin-settings.js";
+import type { ConfigEntry } from "../config-reference.js";
 import { healthReport } from "./health.js";
 import { routes } from "./routes.js";
 
 export interface ServiceConfig extends PipelineConfig {
   WEBHOOK_TOKEN: string;
+  PORT?: number | undefined;
   ADMIN_USER?: string | undefined;
   ADMIN_PASSWORD?: string | undefined;
   ADMIN_HOSTS?: string[] | undefined;
@@ -55,9 +56,16 @@ export interface ServiceParts {
   adminSessionKey?: Buffer;
   // Counts failed admin logins; tests pass one with their own clock.
   adminThrottle?: LoginThrottle;
-  // The automatic login and its settings page; without it the page is missing.
+  // The automatic login; without it the settings page says it is not available.
   autoLogin?: AutoLogin;
+  // The effective configuration the settings page lists, secrets reduced to set or unset.
+  configEntries?: readonly ConfigEntry[];
+  // Asks Mealie who the API token belongs to, for the overview's setup checklist.
+  mealieCheck?: () => Promise<unknown>;
 }
+
+// The port of the recipe action URL when the configuration does not name one.
+const DEFAULT_PORT = 3000;
 
 export interface Service {
   app: FastifyInstance;
@@ -154,15 +162,11 @@ export function buildService(parts: ServiceParts): Service {
     worker: activeWorker,
     mealieRecipeUrl: (slug) => mealieRecipeLink(config, slug),
     ...(parts.formToken ? { formToken: parts.formToken } : {}),
-    ...(parts.autoLogin
-      ? {
-          extend: (context) =>
-            registerSettings(context, {
-              autoLogin: parts.autoLogin as AutoLogin,
-              session: parts.session,
-            }),
-        }
-      : {}),
+    ...(parts.autoLogin ? { autoLogin: parts.autoLogin } : {}),
+    ...(parts.configEntries ? { config: parts.configEntries } : {}),
+    ...(parts.mealieCheck ? { mealieCheck: parts.mealieCheck } : {}),
+    mealieUrl: config.MEALIE_URL,
+    webhook: { token: config.WEBHOOK_TOKEN, port: config.PORT ?? DEFAULT_PORT },
   });
 
   return {

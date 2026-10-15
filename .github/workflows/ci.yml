@@ -90,6 +90,20 @@ jobs:
           done
           docker logs bridge
           exit 1
+      # The automatic login needs Chromium to start as the unprivileged bridge user.
+      - name: Check the headless browser of the image
+        run: |
+          docker run --rm mealie-mc-bridge:ci node -e "
+            require('playwright').chromium.launch({ args: ['--disable-dev-shm-usage'] })
+              .then(async (browser) => {
+                const page = await browser.newPage();
+                await page.setContent('<p>browser ok</p>');
+                console.log(await page.textContent('p'));
+                await browser.close();
+              })
+              .catch((error) => { console.error(error.message); process.exit(1); });
+          "
+          docker image ls mealie-mc-bridge:ci
 
   # Publishes only after format, lint, typecheck, tests, build and the secret scan passed.
   publish:

@@ -40,6 +40,7 @@ export type JobStatusName =
 export type AutoLoginFailureName =
   | "browser_unavailable"
   | "no_login_form"
+  | "unknown_account"
   | "wrong_password"
   | "verification_required"
   | "not_logged_in"
@@ -342,6 +343,8 @@ export interface AdminMessages {
     attempt(time: string, ok: boolean, manual: boolean): string;
     failure: Readonly<Record<AutoLoginFailureName, string>>;
     consentDismissed: string;
+    termsAccepted: string;
+    deviceChosen: string;
     screenshot: string;
     nextAttempt: string;
     running: string;

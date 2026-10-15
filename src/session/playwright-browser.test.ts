@@ -10,7 +10,14 @@ interface FakeElement {
   text?: string;
   enabled?: boolean;
   attributes?: Record<string, string>;
+  checked?: boolean;
+  // Elements inside this one, by selector.
+  children?: Record<string, FakeElement[]>;
+  onClick?: () => void;
 }
+
+// Elements Playwright's getByText finds, under this key.
+const TEXT_KEY = "getByText";
 
 function fakeChromium(
   elements: Record<string, FakeElement[]>,
@@ -18,9 +25,8 @@ function fakeChromium(
   frames: Record<string, FakeElement[]>[] = [],
 ) {
   const actions: string[] = [];
-  const locatorIn = (source: Record<string, FakeElement[]>) => (selector: string) => {
-    const items = source[selector] ?? [];
-    const at = (index: number) => ({
+  const listOf = (items: FakeElement[], selector = "") => {
+    const at = (index: number): Record<string, unknown> => ({
       isVisible: () => Promise.resolve(items[index]?.visible ?? false),
       fill: (value: string) => {
         actions.push(`fill ${selector} ${value.length}`);
@@ -32,8 +38,11 @@ function fakeChromium(
       },
       click: () => {
         actions.push(`click ${items[index]?.text ?? ""}`);
+        items[index]?.onClick?.();
         return Promise.resolve();
       },
+      isChecked: () => Promise.resolve(items[index]?.checked ?? false),
+      locator: (inner: string) => listOf(items[index]?.children?.[inner] ?? []),
       innerText: () => Promise.resolve(items[index]?.text ?? ""),
       isEnabled: () => Promise.resolve(items[index]?.enabled ?? true),
       getAttribute: (name: string) => Promise.resolve(items[index]?.attributes?.[name] ?? null),
@@ -44,12 +53,19 @@ function fakeChromium(
       first: () => at(0),
     };
   };
+  const locatorIn = (source: Record<string, FakeElement[]>) => (selector: string) =>
+    listOf(source[selector] ?? [], selector);
   const locator = locatorIn(elements);
+  const getByText = (match: RegExp) =>
+    listOf((elements[TEXT_KEY] ?? []).filter((item) => match.test(item.text ?? "")));
   const page = {
     goto: vi.fn(() => Promise.resolve()),
     url: () => "https://accounts.lidl.com/Account/Login",
     locator,
-    frames: () => [{ locator }, ...frames.map((frame) => ({ locator: locatorIn(frame) }))],
+    frames: () => [
+      { locator, getByText },
+      ...frames.map((frame) => ({ locator: locatorIn(frame) })),
+    ],
     screenshot: vi.fn(() => Promise.resolve()),
   };
   const context = {
@@ -220,5 +236,101 @@ describe("PlaywrightBrowser", () => {
     expect(await page.frameSources()).toEqual(["https://example.com/captcha"]);
     expect(await page.text()).toBe("Anmelden");
     expect(fake.actions).toEqual(["click Alle ablehnen", "click ×", "click "]);
+  });
+  it("clicks links and cards by their text and skips disabled buttons", async () => {
+    const controls =
+      'button, [role="button"], a, [role="link"], [role="radio"], [role="option"], [role="tab"], label';
+    const fake = fakeChromium({
+      'button, [role="button"]': [
+        { visible: true, text: "Jetzt loslegen", enabled: false },
+        { visible: true, text: "Weiter" },
+      ],
+      [controls]: [
+        { visible: true, text: "Land +43" },
+        { visible: true, text: "Verwende stattdessen deine E-Mail-Adresse" },
+      ],
+      [TEXT_KEY]: [
+        { visible: true, text: "MC COMPACT" },
+        { visible: false, text: "MC SMART" },
+        { visible: true, text: "MC SMART" },
+      ],
+    });
+    const { page } = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    expect(await page.clickButtonByText(/^(jetzt loslegen|weiter)/i, /^$/)).toBe("Weiter");
+    expect(await page.clickByText(/e-mail/i, /land|\+4/i)).toBe(
+      "Verwende stattdessen deine E-Mail-Adresse",
+    );
+    expect(await page.clickByText(/^MC SMART/i, /compact/i)).toBeNull();
+    expect(await page.clickByText(/^MC SMART/i, /compact/i, { anyElement: true })).toBe("MC SMART");
+    expect(fake.actions).toEqual([
+      "click Weiter",
+      "click Verwende stattdessen deine E-Mail-Adresse",
+      "click MC SMART",
+    ]);
+  });
+
+  it("ticks the terms checkbox once, through its input or its for attribute", async () => {
+    const nested: FakeElement = { visible: true, text: "", checked: false };
+    nested.onClick = () => {
+      nested.checked = true;
+    };
+    const linked: FakeElement = { visible: false, text: "", checked: false };
+    const fake = fakeChromium({
+      'label, [role="checkbox"]': [
+        { visible: true, text: "Ich möchte den Newsletter erhalten" },
+        {
+          visible: true,
+          text: "Ich akzeptiere die Nutzungsbestimmungen.",
+          children: { 'input[type="checkbox"]': [nested] },
+        },
+      ],
+    });
+    const { page } = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    expect(await page.checkBox(/nutzungsbestimmungen|newsletter/i, /newsletter/i)).toBe(true);
+    expect(await page.checkBox(/nutzungsbestimmungen/i, /newsletter/i)).toBe(true);
+    expect(fake.actions).toEqual(["click "]);
+    expect(await page.checkBox(/terms of use/i, /newsletter/i)).toBe(false);
+
+    const byId = fakeChromium({
+      'label, [role="checkbox"]': [
+        {
+          visible: true,
+          text: "Ich akzeptiere die Nutzungsbestimmungen.",
+          attributes: { for: "terms" },
+          onClick: () => {
+            linked.checked = true;
+          },
+        },
+      ],
+      '[id="terms"]': [linked],
+    });
+    const second = await new PlaywrightBrowser({ load: loader(byId.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    expect(await second.page.checkBox(/nutzungsbestimmungen/i, /newsletter/i)).toBe(true);
+    expect(byId.actions).toEqual(["click Ich akzeptiere die Nutzungsbestimmungen."]);
+
+    const custom = fakeChromium({
+      'label, [role="checkbox"]': [
+        {
+          visible: true,
+          text: "",
+          attributes: { role: "checkbox", "aria-label": "Terms of use", "aria-checked": "true" },
+        },
+      ],
+    });
+    const third = await new PlaywrightBrowser({ load: loader(custom.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    expect(await third.page.checkBox(/terms of use/i, /newsletter/i)).toBe(true);
+    expect(custom.actions).toEqual([]);
   });
 });

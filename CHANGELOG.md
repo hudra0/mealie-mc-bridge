@@ -2,6 +2,15 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+### Fixed
+
+- Automatic login: a Lidl login page that opens asking for a phone number no longer stops the login. The bridge clicks the link to the e-mail address ("Verwende stattdessen deine E-Mail-Adresse" and its translations) and never touches the country selector or the phone field; before, it could open the country selector and end with "the login form was sent, but no session followed".
+- The login follows the two Lidl steps: the e-mail address and "Weiter", then the password and "Weiter". Enter is pressed only in a visible e-mail or password field when the page has no button. An address the site does not know ends the attempt with its own reason, and the password is never typed into a page that offers a new account.
+- On the first login, monsieur-cuisine.com can ask for its terms of use and the device. When the session has not come 10 seconds after the redirect, the login ticks the terms checkbox, confirms it, picks MC Smart and closes the hint next to the chooser. The settings page notes both ("Nutzungsbedingungen wurden in deinem Namen bestätigt").
+- Less waiting: the consent dialog check returns as soon as the page has no dialog and looks at most 3 seconds (was 5), and the Lidl page gets at most 15 seconds to show its e-mail field.
+
 ## 0.2.1 (2026-10-15)
 
 ### Fixed

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { McNetworkError, McSessionError } from "../mc/index.js";
 import { ConverterNotConfiguredError } from "../pipeline/converter-port.js";
 import { LoginThrottle } from "./admin-auth.js";
-import { relativeTime } from "./admin-views.js";
+import { loadConfig } from "../config.js";
+import { effectiveConfig } from "../config-reference.js";
+import { TOKEN_MASK, relativeTime } from "./admin-views.js";
 import {
   RECIPE_ID,
   conversionResult,
@@ -18,6 +20,7 @@ import {
   adminCookie,
   basicAuth,
   form,
+  WEBHOOK_TOKEN,
   testService,
   type TestService,
 } from "../testing/service.js";
@@ -372,17 +375,22 @@ describe("dashboard", () => {
     const body = (await get("/admin")).body;
     expect(body).toContain("Monsieur Cuisine session");
     expect(body).toContain('<span class="badge muted">unknown</span>');
+    expect(body).toMatch(/aria-current="page"\s*>Overview</);
     expect(body).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(body).not.toContain("<script>alert(1)</script>");
     expect(body).toContain("boom &quot;quoted&quot; &lt;b&gt;");
     expect(body).toContain(`name="_csrf" value="${SESSION_CSRF}"`);
-    expect(body).toContain('href="/admin/jobs?status=failed">1</a>');
-    expect(body).toContain("saved on the device only");
+    expect(body).toMatch(/href="\/admin\/jobs\?status=failed"\s*><span class="count">1<\/span>/);
+    // The newest failed job is the last error.
+    expect(body).toContain("Failed job at");
   });
 
-  it("says that drafts do not show up on the device", async () => {
+  it("says on the settings page what the recipe status means", async () => {
+    svc = testService();
+    expect((await get("/admin/settings")).body).toContain("saved privately on your device");
+    await svc.dispose();
     svc = testService({ config: { MC_RECIPE_STATUS: "draft" } });
-    expect((await get("/admin")).body).toContain("kept as drafts, not shown on the device");
+    expect((await get("/admin/settings")).body).toContain("do not show up on the machine");
   });
 
   it("shows when the login behind the cookie expires and counts its age from the login", async () => {
@@ -392,7 +400,7 @@ describe("dashboard", () => {
     const expiry = new Date(Date.now() + 14 * 86_400_000 - 2 * 3_600_000);
     expiry.setUTCMinutes(0, 0, 0);
     svc = testService({ seedCookie: loginCookie(expiry.toISOString()) });
-    let body = (await get("/admin")).body;
+    let body = (await get("/admin/settings")).body;
     expect(body).toContain("Login expires");
     expect(body).not.toContain("(expired)");
     expect(body).toContain("since the login");
@@ -400,14 +408,14 @@ describe("dashboard", () => {
 
     // An expired cookie: it was not a 14-day login when stored, so the age counts from then.
     svc = testService({ seedCookie: loginCookie("2020-01-15T10:00:00.000Z") });
-    body = (await get("/admin")).body;
+    body = (await get("/admin/settings")).body;
     expect(body).toMatch(/2020-01-15 \d\d:00:00 [^<]* \(expired\)/);
     expect(body).toContain("since it was stored in the bridge");
     await svc.dispose();
 
     // A login that ends long after it was stored here: its start is unknown.
     svc = testService({ seedCookie: loginCookie("2099-01-15T10:00:00.000Z") });
-    body = (await get("/admin")).body;
+    body = (await get("/admin/settings")).body;
     expect(body).toMatch(/2099-01-1\d \d\d:00:00/);
     expect(body).not.toContain("(expired)");
     expect(body).toContain("h since it was stored in the bridge");
@@ -448,8 +456,11 @@ describe("admin pages in German", () => {
     expect(dashboard).toContain('<html lang="de">');
     expect(dashboard).toContain("Monsieur-Cuisine-Sitzung");
     expect(dashboard).toContain('<span class="badge muted">unbekannt</span>');
-    expect(dashboard).toContain("<code>Cookie</code>");
-    expect(dashboard).toContain("Letzte Aufträge");
+    expect(dashboard).toContain("Erste Schritte");
+    expect(dashboard).toContain("Letzte 10 Aufträge");
+    const settings = (await get("/admin/settings")).body;
+    expect(settings).toContain("<code>Cookie</code>");
+    expect(settings).toContain("Drei Wege, die Sitzung zu erneuern");
     expect((await get("/admin?notice=job-cancelled")).body).toContain("Auftrag abgebrochen.");
     const detail = (await get(`/admin/jobs/${job.id}`)).body;
     expect(detail).toContain("Neu senden erzwingen");
@@ -478,7 +489,7 @@ describe("session form", () => {
       cookie: "Cookie: a=1; b=2",
     });
     expect(response.statusCode).toBe(303);
-    expect(response.headers.location).toBe("/admin?notice=session-saved");
+    expect(response.headers.location).toBe("/admin/settings?notice=session-saved");
     expect(svc.validate).toHaveBeenCalledWith("a=1; b=2");
     expect(svc.session.status().state).toBe("valid");
   });
@@ -524,7 +535,7 @@ describe("session form", () => {
     svc = testService({ seedCookie: "a=1" });
     const response = await post("/admin/session/check", { _csrf: SESSION_CSRF });
     expect(response.statusCode).toBe(303);
-    expect(response.headers.location).toBe("/admin?notice=session-checked");
+    expect(response.headers.location).toBe("/admin/settings?notice=session-checked");
     expect(svc.validate).toHaveBeenCalledTimes(1);
   });
 });
@@ -648,11 +659,11 @@ describe("jobs", () => {
       },
     });
     const body = (await get(`/admin/jobs/${job.id}`)).body;
-    expect(body).toContain("<h2>Review hints</h2>");
+    expect(body).toContain("<h3>Review hints</h3>");
     expect(body).toContain("<li>Garzeit &lt;b&gt;prüfen&lt;/b&gt;</li>");
     expect(body.split("<li>Menge, Salz</li>")).toHaveLength(2);
     expect(body).toContain("<li>Brühe heiß zugeben</li>");
-    expect(body).toContain("<h2>Converter warnings</h2>");
+    expect(body).toContain("<h3>Converter warnings</h3>");
     expect(body).toContain('<li class="warn">Fill level close to the limit</li>');
   });
 
@@ -1080,10 +1091,209 @@ describe("settings page", () => {
     expect((await get(link ?? "", {})).statusCode).toBe(303);
   });
 
+  it("shows a wrong password and a declined consent dialog", async () => {
+    svc = testService({
+      browser: { form: "both", consent: ["Ablehnen"], siteError: "Passwort ist falsch." },
+    });
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    await svc.session.loginNow();
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("The site reported a wrong password.");
+    expect(body).toContain("wrong password reported by the site");
+    expect(body).toContain("A consent dialog was declined on the way.");
+  });
+
   it("says when the browser is missing", async () => {
     svc = testService({ browser: { unavailable: "Playwright is not installed" } });
     expect((await get("/admin/settings")).body).toContain(
       "not available: Playwright is not installed",
     );
+  });
+});
+
+describe("admin UI guidance", () => {
+  const PAGES = ["/admin", "/admin/jobs", "/admin/dry-run", "/admin/settings"];
+
+  it("puts navigation, a lead paragraph and the theme on every page, without scripts", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    for (const url of [...PAGES, `/admin/jobs/${job.id}`]) {
+      const body = (await get(url)).body;
+      expect(body, url).toContain('<nav aria-label="Main navigation">');
+      expect(body, url).toContain('<p class="lead">');
+      expect(body, url).toContain("@media (prefers-color-scheme: dark)");
+      expect(body, url).toContain("@media print");
+      // No JavaScript: no script elements, no inline event handlers, no javascript: links.
+      expect(body, url).not.toMatch(/<script/i);
+      expect(body, url).not.toMatch(/\son[a-z]+\s*=/i);
+      expect(body, url).not.toMatch(/javascript:/i);
+    }
+  });
+
+  it("shows the getting-started checklist with an unreachable Mealie", async () => {
+    svc = testService({
+      mealieCheck: () => Promise.reject(new Error("Mealie GET /api/users/self failed: no answer")),
+    });
+    const body = (await get("/admin")).body;
+    expect(body).toContain("Getting started");
+    for (const step of [
+      "Mealie reachable with the API token",
+      "Monsieur Cuisine session",
+      "Automatic login (recommended)",
+      "Recipe action in Mealie",
+      "First recipe sent",
+    ]) {
+      expect(body, step).toContain(step);
+    }
+    expect(body).toContain("Mealie at <code>http://mealie:9000</code> did not accept the request.");
+    expect(body).toContain("Mealie GET /api/users/self failed: no answer");
+    expect(body).toContain("<code>MEALIE_API_TOKEN</code>");
+    expect(body).toContain("Not configured.");
+    expect(body).toContain('href="/admin/settings#autologin"');
+    expect(body).toContain("Mealie has not called the bridge yet.");
+    expect(body).toContain("Settings › Data Management › Recipe Actions");
+  });
+
+  it("reports a reachable Mealie and caches the answer", async () => {
+    const check = vi.fn(() => Promise.resolve({ username: "bridge" }));
+    svc = testService({ mealieCheck: check });
+    expect((await get("/admin")).body).toContain(
+      "Mealie at <code>http://mealie:9000</code> answers and accepts the API token.",
+    );
+    await get("/admin");
+    expect(check).toHaveBeenCalledTimes(1);
+  });
+
+  it("says when Mealie was not checked", async () => {
+    svc = testService();
+    expect((await get("/admin")).body).toContain("Not checked. Mealie address:");
+  });
+
+  it("masks the webhook token until the details element is opened", async () => {
+    svc = testService();
+    const body = (await get("/admin")).body;
+    const masked = `http://mc-bridge:3000/hooks/mealie/${TOKEN_MASK}`;
+    expect(body).toContain(`<code class="url">${masked}</code>`);
+    const details = /<details>([\s\S]*?)<\/details>/.exec(body)?.[1] ?? "";
+    expect(details).toContain("<summary>Show the URL with the token</summary>");
+    expect(details).toContain(`http://mc-bridge:3000/hooks/mealie/${WEBHOOK_TOKEN}`);
+    // The address the page was opened with, as the second choice.
+    expect(details).toContain(`http://localhost:80/hooks/mealie/${WEBHOOK_TOKEN}`);
+    // Outside the details element the token does not appear.
+    expect(body.replace(details, "")).not.toContain(WEBHOOK_TOKEN);
+  });
+
+  it("ticks the recipe action and the first job once jobs arrived", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 });
+    svc.store.jobs.finish(job.id, "done", { mcRecipeId: 4242, costUsd: 0.0123 });
+    const body = (await get("/admin")).body;
+    expect(body).toContain("Mealie has called the bridge: 1 job so far.");
+    expect(body).toContain("1 recipe sent.");
+    expect(body).toContain("$0.0123");
+    expect(body).toContain("No errors so far.");
+  });
+
+  it("explains every section of the settings page and masks secrets", async () => {
+    const env = {
+      MEALIE_URL: "http://mealie.example.com:9000",
+      MEALIE_API_TOKEN: "mealie-token-secret-value",
+      OPENAI_API_KEY: "sk-secret-value",
+    };
+    svc = testService({ configEntries: effectiveConfig(loadConfig(env), env) });
+    const body = (await get("/admin/settings")).body;
+    expect(body).toMatch(/aria-current="page"\s*>Settings</);
+    for (const text of [
+      'id="session"',
+      "Three ways to renew the session",
+      "npm run mc:login -- --bridge",
+      "Asks Monsieur Cuisine whether the stored cookie still works.",
+      'id="autologin"',
+      "How often: an automatic login runs at most once per hour",
+      "encrypted with <code>SETTINGS_KEY</code>",
+      "Delete the account with the button below.",
+      "keeps a screenshot of the login page",
+      "The address you log in with on www.monsieur-cuisine.com",
+      'id="language"',
+      "Language of the recipes the bridge writes",
+      'id="config"',
+      "Effective configuration",
+    ]) {
+      expect(body, text).toContain(text);
+    }
+    // Every variable with the description from the configuration reference.
+    expect(body).toContain("<code>SESSION_CHECK_MINUTES</code>");
+    expect(body).toContain("Minutes between session checks. Each check is a cheap account call.");
+    expect(body).toContain(">http://mealie.example.com:9000</code>");
+    expect(body).toContain("set (hidden)");
+    expect(body).not.toContain("mealie-token-secret-value");
+    expect(body).not.toContain("sk-secret-value");
+  });
+
+  it("says when the automatic login is not part of the service", async () => {
+    svc = testService({ noAutoLogin: true });
+    expect((await get("/admin/settings")).body).toContain(
+      "The automatic login is not available in this setup.",
+    );
+    expect((await get("/admin")).body).toContain("Not available in this setup.");
+    const posted = await post("/admin/settings/credentials", {
+      _csrf: SESSION_CSRF,
+      email: "a@example.com",
+    });
+    expect(posted.statusCode).toBe(404);
+  });
+
+  it("shows empty states with what to do next", async () => {
+    svc = testService();
+    expect((await get("/admin")).body).toContain("No jobs yet.");
+    const jobs = (await get("/admin/jobs")).body;
+    expect(jobs).toContain("No jobs yet.");
+    expect(jobs).toContain("pick the bridge&#39;s recipe action from the three-dot menu");
+    expect(jobs).toContain("What the statuses mean");
+    expect(jobs).toContain("Waiting for a valid Monsieur Cuisine session.");
+    expect((await get("/admin/jobs?status=failed")).body).toContain("No jobs match this filter.");
+    expect((await get("/admin/jobs?offset=50")).body).toContain("No older jobs.");
+  });
+
+  it("highlights what to check before cooking and lists the ingredient ids", async () => {
+    svc = testService();
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1, slug: "kurbis-suppe" });
+    svc.store.jobs.update(job.id, { startedAt: "2026-10-15T10:00:00.000Z" });
+    svc.store.jobs.finish(job.id, "done", {
+      mcRecipeId: 4242,
+      mcRecipeUrl: "https://www.monsieur-cuisine.com/de/create-recipe?recipe-id=4242",
+      conversion: {
+        sourceHash: "abc",
+        result: conversionResult({ reviewHints: ["Garzeit prüfen"] }),
+      },
+      ingredients: {
+        catalog: 1,
+        cache: 0,
+        search: 0,
+        unresolved: 1,
+        unresolvedNames: ["Rote Linsen"],
+        enabled: true,
+      },
+    });
+    const body = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(body).toContain('<section class="callout" aria-labelledby="check">');
+    expect(body).toContain("Check before cooking");
+    expect(body).toContain("<li>Garzeit prüfen</li>");
+    expect(body).toContain("With id (1)");
+    expect(body).toContain("<li>Kürbis</li>");
+    expect(body).toContain("Without id (1)");
+    expect(body).toContain("<li>Rote Linsen</li>");
+    expect(body).toContain("Converts the recipe again and uploads it even if it is unchanged.");
+    expect(body).toContain("It reuses the stored conversion if the recipe has not changed");
+    expect(body).toContain('class="button primary"');
+    expect(body).toContain("open in Mealie");
+  });
+
+  it("explains the dry run and what it costs", async () => {
+    svc = testService();
+    const body = (await get("/admin/dry-run")).body;
+    expect(body).toContain("without sending anything to Monsieur Cuisine");
+    expect(body).toContain("Calls the language model, which costs money");
+    expect(body).toMatch(/aria-current="page"\s*>Dry run</);
   });
 });

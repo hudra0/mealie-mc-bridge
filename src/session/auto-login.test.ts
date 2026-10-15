@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fakeBrowser, type FakeBrowserScript } from "../testing/browser.js";
+import { fakeBrowser, loopClock, type FakeBrowserScript } from "../testing/browser.js";
 import { silentLogger } from "../testing/fakes.js";
 import { steppingClock, tempStore, type TempStore } from "../testing/temp.js";
 import {
@@ -12,7 +12,11 @@ import {
   MANUAL_COOLDOWN_MS,
   type AutoLoginOptions,
 } from "./auto-login.js";
-import type { BrowserLoginOptions, BrowserLoginResult } from "./browser-login.js";
+import {
+  browserLogin,
+  type BrowserLoginOptions,
+  type BrowserLoginResult,
+} from "./browser-login.js";
 
 const PASSWORD = "not-a-real-password";
 const HOUR = 60 * 60_000;
@@ -42,8 +46,9 @@ function setup(
     editorPath: "/de/create-recipe?devices=mc-smart",
     logger: silentLogger(),
     now: clock.now,
-    timeoutMs: 5000,
-    ...(options.login ? { login: options.login } : {}),
+    timeoutMs: 30_000,
+    // The real flow on a clock that jumps with every poll.
+    login: options.login ?? ((login) => browserLogin({ ...login, ...loopClock() })),
   };
   const autoLogin = new AutoLogin(autoOptions);
   if (options.credentials !== false) autoLogin.saveCredentials("cook@example.com", PASSWORD);
@@ -114,6 +119,24 @@ describe("run", () => {
     expect(browser.opened[0]).toMatchObject({ headless: true });
     expect(browser.filled['input[type="password"]']).toBe(PASSWORD);
     expect(autoLogin.status().last).toMatchObject({ ok: true, manual: false, code: null });
+  });
+
+  it("records a consent dialog the login declined", async () => {
+    const { autoLogin, accept } = setup({
+      script: { form: "both", loginWorks: true, consent: ["Ablehnen"] },
+    });
+    const run = await autoLogin.run({ manual: true, accept });
+    expect(run).toMatchObject({ status: "ok", attempt: { consentDismissed: true } });
+    expect(autoLogin.status().last).toMatchObject({ ok: true, consentDismissed: true });
+  });
+
+  it("records a wrong password the site reported", async () => {
+    const { autoLogin, accept } = setup({
+      script: { form: "both", siteError: "Passwort ist falsch." },
+    });
+    const run = await autoLogin.run({ manual: false, accept });
+    expect(run).toMatchObject({ status: "failed", attempt: { code: "wrong_password" } });
+    expect(run.status === "skipped" ? null : run.attempt).not.toHaveProperty("consentDismissed");
   });
 
   it("skips without an account", async () => {

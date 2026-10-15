@@ -102,7 +102,7 @@ export const de: Messages = {
       "So geht es weiter, eine der drei Möglichkeiten:",
       "1. Auf der Admin-Seite unter Einstellungen (/admin/settings) das Lidl-Konto hinterlegen; die Bridge meldet sich dann selbst an.",
       "2. Am Rechner den Anmelde-Helfer starten: npm run mc:login -- --bridge <Adresse der Bridge> (siehe README, Abschnitt „Monsieur Cuisine session“).",
-      "3. Auf www.monsieur-cuisine.com anmelden, das Cookie aus den Entwicklerwerkzeugen kopieren und auf der Admin-Seite (/admin) einfügen.",
+      "3. Auf www.monsieur-cuisine.com anmelden, das Cookie aus den Entwicklerwerkzeugen kopieren und auf der Admin-Seite unter Einstellungen (/admin/settings) einfügen.",
     ],
     autoLoginWaiting: (time) =>
       `Die automatische Anmeldung mit dem hinterlegten Lidl-Konto versucht es ab ${time} wieder; so lange wartet sie nach früheren Versuchen. Schneller geht es mit „Anmeldung jetzt testen“ in den Einstellungen, dem Anmelde-Helfer oder dem Cookie-Formular.`,
@@ -133,12 +133,15 @@ export const de: Messages = {
       dryRun: "Probelauf",
       settings: "Einstellungen",
       logout: "Abmelden",
+      label: "Hauptnavigation",
     },
     header: {
       mcSession: "MC-Sitzung",
       signedIn: (user) => `angemeldet als ${user}`,
       noPassword: "ohne Passwort",
     },
+    authBanner: "Die Admin-Seiten haben kein Passwort. Setze ADMIN_USER und ADMIN_PASSWORD.",
+    skipToContent: "Zum Inhalt springen",
     login: {
       title: "Anmelden",
       intro: "Melde dich mit ADMIN_USER und ADMIN_PASSWORD an. Die Anmeldung gilt 12 Stunden.",
@@ -150,7 +153,6 @@ export const de: Messages = {
         `Zu viele fehlgeschlagene Anmeldungen von dieser Adresse. Versuche es in ${minutes} ${minutes === 1 ? "Minute" : "Minuten"} wieder.`,
     },
     autoRefresh: "Die Seite lädt alle 5 Sekunden neu, solange ein Auftrag wartet oder läuft.",
-    authBanner: "Die Admin-Seiten haben kein Passwort. Setze ADMIN_USER und ADMIN_PASSWORD.",
     notices: {
       "session-saved":
         "Sitzung gespeichert. Aufträge, die darauf gewartet haben, stehen wieder in der Warteschlange.",
@@ -190,10 +192,8 @@ export const de: Messages = {
         `${reason}. Das Cookie wurde nicht gespeichert. Melde dich neu an und kopiere ein frisches.`,
       cookieUnchecked: (reason) =>
         `Das Cookie ließ sich nicht prüfen und wurde deshalb nicht gespeichert: ${reason}`,
-      noSuchJob: "Diesen Auftrag gibt es nicht.",
+      noSuchJob: "Diesen Auftrag gibt es nicht. Vielleicht ist der Link falsch.",
       recipeNotLoaded: (reason) => `Das Rezept ließ sich nicht laden: ${reason}`,
-      conversionLinkExpired:
-        "Der Link zur Umwandlung ist abgelaufen (die Bridge wurde neu gestartet, oder der Link stammt von woanders). Nutze den Knopf unten.",
       conversionFailed: (reason) => `Die Umwandlung ist fehlgeschlagen: ${reason}`,
       credentialsInvalid: (field) =>
         field === "email"
@@ -214,6 +214,19 @@ export const de: Messages = {
       session_expired: "Sitzung abgelaufen",
       cancelled: "abgebrochen",
     },
+    jobStatusHelp: {
+      queued:
+        "Wartet auf den Worker. Er beginnt in wenigen Sekunden, außer ein anderer Auftrag läuft.",
+      running: "Die Bridge wandelt das Rezept gerade um oder lädt es hoch.",
+      done: "Das Rezept liegt in deinem Monsieur-Cuisine-Konto.",
+      skipped:
+        "Dasselbe Rezept mit demselben Faktor wurde schon gesendet und hat sich nicht geändert. Es wurde nichts hochgeladen.",
+      failed:
+        "Mit einem Fehler beendet. Die Seite des Auftrags nennt ihn, dort lässt er sich neu starten.",
+      session_expired:
+        "Wartet auf eine gültige Monsieur-Cuisine-Sitzung und läuft von selbst weiter, sobald sie wieder funktioniert.",
+      cancelled: "Von Hand abgebrochen. Er läuft nicht mehr.",
+    },
     sessionState: {
       valid: "gültig",
       invalid: "ungültig",
@@ -222,16 +235,77 @@ export const de: Messages = {
     },
     jobsTable: {
       empty: "Noch keine Aufträge.",
+      emptyHint:
+        "Öffne in Mealie ein Rezept und wähle im Drei-Punkte-Menü die Rezeptaktion der Bridge. Der Auftrag erscheint dann hier. Wie du die Aktion anlegst, steht in der Übersicht.",
       created: "Erstellt",
       recipe: "Rezept",
       scale: "Faktor",
       status: "Status",
-      attempts: "Versuche",
+      duration: "Dauer",
+      cost: "Kosten",
       result: "Ergebnis",
       recipeLink: (id, status) => `${status === "draft" ? "Entwurf" : "Rezept"} ${id}`,
     },
+    setup: {
+      title: "Erste Schritte",
+      lead: "Fünf Schritte von der frischen Installation bis zum ersten Rezept am Gerät. Die Markierungen zeigen, was die Bridge gerade sieht.",
+      stepState: { done: "erledigt", open: "offen", failed: "Problem", unknown: "unbekannt" },
+      mealie: {
+        title: "Mealie mit dem API-Token erreichbar",
+        ok: (url) => `Mealie unter \`${url}\` antwortet und nimmt das API-Token an.`,
+        failed: (url) => `Mealie unter \`${url}\` hat die Anfrage nicht angenommen.`,
+        unchecked: (url) => `Nicht geprüft. Mealie-Adresse: \`${url}\`.`,
+        fix: "Prüfe `MEALIE_URL` (wie die Bridge Mealie erreicht, zum Beispiel `http://mealie:9000` im gemeinsamen Docker-Netz) und `MEALIE_API_TOKEN` in der `.env` und starte die Bridge neu.",
+        timeout: (seconds) => `keine Antwort innerhalb von ${seconds} s`,
+      },
+      session: {
+        title: "Monsieur-Cuisine-Sitzung",
+        valid: "Gültig. Die Bridge kann Rezepte hochladen.",
+        validUntil: (time, expired) =>
+          expired
+            ? `Bei der letzten Prüfung gültig, aber die Anmeldung dahinter endete am ${time}.`
+            : `Gültig. Die Anmeldung endet am ${time}; vorher erneuert die Bridge sie oder sagt dir Bescheid.`,
+        notValid: (state) =>
+          `Zustand: ${state}. Ohne gültige Sitzung lässt sich nichts hochladen; Aufträge warten, bis sie funktioniert.`,
+        fix: "Sitzung in den Einstellungen erneuern",
+      },
+      autoLogin: {
+        title: "Automatische Anmeldung (empfohlen)",
+        configured: (email) =>
+          `Eingerichtet mit ${email}. Läuft die Sitzung ab, meldet sich die Bridge selbst wieder an.`,
+        notConfigured:
+          "Nicht eingerichtet. Ohne sie erneuerst du die Sitzung etwa alle zwei Wochen von Hand.",
+        fix: "Lidl-Konto in den Einstellungen hinterlegen",
+        unavailable: "In dieser Installation nicht verfügbar.",
+      },
+      action: {
+        title: "Rezeptaktion in Mealie",
+        seen: (jobs) =>
+          `Mealie hat die Bridge schon aufgerufen: bisher ${jobs} ${jobs === 1 ? "Auftrag" : "Aufträge"}.`,
+        notSeen: "Mealie hat die Bridge noch nicht aufgerufen.",
+        where:
+          "Öffne in Mealie die Einstellungen, dort Datenverwaltung und die Rezeptaktionen (englisch: Settings › Data Management › Recipe Actions), und lege eine Aktion an. Titel: zum Beispiel `An Monsieur Cuisine senden`. Typ: `post`. URL:",
+        reveal: "URL mit Token anzeigen",
+        dockerLabel:
+          "Mealie und Bridge im selben Docker-Netz (der Compose-Dienst heißt mc-bridge):",
+        pageLabel:
+          "Oder die Adresse, unter der du diese Seite geöffnet hast, falls Mealie die Bridge dort erreicht:",
+        secret:
+          "Das Token ist der einzige Schutz des Webhooks. Gib die URL nicht weiter; zum Ändern setzt du ein neues WEBHOOK_TOKEN und passt die Aktion an.",
+        noToken: "Das Webhook-Token ist dieser Seite nicht bekannt.",
+        network:
+          'Mealie ab 3.26 sendet nur an Hosts auf seiner Erlaubnisliste: Trage `HTTP_ALLOW_LIST: "mc-bridge"` in Mealies Umgebung ein. Jeder Haushalt, der den Knopf haben will, braucht eine eigene Aktion.',
+      },
+      firstJob: {
+        title: "Erstes Rezept gesendet",
+        done: (count) =>
+          `${count} ${count === 1 ? "Rezept" : "Rezepte"} gesendet. Am Gerät findest du sie unter „Meine Rezepte“.`,
+        notYet:
+          "Öffne in Mealie ein Rezept, stelle die Portionen ein, wähle die Aktion im Drei-Punkte-Menü und verfolge den Auftrag unter Aufträge. Eine Umwandlung dauert eine bis einige Minuten.",
+      },
+    },
     dashboard: {
-      session: "Monsieur-Cuisine-Sitzung",
+      lead: "Der Zustand der Bridge auf einen Blick: was eingerichtet ist, was wartet und was zuletzt schiefging.",
       state: "Zustand",
       lastCheck: "Letzte Prüfung",
       cookieAge: "Alter des Cookies",
@@ -244,39 +318,46 @@ export const de: Messages = {
       cookieExpires: "Anmeldung läuft ab",
       expiresAt: (time, expired) => `am ${time}${expired ? " (abgelaufen)" : ""}`,
       lastError: "Letzter Fehler",
-      newRecipes: "Neue Rezepte",
-      privatePublish: "nur auf dem Gerät gespeichert",
-      draftOnly: "bleiben Entwürfe und erscheinen nicht am Gerät",
       checkNow: "Jetzt prüfen",
       cookieLabel:
         "Füge den Request-Header `Cookie` eines angemeldeten Tabs von www.monsieur-cuisine.com ein (Entwicklerwerkzeuge, Netzwerk, eine beliebige Anfrage an `proxy-api`). Die Bridge prüft ihn an deinem Konto, bevor sie ihn verschlüsselt speichert.",
       saveSession: "Sitzung speichern",
       queue: "Warteschlange",
+      queueLead:
+        "Aufträge je Status. Der Worker bearbeitet einen Auftrag nach dem anderen und pausiert, solange die Sitzung nicht funktioniert.",
       worker: "Worker:",
       unknown: "unbekannt",
       paused: "pausiert, bis die Sitzung funktioniert",
       running: "läuft",
       stopped: "gestoppt",
-      lastWorkerError: (time) => `Letzter Fehler des Workers (${time}):`,
-      recentJobs: "Letzte Aufträge",
-      dryRun: "Probelauf",
+      workerError: (time) => `Fehler des Workers am ${time}`,
+      jobError: (time) => `Fehlgeschlagener Auftrag am ${time}`,
+      noErrors: "Bisher keine Fehler.",
+      recentJobs: "Letzte 10 Aufträge",
     },
     jobList: {
+      lead: "Jedes Rezept, das Mealie an die Bridge geschickt hat, das neueste zuerst. Ein Klick auf den Auftrag zeigt den Verlauf, die Punkte vor dem Kochen und die Knöpfe zum Wiederholen.",
       status: "Status",
       all: "alle",
       recipe: "Rezept",
       searchPlaceholder: "Titel, Slug oder ID",
       filter: "Filtern",
+      reset: "Alle Aufträge zeigen",
+      noMatch: "Kein Auftrag passt zu diesem Filter.",
+      noMore: "Keine älteren Aufträge.",
       newer: "Neuere",
       older: "Ältere",
+      legend: "Was die Status bedeuten",
     },
     jobDetail: {
-      status: "Status",
+      lead: "Ein Rezept aus Mealie auf dem Weg zum Gerät: was passiert ist, was du prüfen solltest und was du damit tun kannst.",
+      facts: "Details",
       job: "Auftrag",
       mealieRecipe: "Mealie-Rezept",
       monsieurCuisine: "Monsieur Cuisine",
       openRecipe: (id, status) =>
         `${status === "draft" ? "Entwurf" : "Rezept"} ${id} im Editor öffnen`,
+      openInMealie: "in Mealie öffnen",
       scale: "Faktor",
       servingSize: (amount, unit) => ` (${amount} ${unit ?? "Portionen"})`,
       attempts: "Versuche",
@@ -284,6 +365,7 @@ export const de: Messages = {
       created: "Erstellt",
       started: "Gestartet",
       finished: "Beendet",
+      duration: "Dauer",
       model: "Modell",
       usage: "Verbrauch",
       tokens: (input, cached, output) =>
@@ -292,30 +374,80 @@ export const de: Messages = {
       resolutionOff: (unresolved) => `Zuordnung ausgeschaltet (${unresolved} ohne ID)`,
       resolution: (catalog, relaxed, cache, search, unresolved) =>
         `${catalog} aus dem Katalog${relaxed > 0 ? ` (${relaxed} ohne Zusätze im Namen)` : ""}, ${cache} aus dem Cache, ${search} aus der Suche, ${unresolved} ohne ID`,
-      withoutId: "Ohne ID",
+      checkTitle: "Vor dem Kochen prüfen",
+      checkLead:
+        "Die Schritte hat ein Sprachmodell geschrieben. Öffne das Rezept im Editor und prüfe Mengen, Zeiten, Temperaturen und Stufen, bevor du damit kochst.",
+      noHints: "Der Konverter hat nichts Bestimmtes markiert.",
       reviewHints: "Prüfhinweise",
       warnings: "Hinweise des Konverters",
       error: "Fehler",
-      runningLocked: "Laufende Aufträge lassen sich nicht ändern.",
+      actions: "Aktionen",
+      runningLocked: "Laufende Aufträge lassen sich nicht ändern. Warte, bis er fertig ist.",
       retry: "Erneut versuchen",
+      retryHelp:
+        "Stellt den Auftrag wieder in die Warteschlange. Hat sich das Rezept nicht geändert, nutzt er die gespeicherte Umwandlung und überspringt das Hochladen, wenn diese Fassung schon gesendet ist.",
       forceRebuild: "Neu senden erzwingen",
+      forceRebuildHelp:
+        "Wandelt das Rezept neu um und lädt es hoch, auch wenn es sich nicht geändert hat. Kostet einen Aufruf des Sprachmodells und legt ein weiteres Rezept in deinem Konto an.",
       cancel: "Abbrechen",
-      events: "Protokoll",
-      time: "Zeit",
-      level: "Stufe",
-      message: "Meldung",
+      cancelHelp: "Nimmt den Auftrag aus der Warteschlange. Es wird nichts hochgeladen.",
+      events: "Verlauf",
+      noEvents: "Noch keine Einträge.",
+      ingredients: "Zutaten und Monsieur-Cuisine-IDs",
+      ingredientsLead:
+        "Die Monsieur-Cuisine-App braucht für ihre Einkaufsliste eine Zutaten-ID. Zutaten ohne ID stehen trotzdem im Rezept, nur nicht auf der Liste.",
+      ingredientsOff:
+        "Die Zuordnung ist ausgeschaltet (MC_RESOLVE_INGREDIENTS=off): Alle Zutaten gingen ohne ID hinaus.",
+      resolved: (count) => `Mit ID (${count})`,
+      withoutId: (count) => `Ohne ID (${count})`,
+      noneResolved: "Keine.",
+      noneUnresolved: "Keine. Jede Zutat hat eine ID bekommen.",
     },
     settings: {
       title: "Einstellungen",
-      account: "Automatische Anmeldung",
+      lead: "Wie die Bridge bei Monsieur Cuisine angemeldet bleibt, und mit welcher Konfiguration sie läuft.",
+      session: {
+        title: "Monsieur-Cuisine-Sitzung",
+        lead: "Monsieur Cuisine hat keine öffentliche Schnittstelle zum Schreiben von Rezepten. Die Bridge nutzt die Schnittstelle des Rezepteditors mit dem Cookie einer angemeldeten Browsersitzung. Sie speichert dieses Cookie verschlüsselt mit `SETTINGS_KEY`. Eine Anmeldung gilt 14 Tage; danach läuft das Cookie ab und muss erneuert werden.",
+        checkHelp:
+          "Fragt Monsieur Cuisine, ob das gespeicherte Cookie noch funktioniert. Die Bridge tut das von selbst alle `SESSION_CHECK_MINUTES` Minuten.",
+        renewTitle: "Drei Wege, die Sitzung zu erneuern",
+        renewWays: [
+          "Automatische Anmeldung (unten): Einmal das Lidl-Konto hinterlegen, dann meldet sich die Bridge selbst an, wenn die Sitzung abläuft.",
+          "Anmelde-Helfer auf einem Rechner mit Browser: `npm run mc:login -- --bridge http://<Adresse der Bridge>:3000` öffnet die Anmeldeseite und schickt die Sitzung an die Bridge.",
+          "Cookie von Hand einfügen: Auf www.monsieur-cuisine.com anmelden, den Request-Header `Cookie` aus den Entwicklerwerkzeugen des Browsers kopieren und unten einfügen.",
+        ],
+        cookieLabel: "Cookie-Header",
+      },
+      account: "Lidl-Konto für die automatische Anmeldung",
       intro:
-        "Mit E-Mail-Adresse und Passwort deines Lidl-Kontos für monsieur-cuisine.com meldet sich die Bridge selbst in einem Browser ohne Fenster an, sobald die Sitzung abgelaufen ist. Beides wird mit SETTINGS_KEY verschlüsselt gespeichert und nie wieder angezeigt. Eine Anmeldung läuft höchstens einmal pro Stunde und dreimal am Tag; nach einem Fehlschlag wartet sie länger. Ein Captcha oder ein zweiter Faktor hält sie auf, dann kommt die Sitzungs-Mail.",
+        "Mit E-Mail-Adresse und Passwort deines Lidl-Kontos für monsieur-cuisine.com meldet sich die Bridge selbst in einem Browser ohne Fenster an, sobald die Sitzung abgelaufen ist.",
+      facts: [
+        "Wann: nur wenn sich die Sitzung als abgelaufen oder abgelehnt herausstellt, bei der regelmäßigen Prüfung oder während eines Auftrags. Eine funktionierende Sitzung bleibt unberührt.",
+        "Wie oft: höchstens einmal pro Stunde und dreimal in 24 Stunden. Nach einem Fehlschlag wartet sie 1 Stunde, nach zwei in Folge 4 Stunden, nach drei 24 Stunden.",
+        "Speicherort: E-Mail und Passwort liegen in `bridge.db`, verschlüsselt mit `SETTINGS_KEY`. Das Passwort wird nie angezeigt, geloggt oder an den Browser zurückgeschickt.",
+        "Grenzen: Ein Captcha oder ein zweiter Faktor hält die Anmeldung auf. Dann kommt die Sitzungs-Mail, und du erneuerst die Sitzung auf einem anderen Weg.",
+        "Bei einem Fehlschlag hebt die Bridge ein Bildschirmfoto der Anmeldeseite auf (die letzten fünf), unten verlinkt, damit du siehst, was im Weg war.",
+        "Löschen: mit dem Knopf unten. Dabei verschwinden auch die Bildschirmfotos und das Browserprofil.",
+      ],
+      unavailable: "Die automatische Anmeldung ist in dieser Installation nicht verfügbar.",
+      accountState: "Konto",
+      storeAccount: "Konto hinterlegen",
+      changeAccount: "Konto ändern",
       email: "E-Mail-Adresse",
+      emailHelp:
+        "Die Adresse, mit der du dich auf www.monsieur-cuisine.com anmeldest (Lidl-Konto).",
       password: "Passwort",
+      passwordHelp:
+        "Wird verschlüsselt mit `SETTINGS_KEY` gespeichert. Lass das Feld leer, um das gespeicherte Passwort zu behalten.",
       passwordStored: "gespeichert; leer lassen, um es zu behalten",
       save: "Konto speichern",
       testNow: "Anmeldung jetzt testen",
+      testHelp:
+        "Meldet sich sofort einmal an, egal wie es der Sitzung geht, und speichert die neue Sitzung, wenn es klappt. Höchstens alle 3 Minuten; zählt nicht zu den Grenzen pro Stunde und Tag.",
       remove: "Konto löschen",
+      removeHelp:
+        "Löscht E-Mail, Passwort, Bildschirmfotos und das Browserprofil. Die aktuelle Sitzung bleibt, bis sie abläuft.",
       notConfigured: "Kein Konto hinterlegt.",
       configuredAs: (email) => `Hinterlegtes Konto: ${email}`,
       browser: "Browser",
@@ -329,6 +461,9 @@ export const de: Messages = {
         browser_unavailable: "Der Browser ist nicht verfügbar.",
         no_login_form:
           "Es kam kein Anmeldeformular: Die Seite hat sich geändert, oder ein Captcha oder eine Zustimmungsseite kam dazwischen.",
+        wrong_password: "Die Seite meldet ein falsches Passwort. Prüfe das hinterlegte Konto.",
+        verification_required:
+          "Die Seite verlangt ein Captcha oder einen Bestätigungscode. Melde dich einmal von Hand mit dem Anmelde-Helfer an.",
         not_logged_in:
           "Das Formular wurde abgeschickt, aber es kam keine Sitzung: falsches Passwort, Captcha oder zweiter Faktor.",
         unexpected_page:
@@ -336,19 +471,54 @@ export const de: Messages = {
         verify_failed: "Die Anmeldung lief durch, aber Monsieur Cuisine lehnt die neue Sitzung ab.",
         error: "Der Browser ist ausgefallen.",
       },
+      consentDismissed: "Unterwegs wurde ein Zustimmungsdialog abgelehnt.",
       screenshot: "Bildschirmfoto der Seite",
       nextAttempt: "Nächster automatischer Versuch frühestens",
       running: "Eine Anmeldung läuft.",
       manualCooldown: (time) => `Nächster manueller Test ab ${time}`,
-      otherWays:
-        "Andere Wege, die Sitzung zu erneuern: der Anmelde-Helfer am Rechner (npm run mc:login) oder das Cookie auf der Übersicht einfügen.",
+      locale: {
+        title: "Sprache und Rezeptstatus",
+        lead: "Kommen aus der Umgebung; zum Ändern die .env anpassen und die Bridge neu starten.",
+        unverified: "nicht am Gerät geprüft",
+        mcLocale:
+          "Sprache der Rezepte, die die Bridge schreibt, und die passenden Monsieur-Cuisine-Einstellungen (Kategorien, Schwierigkeit, Editor-Adresse).",
+        uiLanguage: "Sprache dieser Seiten, der Einträge in der Mealie-Zeitleiste und der Mails.",
+        recipeStatus: {
+          "private-publish":
+            "Neue Rezepte werden privat auf deinem Gerät gespeichert: Sie erscheinen an der Maschine, und niemand sonst sieht sie.",
+          draft:
+            "Neue Rezepte bleiben Entwürfe im Web-Editor und erscheinen nicht an der Maschine. Gedacht zur Fehlersuche.",
+        },
+      },
+      config: {
+        title: "Aktive Konfiguration",
+        lead: "Was die Bridge beim Start aus ihrer Umgebung (`.env` oder Compose-Datei) gelesen hat. Nur zum Lesen: Werte dort ändern und die Bridge neu starten. Bei Geheimnissen steht nur, ob sie gesetzt sind. Die Beschreibungen stammen aus der Konfigurationsreferenz im README und sind englisch.",
+        unavailable: "Die Konfiguration ist auf dieser Seite nicht verfügbar.",
+        name: "Variable",
+        value: "Aktueller Wert",
+        description: "Bedeutung",
+        hidden: "gesetzt (verborgen)",
+        unset: "nicht gesetzt",
+        isDefault: "Vorgabe",
+        defaultLabel: "Vorgabe:",
+        required: "Pflicht",
+        valuesLabel: "Werte:",
+      },
     },
     dryRun: {
+      lead: "Probiere ein Mealie-Rezept aus, ohne etwas an Monsieur Cuisine zu senden. Die Vorschau zeigt, was der Konverter bekäme. Mit Umwandlung zeigt sie auch, was er daraus macht; das ruft das Sprachmodell auf und kostet Geld, hochgeladen wird trotzdem nichts.",
+      formTitle: "Rezept",
       recipe: "Rezept",
       recipePlaceholder: "ID oder Slug",
+      recipeHelp:
+        "Der Slug ist der letzte Teil der Rezept-URL in Mealie, zum Beispiel `kuerbissuppe` in `/g/home/r/kuerbissuppe`.",
       scale: "Faktor",
+      scaleHelp:
+        "Vervielfacht die Portionen wie der Faktor in Mealie, in Viertelschritten von 0,25 bis 10. 1 lässt das Rezept, wie es ist.",
       preview: "Vorschau",
-      alsoConvert: "Gleich umwandeln (ruft das Sprachmodell auf und kostet Geld)",
+      alsoConvert: "Gleich umwandeln",
+      alsoConvertHelp:
+        "Ruft das Sprachmodell auf, was Geld kostet, und zeigt die Schritte, die hochgeladen würden. Hochgeladen wird nichts.",
       servings: "Ergibt",
       servingsEstimated:
         "Vorgabe, im Rezept nicht angegeben; das Modell schätzt und meldet es als Prüfhinweis",
@@ -360,6 +530,9 @@ export const de: Messages = {
       convert: "Umwandeln ohne Hochladen",
       costsMoney: "Ruft das Sprachmodell auf; das kostet Geld.",
       ingredients: "Zutaten",
+      ingredientsLead:
+        "So hat die Bridge die Zutaten aus Mealie gelesen, schon umgerechnet. Zeilen mit „unparsed“ gehen als freier Text an das Modell.",
+      noIngredients: "Das Rezept hat keine Zutaten.",
       section: "Abschnitt",
       amount: "Menge",
       unit: "Einheit",
@@ -369,7 +542,10 @@ export const de: Messages = {
       original: "Original",
       optional: "(optional)",
       converterInput: "Eingabe des Konverters (Markdown)",
+      converterInputLead: "Das Rezept so, wie das Sprachmodell es bekommt.",
       conversion: "Umwandlung",
+      conversionLead:
+        "Was das Modell gemacht hat, nach der Prüfung gegen die Gerätegrenzen und Kochregeln.",
       model: "Modell",
       attempts: (count) => `${count} ${count === 1 ? "Versuch" : "Versuche"}`,
       usage: "Verbrauch",
@@ -387,7 +563,7 @@ export const de: Messages = {
       field: "Feld",
       problem: "Problem",
       reviewHints: "Prüfhinweise",
-      noHints: "Keine.",
+      noHints: "Der Konverter hat nichts Bestimmtes markiert.",
       warnings: "Hinweise des Konverters",
       steps: "Schritte",
       kind: "Art",

@@ -12,14 +12,22 @@ import {
 } from "./playwright-browser.js";
 
 // A stand-in for Playwright's chromium with one page that has the given elements.
+interface FakeElement {
+  visible: boolean;
+  text?: string;
+  enabled?: boolean;
+  attributes?: Record<string, string>;
+}
+
 function fakeChromium(
-  elements: Record<string, { visible: boolean; text?: string }[]>,
+  elements: Record<string, FakeElement[]>,
   launchError: Error | null = null,
+  frames: Record<string, FakeElement[]>[] = [],
   fillError: Error | null = null,
 ) {
   const actions: string[] = [];
-  const locator = (selector: string) => {
-    const items = elements[selector] ?? [];
+  const locatorIn = (source: Record<string, FakeElement[]>) => (selector: string) => {
+    const items = source[selector] ?? [];
     const at = (index: number) => ({
       isVisible: () => Promise.resolve(items[index]?.visible ?? false),
       fill: (value: string) => {
@@ -36,6 +44,8 @@ function fakeChromium(
         return Promise.resolve();
       },
       innerText: () => Promise.resolve(items[index]?.text ?? ""),
+      isEnabled: () => Promise.resolve(items[index]?.enabled ?? true),
+      getAttribute: (name: string) => Promise.resolve(items[index]?.attributes?.[name] ?? null),
     });
     return {
       count: () => Promise.resolve(items.length),
@@ -43,10 +53,12 @@ function fakeChromium(
       first: () => at(0),
     };
   };
+  const locator = locatorIn(elements);
   const page = {
     goto: vi.fn(() => Promise.resolve()),
     url: () => "https://accounts.lidl.com/Account/Login",
     locator,
+    frames: () => [{ locator }, ...frames.map((frame) => ({ locator: locatorIn(frame) }))],
     screenshot: vi.fn(() => Promise.resolve()),
   };
   const context = {
@@ -140,7 +152,7 @@ describe("PlaywrightBrowser", () => {
       new Error(`locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - fill("${marker}")`),
       { name: "TimeoutError" },
     );
-    const fake = fakeChromium({ 'input[type="password"]': [{ visible: true }] }, null, leak);
+    const fake = fakeChromium({ 'input[type="password"]': [{ visible: true }] }, null, [], leak);
     const context = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
       profileDir: "/tmp/profile",
       headless: true,
@@ -241,7 +253,11 @@ describe("PlaywrightBrowser", () => {
 
   it("drives the page through the login actions", async () => {
     const fake = fakeChromium({
-      'input[type="email"]': [{ visible: false }, { visible: true }],
+      'input[type="email"]': [
+        { visible: false },
+        { visible: true, enabled: false },
+        { visible: true },
+      ],
       'input[type="password"]': [],
       button: [
         { visible: false, text: "Weiter" },
@@ -262,6 +278,8 @@ describe("PlaywrightBrowser", () => {
     expect(context.page.url()).toContain("accounts.lidl.com");
     expect(await context.page.fillVisible('input[type="email"]', "cook@example.com")).toBe(true);
     expect(await context.page.fillVisible('input[type="password"]', "x")).toBe(false);
+    expect(await context.page.isVisible('input[type="email"]')).toBe(true);
+    expect(await context.page.isVisible('input[type="password"]')).toBe(false);
     await context.page.pressEnter('input[type="email"]');
     expect(await context.page.clickButton(/erstellen/i)).toBe(true);
     await context.page.screenshot("/tmp/shot.png");
@@ -275,5 +293,52 @@ describe("PlaywrightBrowser", () => {
       "click Anmelden",
     ]);
     expect(fake.context.close).toHaveBeenCalled();
+  });
+
+  it("finds consent buttons in frames, close buttons, messages and captcha frames", async () => {
+    const fake = fakeChromium(
+      {
+        'button, [role="button"]': [
+          { visible: true, text: " Zustimmen " },
+          { visible: false, text: "Ablehnen" },
+        ],
+        '[role="dialog"] button, [role="alertdialog"] button, [aria-modal="true"] button, dialog button':
+          [
+            { visible: true, text: "Mehr" },
+            { visible: true, text: "×" },
+          ],
+        "button[aria-label]": [
+          { visible: true, text: "", attributes: { "aria-label": "Menü" } },
+          { visible: true, text: "", attributes: { "aria-label": "Dialog schließen" } },
+        ],
+        '[role="alert"]': [
+          { visible: true, text: "" },
+          { visible: true, text: "x".repeat(400) },
+          { visible: true, text: "  Passwort\n falsch " },
+        ],
+        iframe: [
+          { visible: false, attributes: { src: "https://example.com/hidden" } },
+          { visible: true, attributes: { src: "https://example.com/captcha" } },
+          { visible: true },
+        ],
+        body: [{ visible: true, text: "Anmelden" }],
+      },
+      null,
+      [{ 'button, [role="button"]': [{ visible: true, text: "Alle ablehnen" }] }],
+    );
+    const browser = new PlaywrightBrowser({ load: loader(fake.chromium) });
+    const { page } = await browser.open({ profileDir: "/tmp/profile", headless: true });
+    expect(await page.clickButtonByText(/^(ablehnen|alle ablehnen)/i, /zustimmen/i)).toBe(
+      "Alle ablehnen",
+    );
+    expect(await page.clickButtonByText(/^weiter/i, /zustimmen/i)).toBeNull();
+    expect(await page.closeDialog(/schließen/i, /^×$/)).toBe(true);
+    expect(await page.closeDialog(/schließen/i, /^✕$/)).toBe(true);
+    expect(await page.closeDialog(/close/i, /^✕$/)).toBe(false);
+    expect(await page.visibleMessage('[role="alert"]', 300)).toBe("Passwort falsch");
+    expect(await page.visibleMessage(".none", 300)).toBeNull();
+    expect(await page.frameSources()).toEqual(["https://example.com/captcha"]);
+    expect(await page.text()).toBe("Anmelden");
+    expect(fake.actions).toEqual(["click Alle ablehnen", "click ×", "click "]);
   });
 });

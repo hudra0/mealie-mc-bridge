@@ -12,6 +12,7 @@ import {
   onLoginHost,
   readSessionCookie,
   siteLanguage,
+  siteMessage,
   ssoLoginUrl,
 } from "./browser-login.js";
 
@@ -239,6 +240,147 @@ describe("onLoginHost", () => {
     expect(onLoginHost("about:blank")).toBe(false);
     expect(onLoginHost("not a url")).toBe(false);
     expect(onLoginHost("https://login.example.com/", ["login.example.com"])).toBe(true);
+  });
+});
+
+describe("browserLogin with consent dialogs", () => {
+  it("declines the dialog before it fills the form", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { browser, result } = login(
+      { form: "both", loginWorks: true, consent: ["Akzeptieren", "Ablehnen"], consentClose: true },
+      { onStep },
+    );
+    expect(await result).toMatchObject({ ok: true, consentDismissed: true });
+    const declined = browser.steps.indexOf("click Ablehnen");
+    expect(declined).toBeGreaterThan(0);
+    expect(declined).toBeLessThan(browser.steps.indexOf('fill input[type="email"]'));
+    expect(browser.steps.some((step) => step.endsWith("under the dialog"))).toBe(false);
+    expect(browser.steps).not.toContain("close dialog");
+    expect(onStep).toHaveBeenCalledWith("consent dialog dismissed");
+  });
+
+  it("never clicks an accept button, also not as a welcome screen button", async () => {
+    const { browser, result } = login({
+      form: "both",
+      loginWorks: true,
+      consent: ["Zustimmen", "Anpassen", "Akzeptieren", "Accept all", "Tout accepter"],
+    });
+    const outcome = await result;
+    expect(outcome).toMatchObject({ ok: false, code: "not_logged_in" });
+    expect(outcome).not.toHaveProperty("consentDismissed");
+    expect(browser.steps.filter((step) => step.startsWith("click"))).toEqual([]);
+  });
+
+  it("closes a dialog without a decline button with its close button", async () => {
+    const { browser, result } = login({
+      form: "both",
+      loginWorks: true,
+      consent: ["Zustimmen"],
+      consentClose: true,
+    });
+    expect(await result).toMatchObject({ ok: true, consentDismissed: true });
+    expect(browser.steps).toContain("close dialog");
+    expect(browser.steps).not.toContain("click Zustimmen");
+  });
+
+  it("declines in other languages than the site's", async () => {
+    const { browser, result } = login({
+      form: "both",
+      loginWorks: true,
+      consent: ["Accepter", "Tout refuser"],
+    });
+    expect((await result).ok).toBe(true);
+    expect(browser.steps).toContain("click Tout refuser");
+  });
+
+  it("leaves a page without a dialog alone", async () => {
+    const { browser, result } = login({ form: "both", loginWorks: true, consentClose: false });
+    const outcome = await result;
+    expect(outcome).toEqual({ ok: true, cookie: expect.any(String) as string });
+    expect(browser.steps).not.toContain("close dialog");
+  });
+});
+
+describe("browserLogin form and answers", () => {
+  it("clicks Weiter between the e-mail address and the password", async () => {
+    const { browser, result } = login({
+      form: "continue",
+      loginWorks: true,
+      consent: ["Alle ablehnen"],
+    });
+    expect(await result).toMatchObject({ ok: true, consentDismissed: true });
+    const order = [
+      "click Alle ablehnen",
+      'fill input[type="email"]',
+      "click Weiter",
+      'fill input[type="password"]',
+      'enter input[type="password"]',
+    ].map((step) => browser.steps.indexOf(step));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(browser.steps).not.toContain('enter input[type="email"]');
+  });
+
+  it("reports a wrong password the site names, without the address or the password", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { browser, result } = login(
+      {
+        form: "both",
+        siteError: "E-Mail-Adresse cook@example.com oder Passwort ist falsch.",
+      },
+      { onStep },
+    );
+    const outcome = await result;
+    expect(outcome).toMatchObject({
+      ok: false,
+      code: "wrong_password",
+      detail:
+        'wrong password reported by the site: "E-Mail-Adresse <e-mail> oder Passwort ist falsch."',
+    });
+    expect(outcome.ok ? null : outcome.screenshot).not.toBeNull();
+    expect(JSON.stringify(outcome)).not.toContain(CREDENTIALS.password);
+    expect(JSON.stringify(outcome)).not.toContain(CREDENTIALS.email);
+    expect(onStep).toHaveBeenCalledWith("wrong password reported by the site");
+    expect(browser.steps).toContain("screenshot");
+  });
+
+  it("keeps another error message of the site as the reason", async () => {
+    const { result } = login({ form: "both", siteError: "Zu viele Versuche. Bitte warte." });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "not_logged_in",
+      detail: 'the site reported an error: "Zu viele Versuche. Bitte warte."',
+    });
+  });
+
+  it("reports a captcha frame, but not the invisible one every form carries", async () => {
+    const onStep = vi.fn<(message: string) => void>();
+    const { result } = login({ form: "both", verification: "frame" }, { onStep });
+    expect(await result).toMatchObject({
+      ok: false,
+      code: "verification_required",
+      detail: "captcha or verification requested",
+    });
+    expect(onStep).toHaveBeenCalledWith("captcha or verification requested");
+    const plain = login({ form: "both" });
+    expect(await plain.result).toMatchObject({ ok: false, code: "not_logged_in" });
+  });
+
+  it("reports a request for a code on the Lidl pages", async () => {
+    const { result } = login({ form: "both", verification: "text" });
+    expect(await result).toMatchObject({ ok: false, code: "verification_required" });
+    const elsewhere = login({
+      form: "both",
+      verification: "text",
+      url: "https://www.monsieur-cuisine.com/de/",
+    });
+    // Off the Lidl pages the text is no verification step, and the form is not filled.
+    expect(await elsewhere.result).toMatchObject({ ok: false, code: "unexpected_page" });
+  });
+
+  it("shortens a site message to one line", () => {
+    expect(siteMessage("  a\n  b  ", "")).toBe("a b");
+    expect(siteMessage("y".repeat(200), "x@example.com")).toHaveLength(160);
   });
 });
 

@@ -40,6 +40,8 @@ export type JobStatusName =
 export type AutoLoginFailureName =
   | "browser_unavailable"
   | "no_login_form"
+  | "wrong_password"
+  | "verification_required"
   | "not_logged_in"
   | "unexpected_page"
   | "verify_failed"
@@ -108,9 +110,18 @@ export interface EmailMessages {
 // The admin pages. Text in backticks is shown as code.
 export interface AdminMessages {
   htmlLang: string;
-  nav: { dashboard: string; jobs: string; dryRun: string; settings: string; logout: string };
+  nav: {
+    dashboard: string;
+    jobs: string;
+    dryRun: string;
+    settings: string;
+    logout: string;
+    // The accessible name of the navigation.
+    label: string;
+  };
   header: { mcSession: string; signedIn(user: string): string; noPassword: string };
   authBanner: string;
+  skipToContent: string;
   login: {
     title: string;
     intro: string;
@@ -140,25 +151,69 @@ export interface AdminMessages {
     cookieUnchecked(reason: string): string;
     noSuchJob: string;
     recipeNotLoaded(reason: string): string;
-    conversionLinkExpired: string;
     conversionFailed(reason: string): string;
     credentialsInvalid(field: "email" | "password"): string;
   };
   links: { backToDashboard: string; backToJobs: string; allJobs: string };
   jobStatus: Readonly<Record<JobStatusName, string>>;
+  // One sentence per status for the legend under the job list.
+  jobStatusHelp: Readonly<Record<JobStatusName, string>>;
   sessionState: Readonly<Record<SessionStateName, string>>;
   jobsTable: {
     empty: string;
+    emptyHint: string;
     created: string;
     recipe: string;
     scale: string;
     status: string;
-    attempts: string;
+    duration: string;
+    cost: string;
     result: string;
     recipeLink(id: number | string, status: SavedStatus): string;
   };
+  // The "getting started" checklist on the overview.
+  setup: {
+    title: string;
+    lead: string;
+    stepState: Readonly<Record<"done" | "open" | "failed" | "unknown", string>>;
+    mealie: {
+      title: string;
+      ok(url: string): string;
+      failed(url: string): string;
+      unchecked(url: string): string;
+      fix: string;
+      timeout(seconds: number): string;
+    };
+    session: {
+      title: string;
+      valid: string;
+      validUntil(time: string, expired: boolean): string;
+      notValid(state: string): string;
+      fix: string;
+    };
+    autoLogin: {
+      title: string;
+      configured(email: string): string;
+      notConfigured: string;
+      fix: string;
+      unavailable: string;
+    };
+    action: {
+      title: string;
+      seen(jobs: number): string;
+      notSeen: string;
+      where: string;
+      reveal: string;
+      dockerLabel: string;
+      pageLabel: string;
+      secret: string;
+      noToken: string;
+      network: string;
+    };
+    firstJob: { title: string; done(count: number): string; notYet: string };
+  };
   dashboard: {
-    session: string;
+    lead: string;
     state: string;
     lastCheck: string;
     cookieAge: string;
@@ -168,37 +223,44 @@ export interface AdminMessages {
     cookieExpires: string;
     expiresAt(time: string, expired: boolean): string;
     lastError: string;
-    newRecipes: string;
-    privatePublish: string;
-    draftOnly: string;
     checkNow: string;
+    // The help text under the cookie field on the settings page.
     cookieLabel: string;
     saveSession: string;
     queue: string;
+    queueLead: string;
     worker: string;
     unknown: string;
     paused: string;
     running: string;
     stopped: string;
-    lastWorkerError(time: string): string;
+    workerError(time: string): string;
+    jobError(time: string): string;
+    noErrors: string;
     recentJobs: string;
-    dryRun: string;
   };
   jobList: {
+    lead: string;
     status: string;
     all: string;
     recipe: string;
     searchPlaceholder: string;
     filter: string;
+    reset: string;
+    noMatch: string;
+    noMore: string;
     newer: string;
     older: string;
+    legend: string;
   };
   jobDetail: {
-    status: string;
+    lead: string;
+    facts: string;
     job: string;
     mealieRecipe: string;
     monsieurCuisine: string;
     openRecipe(id: number | string, status: SavedStatus): string;
+    openInMealie: string;
     scale: string;
     // " (10 Scheiben)"; the unit is null on jobs from before it was stored.
     servingSize(amount: number, unit: string | null): string;
@@ -207,6 +269,7 @@ export interface AdminMessages {
     created: string;
     started: string;
     finished: string;
+    duration: string;
     model: string;
     usage: string;
     tokens(input: number, cached: number | null, output: number): string;
@@ -219,29 +282,59 @@ export interface AdminMessages {
       search: number,
       unresolved: number,
     ): string;
-    withoutId: string;
+    checkTitle: string;
+    checkLead: string;
+    noHints: string;
     reviewHints: string;
     warnings: string;
     error: string;
+    actions: string;
     runningLocked: string;
     retry: string;
+    retryHelp: string;
     forceRebuild: string;
+    forceRebuildHelp: string;
     cancel: string;
+    cancelHelp: string;
     events: string;
-    time: string;
-    level: string;
-    message: string;
+    noEvents: string;
+    ingredients: string;
+    ingredientsLead: string;
+    ingredientsOff: string;
+    resolved(count: number): string;
+    withoutId(count: number): string;
+    noneResolved: string;
+    noneUnresolved: string;
   };
   settings: {
     title: string;
+    lead: string;
+    session: {
+      title: string;
+      lead: string;
+      checkHelp: string;
+      renewTitle: string;
+      renewWays: readonly string[];
+      cookieLabel: string;
+    };
     account: string;
     intro: string;
+    // How the automatic login behaves, one point per line.
+    facts: readonly string[];
+    unavailable: string;
+    accountState: string;
+    storeAccount: string;
+    changeAccount: string;
     email: string;
+    emailHelp: string;
     password: string;
+    passwordHelp: string;
     passwordStored: string;
     save: string;
     testNow: string;
+    testHelp: string;
     remove: string;
+    removeHelp: string;
     notConfigured: string;
     configuredAs(email: string): string;
     browser: string;
@@ -251,18 +344,45 @@ export interface AdminMessages {
     never: string;
     attempt(time: string, ok: boolean, manual: boolean): string;
     failure: Readonly<Record<AutoLoginFailureName, string>>;
+    consentDismissed: string;
     screenshot: string;
     nextAttempt: string;
     running: string;
     manualCooldown(time: string): string;
-    otherWays: string;
+    locale: {
+      title: string;
+      lead: string;
+      unverified: string;
+      mcLocale: string;
+      uiLanguage: string;
+      recipeStatus: Readonly<Record<SavedStatus, string>>;
+    };
+    config: {
+      title: string;
+      lead: string;
+      unavailable: string;
+      name: string;
+      value: string;
+      description: string;
+      hidden: string;
+      unset: string;
+      isDefault: string;
+      defaultLabel: string;
+      required: string;
+      valuesLabel: string;
+    };
   };
   dryRun: {
+    lead: string;
+    formTitle: string;
     recipe: string;
     recipePlaceholder: string;
+    recipeHelp: string;
     scale: string;
+    scaleHelp: string;
     preview: string;
     alsoConvert: string;
+    alsoConvertHelp: string;
     servings: string;
     servingsEstimated: string;
     sourceHash: string;
@@ -273,6 +393,8 @@ export interface AdminMessages {
     convert: string;
     costsMoney: string;
     ingredients: string;
+    ingredientsLead: string;
+    noIngredients: string;
     section: string;
     amount: string;
     unit: string;
@@ -282,7 +404,9 @@ export interface AdminMessages {
     original: string;
     optional: string;
     converterInput: string;
+    converterInputLead: string;
     conversion: string;
+    conversionLead: string;
     model: string;
     attempts(count: number): string;
     usage: string;

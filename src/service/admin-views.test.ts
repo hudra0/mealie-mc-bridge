@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { adminTimeZone, formatTime, storedNotes } from "./admin-views.js";
+import {
+  adminTimeZone,
+  formatCost,
+  formatDuration,
+  formatTime,
+  storedIngredientNames,
+  storedNotes,
+} from "./admin-views.js";
 
 const AT = "2026-10-13T23:29:27.000Z";
 
@@ -62,5 +69,63 @@ describe("storedNotes", () => {
         },
       }),
     ).toEqual({ hints: ["a", "b", "c"], warnings: [] });
+  });
+});
+
+describe("formatDuration", () => {
+  const now = new Date("2026-10-15T12:00:00.000Z");
+
+  it("writes seconds, minutes or hours", () => {
+    expect(formatDuration("2026-10-15T11:59:15.000Z", "2026-10-15T11:59:59.600Z", now)).toBe(
+      "45 s",
+    );
+    expect(formatDuration("2026-10-15T11:50:00.000Z", "2026-10-15T11:53:05.000Z", now)).toBe(
+      "3 min 05 s",
+    );
+    expect(formatDuration("2026-10-15T09:00:00.000Z", "2026-10-15T10:02:00.000Z", now)).toBe(
+      "1 h 02 min",
+    );
+  });
+
+  it("counts a running job up to now and leaves unknown times out", () => {
+    expect(formatDuration("2026-10-15T11:59:30.000Z", null, now)).toBe("30 s");
+    expect(formatDuration(null, null, now)).toBe("–");
+    expect(formatDuration("nope", null, now)).toBe("–");
+    expect(formatDuration("2026-10-15T12:00:10.000Z", "2026-10-15T12:00:00.000Z", now)).toBe("–");
+  });
+});
+
+describe("formatCost", () => {
+  it("shows dollars with four decimals", () => {
+    expect(formatCost(0.0123)).toBe("$0.0123");
+    expect(formatCost(null)).toBe("–");
+    expect(formatCost(undefined)).toBe("–");
+  });
+});
+
+describe("storedIngredientNames", () => {
+  it("reads the distinct names of the stored recipe and ignores anything else", () => {
+    expect(storedIngredientNames({ conversion: null })).toEqual([]);
+    expect(storedIngredientNames({ conversion: { sourceHash: "x", result: "broken" } })).toEqual(
+      [],
+    );
+    expect(
+      storedIngredientNames({
+        conversion: {
+          sourceHash: "x",
+          result: {
+            recipe: {
+              servingSize: {
+                ingredientGroups: [
+                  { ingredients: [{ name: "Kürbis" }, { name: " " }, { name: 3 }] },
+                  { ingredients: "broken" },
+                  { ingredients: [{ name: "Linsen" }, { name: "Kürbis" }] },
+                ],
+              },
+            },
+          },
+        },
+      }),
+    ).toEqual(["Kürbis", "Linsen"]);
   });
 });

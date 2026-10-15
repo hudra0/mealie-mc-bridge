@@ -68,16 +68,22 @@ import {
   safeNext,
   sessionCookie,
 } from "./admin-auth.js";
+import type { ConfigEntry } from "../config-reference.js";
+import { registerSettings, type AutoLoginPort } from "./admin-settings.js";
 import {
+  REFRESH_SECONDS,
   SESSION_CLASS,
   dashboardView,
   dryRunView,
   jobDetailView,
   jobListView,
   loginView,
+  pageHead,
   type DryRunData,
+  type MealieCheck,
+  type WebhookInfo,
 } from "./admin-views.js";
-import { html, page, type SafeHtml } from "./html.js";
+import { html, page, type NavKey, type SafeHtml } from "./html.js";
 import { credentialsMatch, parseBasicAuth, safeEqual, type Credentials } from "./security.js";
 
 export interface AdminOptions {
@@ -89,8 +95,18 @@ export interface AdminOptions {
   // ADMIN_HOSTS: host names, lower case, without ports.
   allowedHosts?: readonly string[];
   store: { jobs: JobStore; mcRecipes: McRecipeStore; settings: SettingsStore };
-  session: Pick<SessionManager, "status" | "setCookie" | "check">;
+  session: Pick<SessionManager, "status" | "setCookie" | "check" | "loginNow">;
   mealie: Pick<MealiePort, "getRecipe">;
+  // Asks Mealie who the API token belongs to; the overview shows whether it answers.
+  mealieCheck?: () => Promise<unknown>;
+  // MEALIE_URL, shown next to that check.
+  mealieUrl?: string;
+  // WEBHOOK_TOKEN and PORT, for the recipe action URL on the overview.
+  webhook?: { token: string; port: number };
+  // The automatic login and its part of the settings page; left out, that part says so.
+  autoLogin?: AutoLoginPort;
+  // The effective configuration for the settings page (src/config-reference.ts).
+  config?: readonly ConfigEntry[];
   mc: Pick<McRecipeSink, "getCategories">;
   converter: Converter;
   limits: DeviceLimits;
@@ -118,8 +134,12 @@ export interface AdminOptions {
 
 const FORM_BODY_LIMIT = 64 * 1024;
 const API_BODY_LIMIT = 64 * 1024;
-// Pages that follow a queued or running job reload after this many seconds.
-export const REFRESH_SECONDS = 5;
+export { REFRESH_SECONDS };
+// The overview asks Mealie at most this often, and waits this long for an answer.
+const MEALIE_CHECK_TTL_MS = 30_000;
+const MEALIE_CHECK_TIMEOUT_MS = 4_000;
+// The compose service name of the bridge in compose.example.yml.
+const COMPOSE_SERVICE = "mc-bridge";
 
 interface FormBody {
   _csrf?: string;
@@ -135,6 +155,8 @@ export interface RenderExtra {
   notice?: string | null;
   error?: string | null;
   refresh?: { seconds: number; url: string } | null;
+  // The navigation entry to mark as the current page.
+  active?: NavKey | null;
 }
 
 // What a page added through AdminOptions.extend gets: the shared rendering, the texts and
@@ -233,6 +255,7 @@ export function admin(
           notice: extra.notice ?? null,
           error: extra.error ?? null,
           refresh: extra.refresh ?? null,
+          active: extra.active ?? null,
           header: extra.bare
             ? null
             : {
@@ -402,8 +425,69 @@ export function admin(
       .redirect(authDisabled ? "/admin" : "/admin/login?notice=logged-out", 303);
   });
 
-  const dashboard = (reply: FastifyReply, extra: RenderExtra = {}) =>
-    render(
+  const context: AdminContext = { app, t, csrf, render, notice };
+  const settingsPage = registerSettings(context, {
+    autoLogin: options.autoLogin ?? null,
+    session: options.session,
+    config: options.config ?? null,
+    locale: {
+      mcLocale: options.locale.pack.locale,
+      verified: options.locale.pack.mc.verifiedOnDevice,
+      uiLanguage: options.language ?? "en",
+      recipeStatus: options.recipeStatus,
+    },
+    now,
+  });
+
+  // Whether Mealie answers with the API token, asked at most every MEALIE_CHECK_TTL_MS so
+  // the overview stays fast; an unreachable Mealie costs at most MEALIE_CHECK_TIMEOUT_MS.
+  let mealieChecked: { at: number; result: MealieCheck } | null = null;
+  let mealiePending: Promise<MealieCheck> | null = null;
+  const checkMealie = async (): Promise<MealieCheck> => {
+    const probe = options.mealieCheck;
+    if (!probe) return { state: "unchecked", error: null, checkedAt: null };
+    const started = now();
+    if (mealieChecked && started.getTime() - mealieChecked.at < MEALIE_CHECK_TTL_MS) {
+      return mealieChecked.result;
+    }
+    mealiePending ??= (async () => {
+      let timer: NodeJS.Timeout | undefined;
+      const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(t.setup.mealie.timeout(MEALIE_CHECK_TIMEOUT_MS / 1000))),
+          MEALIE_CHECK_TIMEOUT_MS,
+        );
+      });
+      let result: MealieCheck;
+      try {
+        await Promise.race([probe(), timeout]);
+        result = { state: "ok", error: null, checkedAt: started.toISOString() };
+      } catch (error) {
+        result = { state: "failed", error: errorMessage(error), checkedAt: started.toISOString() };
+      } finally {
+        clearTimeout(timer);
+      }
+      mealieChecked = { at: started.getTime(), result };
+      mealiePending = null;
+      return result;
+    })();
+    return mealiePending;
+  };
+
+  const webhookInfo = (request: FastifyRequest): WebhookInfo | null => {
+    const hook = options.webhook;
+    if (!hook) return null;
+    const host = request.headers.host;
+    return {
+      dockerBase: `http://${COMPOSE_SERVICE}:${hook.port}/hooks/mealie/`,
+      pageBase: host ? `${isHttps(request) ? "https" : "http"}://${host}/hooks/mealie/` : null,
+      token: hook.token,
+    };
+  };
+
+  const dashboard = async (reply: FastifyReply, extra: RenderExtra = {}) => {
+    const autoLogin = options.autoLogin?.status() ?? null;
+    return render(
       reply,
       t.titles.dashboard,
       dashboardView(
@@ -411,15 +495,21 @@ export function admin(
           session: options.session.status(),
           stats: options.store.jobs.stats(),
           worker: options.worker?.status() ?? null,
-          jobs: options.store.jobs.listRecent({ limit: 20 }),
-          formToken: csrf(reply.request),
+          jobs: options.store.jobs.listRecent({ limit: 10 }),
           recipeStatus: options.recipeStatus,
           now: now(),
+          mealie: { url: options.mealieUrl ?? null, check: await checkMealie() },
+          autoLogin: autoLogin
+            ? { configured: autoLogin.configured, email: autoLogin.email }
+            : null,
+          webhook: webhookInfo(reply.request),
+          lastFailedJob: options.store.jobs.listRecent({ limit: 1, status: "failed" })[0] ?? null,
         },
         t,
       ),
-      extra,
+      { ...extra, active: "dashboard" },
     );
+  };
 
   app.get("/admin", (request, reply) => dashboard(reply, { notice: notice(request) }));
 
@@ -428,19 +518,19 @@ export function admin(
     try {
       await options.session.setCookie(typeof body.cookie === "string" ? body.cookie : "");
       options.worker?.nudge?.();
-      return reply.redirect("/admin?notice=session-saved", 303);
+      return reply.redirect("/admin/settings?notice=session-saved", 303);
     } catch (error) {
       if (error instanceof InvalidCookieError) {
-        return dashboard(reply, { status: 400, error: t.errors.cookieEmpty });
+        return settingsPage(reply, { status: 400, error: t.errors.cookieEmpty });
       }
       if (error instanceof SessionRejectedError) {
-        return dashboard(reply, {
+        return settingsPage(reply, {
           status: 422,
           error: t.errors.cookieRejected(error.message),
         });
       }
       options.logger.warn({ err: errorMessage(error) }, "could not verify a new session cookie");
-      return dashboard(reply, {
+      return settingsPage(reply, {
         status: 502,
         error: t.errors.cookieUnchecked(errorMessage(error)),
       });
@@ -483,7 +573,7 @@ export function admin(
   app.post("/admin/session/check", async (_request, reply) => {
     await options.session.check();
     options.worker?.nudge?.();
-    return reply.redirect("/admin?notice=session-checked", 303);
+    return reply.redirect("/admin/settings?notice=session-checked", 303);
   });
 
   app.get("/admin/jobs", (request, reply) => {
@@ -506,11 +596,21 @@ export function admin(
       reply,
       t.titles.jobs,
       jobListView(
-        { jobs, status, search, offset, limit, recipeStatus: options.recipeStatus, refreshing },
+        {
+          jobs,
+          status,
+          search,
+          offset,
+          limit,
+          recipeStatus: options.recipeStatus,
+          refreshing,
+          now: now(),
+        },
         t,
       ),
       {
         notice: notice(request),
+        active: "jobs",
         refresh: refreshing ? { seconds: REFRESH_SECONDS, url: refreshUrl(request) } : null,
       },
     );
@@ -519,7 +619,13 @@ export function admin(
   app.get<{ Params: { id: string } }>("/admin/jobs/:id", (request, reply) => {
     const found = options.store.jobs.getWithEvents(request.params.id);
     if (!found) {
-      return render(reply, t.titles.notFound, html`<p>${t.errors.noSuchJob}</p>`, { status: 404 });
+      return render(
+        reply,
+        t.titles.notFound,
+        html`${pageHead(t.titles.notFound, t.errors.noSuchJob)}
+          <p><a href="/admin/jobs">${t.links.backToJobs}</a></p>`,
+        { status: 404, active: "jobs" },
+      );
     }
     const slug = found.job.mealieSlug;
     const refreshing = found.job.status === "queued" || found.job.status === "running";
@@ -540,6 +646,7 @@ export function admin(
       ),
       {
         notice: notice(request),
+        active: "jobs",
         refresh: refreshing ? { seconds: REFRESH_SECONDS, url: refreshUrl(request) } : null,
       },
     );
@@ -599,14 +706,18 @@ export function admin(
     const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? quantizeScale(scaleRaw) : 1;
     const formToken = csrf(request);
     const data: DryRunData = { recipeParam, scale, formToken, recipeStatus: options.recipeStatus };
-    if (!recipeParam) return render(reply, t.titles.dryRun, dryRunView(data, t));
+    if (!recipeParam)
+      return render(reply, t.titles.dryRun, dryRunView(data, t), { active: "dryRun" });
 
     let recipe;
     try {
       recipe = await options.mealie.getRecipe(recipeParam);
     } catch (error) {
       data.loadError = t.errors.recipeNotLoaded(errorMessage(error));
-      return render(reply, t.titles.dryRun, dryRunView(data, t), { status: 502 });
+      return render(reply, t.titles.dryRun, dryRunView(data, t), {
+        status: 502,
+        active: "dryRun",
+      });
     }
     const prepared = prepareRecipe(recipe, scale, options.limits, options.locale, {
       ...(options.tagName ? { excludeTags: [options.tagName] } : {}),
@@ -637,7 +748,7 @@ export function admin(
         data.conversionError = t.errors.conversionFailed(errorMessage(error));
       }
     }
-    return render(reply, t.titles.dryRun, dryRunView(data, t));
+    return render(reply, t.titles.dryRun, dryRunView(data, t), { active: "dryRun" });
   };
 
   app.get("/admin/dry-run", (request, reply) =>
@@ -649,7 +760,7 @@ export function admin(
     return dryRun(request, reply, body, body.convert === "1");
   });
 
-  options.extend?.({ app, t, csrf, render, notice });
+  options.extend?.(context);
 
   done();
 }

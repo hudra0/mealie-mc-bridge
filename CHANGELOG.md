@@ -4,7 +4,7 @@ The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` bu
 
 ## Unreleased
 
-Security hardening after an audit of 0.2.0. Read "What to do" before you upgrade: the bridge refuses to start until the admin credentials are set.
+Security hardening after an audit of 0.2.0; it applies to 0.2.1 as well. Read "What to do" before you upgrade: the bridge refuses to start until the admin credentials are set.
 
 ### What to do
 
@@ -13,14 +13,14 @@ Security hardening after an audit of 0.2.0. Read "What to do" before you upgrade
 - **Behind a reverse proxy, set `TRUST_PROXY`** to the proxy's address or network. `X-Forwarded-For` and `X-Forwarded-Proto` are ignored otherwise: the login throttle then counts every client as the proxy, and the session cookie is no longer marked `Secure` from a forged or untrusted header.
 - **Check the new limits**: `JOB_DAILY_LIMIT` (50 jobs) and `JOB_DAILY_COST_LIMIT_USD` (10 USD of estimated model cost) per 24 hours, `LLM_MAX_RECIPE_KB` (40 kB of recipe text). Raise them if your household converts more.
 - **Mail over `smtp://` now requires STARTTLS.** A server without it gets no mail; switch to `smtps://`, or set `SMTP_ALLOW_INSECURE=true` for a mail server on the same host.
-- **If an automatic login failed before this upgrade, change your Lidl password.** Up to 0.2.0 the stored reason of a failed login could contain the browser's call log with the typed password, in `bridge.db`, the log, the settings page and the session mail. Migration 5 replaces the stored reason; old logs and mails keep what they had.
+- **If an automatic login failed before this upgrade, change your Lidl password.** Up to 0.2.1 the stored reason of a failed login could contain the browser's call log with the typed password, in `bridge.db`, the log, the settings page and the session mail. Migration 5 replaces the stored reason; old logs and mails keep what they had.
 - Optional: take over the hardening of `compose.example.yml` (`init`, `read_only` with `tmpfs`, `cap_drop`, `no-new-privileges`, `pids_limit`, `mem_limit`).
 
 ### Changed
 
 - The automatic login never passes a Playwright error message on. Browser failures become fixed texts (timeout, navigation, page element, launch), anything that looks like a call log is withheld, and the account's own e-mail address and password are masked in every stored reason, log line, page and mail.
 - The automatic login types the Lidl account only into an https page whose host is exactly in `LIDL_LOGIN_HOSTS` (default `accounts.lidl.com`); a password field anywhere else ends the attempt as "unexpected page" with a screenshot.
-- Each automatic login runs in a fresh browser profile under `DATA_DIR/tmp`, removed after the attempt. The persistent `browser-profile/` of 0.2.0 is deleted on start, so no Lidl or Monsieur Cuisine session lives on disk outside the encrypted settings.
+- Each automatic login runs in a fresh browser profile under `DATA_DIR/tmp`, removed after the attempt. The persistent `browser-profile/` of 0.2.x is deleted on start, so no Lidl or Monsieur Cuisine session lives on disk outside the encrypted settings.
 - Chromium starts with a minimal environment (`PATH`, `HOME`, `LANG`, `PLAYWRIGHT_BROWSERS_PATH`) instead of the bridge's, and a browser that does not close within 10 seconds is killed with its process group.
 - The webhook rounds the scale to quarter steps and clamps it to 0.25 to 10 (it accepted any value up to 100), and answers 429 with a timeline entry on the recipe when a daily limit is reached.
 - The admin pages send `Strict-Transport-Security` over HTTPS. The paid dry-run conversion is a form POST; the form token no longer appears in a URL.
@@ -42,6 +42,13 @@ Security hardening after an audit of 0.2.0. Read "What to do" before you upgrade
 - Settings `ADMIN_AUTH`, `TRUST_PROXY`, `JOB_DAILY_LIMIT`, `JOB_DAILY_COST_LIMIT_USD`, `LLM_MAX_RECIPE_KB`, `MC_UPLOAD_HOSTS`, `LIDL_LOGIN_HOSTS` and `SMTP_ALLOW_INSECURE`.
 - A "Security" section in the README and `SECURITY.md` with the way to report vulnerabilities.
 - gitleaks rules for SMTP URLs with credentials, the `wordpress_sec_` cookie and the bridge's secret settings with a value, with fixtures that prove each rule fires.
+
+## 0.2.1 (2026-10-15)
+
+### Fixed
+
+- Automatic login: a consent dialog on accounts.lidl.com (or the cookie banner on monsieur-cuisine.com) no longer blocks the form. After every navigation the login looks for such a dialog for up to 5 seconds and declines it, or closes it with its close button; it never clicks an accept button, also not as a welcome screen button. The decline words cover all site languages, independent of `MC_LOCALE`.
+- The login fills only an enabled e-mail field, clicks "Weiter" (or "Continue" and the like) in a login in two steps, and after sending the form ends with a precise reason: a wrong password the site reports, another error message of the site, or a captcha or verification request. The settings page shows these reasons and notes a declined consent dialog; the screenshot of a failed attempt stays.
 
 ## 0.2.0 (2026-10-15)
 

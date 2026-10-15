@@ -63,6 +63,8 @@ export interface LoginAttempt {
   detail: string | null;
   // File name of the screenshot under the screenshot directory.
   screenshot: string | null;
+  // The login declined or closed a consent dialog on the way. Absent in older records.
+  consentDismissed?: boolean;
 }
 
 export type SkipReason =
@@ -308,30 +310,42 @@ export class AutoLogin {
       // The profile holds the Lidl and Monsieur Cuisine session of this attempt.
       if (profile !== null) removeDir(profile);
     }
+    const consentDismissed = result.consentDismissed === true;
     if (!result.ok) {
       this.#pruneScreenshots();
-      return this.#finish(started, options.manual, {
-        code: result.code,
-        detail: scrubLoginDetail(result.detail, [email, password]),
-        screenshot: result.screenshot === null ? null : screenshot,
-      });
+      return this.#finish(
+        started,
+        options.manual,
+        {
+          code: result.code,
+          detail: scrubLoginDetail(result.detail, [email, password]),
+          screenshot: result.screenshot === null ? null : screenshot,
+        },
+        consentDismissed,
+      );
     }
     try {
       await options.accept(result.cookie);
     } catch (error) {
-      return this.#finish(started, options.manual, {
-        code: "verify_failed",
-        detail: `the new session was not accepted: ${errorMessage(error)}`,
-        screenshot: null,
-      });
+      return this.#finish(
+        started,
+        options.manual,
+        {
+          code: "verify_failed",
+          detail: `the new session was not accepted: ${errorMessage(error)}`,
+          screenshot: null,
+        },
+        consentDismissed,
+      );
     }
-    return this.#finish(started, options.manual, null);
+    return this.#finish(started, options.manual, null, consentDismissed);
   }
 
   #finish(
     started: Date,
     manual: boolean,
     failure: { code: AutoLoginFailure; detail: string; screenshot: string | null } | null,
+    consentDismissed = false,
   ): AutoLoginRun {
     const attempt: LoginAttempt = {
       at: started.toISOString(),
@@ -340,6 +354,7 @@ export class AutoLogin {
       code: failure?.code ?? null,
       detail: failure ? scrubLoginDetail(failure.detail) : null,
       screenshot: failure?.screenshot ?? null,
+      ...(consentDismissed ? { consentDismissed: true } : {}),
     };
     this.#settings.setJson(AUTO_LOGIN_KEYS.last, attempt);
     const logger = this.#options.logger;
@@ -352,7 +367,7 @@ export class AutoLogin {
     const failures = this.#failures() + (manual ? 0 : 1);
     this.#settings.set(AUTO_LOGIN_KEYS.failures, String(failures));
     logger.warn(
-      { manual, code: failure.code, detail: attempt.detail, failures },
+      { manual, code: failure.code, detail: attempt.detail, failures, consentDismissed },
       "automatic Monsieur Cuisine login failed",
     );
     return { status: "failed", attempt };

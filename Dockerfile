@@ -39,7 +39,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /ms-playwright /ms-playwright
 # The Debian libraries Chromium needs (a few hundred MB). Without them or the browser the
 # bridge still runs; the settings page then says the browser is not available.
-RUN npx playwright install-deps chromium \n  && rm -rf /var/lib/apt/lists/*
+RUN npx playwright install-deps chromium \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/dist ./dist
 # The knowledge base: device limits for the validator (DEVICE_PROGRAMS_PATH) and the
 # techniques, timing and unit rules the converter reads and the ingredient catalog

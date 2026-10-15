@@ -2,6 +2,19 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+### Fixed
+
+- The automatic login no longer ends with "the browser timed out on the login page" when the Lidl consent dialog renders a moment after the page. It used to look for a dialog once after each navigation; it now looks before every fill, click and Enter and on every poll while it waits for the form, declines the dialog inside it (the exact "Ablehnen" first, a close control with an accessible name such as "Schließen" otherwise), never clicks a hidden element or an accept button, and waits up to 3 seconds for the dialog to go. An action gets 1 second first; when it times out, the login dismisses dialogs and tries once more with the full timeout.
+- The invisible reCAPTCHA Enterprise frame the Lidl login page loads at once no longer counts as a captcha.
+- The switch from the phone login to the e-mail address is found as a button, a link or any element with its text. The e-mail field is also found by its id `input-email`, and "Weiter" by its exact text before buttons that only start with it.
+
+### Changed
+
+- The automatic login pauses 300 to 700 ms between actions.
+- Each attempt records the steps it reached: login page, consent dismissed (with a count), e-mail entered, continue clicked, password page, password entered, redirect, terms confirmed, device chosen, cookies received. The settings page lists them under the last attempt, and the reason of a failure ends with the last step reached ("stuck after: e-mail entered").
+
 ## 0.3.0 (2026-10-15)
 
 Security hardening after an audit of 0.2.0; it applies to 0.2.1 and 0.2.2 as well. Read "What to do" before you upgrade: the bridge refuses to start until the admin credentials are set.

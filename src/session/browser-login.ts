@@ -15,37 +15,45 @@
 //
 // No error message of the browser reaches the result: a thrown error becomes a fixed text
 // (browser-errors.ts), because Playwright's messages can carry the typed password.
-// Both sites put consent dialogs in front of the page. After every navigation and every
-// click the flow looks for one for up to 3 seconds and declines it, or closes it; it never
-// accepts. After the form is sent it watches for the session, an error message on the form
-// and a captcha or verification step, and ends the attempt with the matching reason.
+//
+// Both sites put consent dialogs in front of the page, and the Lidl dialog can render a
+// moment after the page itself. So the flow looks for a dialog before every action (fill,
+// click, Enter) and on every poll while it waits for the form, and declines it inside the
+// dialog, or closes it; it never accepts. An action gets 1 second first; when it times out
+// (most often because a dialog came up over the element), the flow dismisses dialogs and
+// tries once more with the browser's full timeout. Between actions it pauses a few hundred
+// milliseconds, like a person. After the form is sent it watches for the session, an error
+// message on the form and a captcha or verification step, and ends the attempt with the
+// matching reason.
 //
 // The Lidl login comes in two steps: the e-mail address and "Weiter", then the password and
-// "Weiter". The page may open asking for a phone number; the flow then clicks the link to
-// the e-mail address and never touches the country selector or the phone field. Enter is
-// pressed only in a visible e-mail or password field, when the page has no button to click.
+// "Weiter". The page may open asking for a phone number; the flow then clicks the control
+// that switches to the e-mail address (a button, a link or any element with its text) and
+// never touches the country selector or the phone field. Enter is pressed only in a visible
+// e-mail or password field, when the page has no button to click.
 //
 // On the first login monsieur-cuisine.com may ask for the terms of use and the device before
 // it sets the session. When the session has not come 10 seconds after the redirect, the
 // automatic login ticks the terms checkbox, confirms it, picks MC Smart and closes the hint
 // next to the chooser; the result says so, and the settings page shows it.
 //
+// Every attempt records how far it got (LOGIN_STEPS); a failure names the last step reached
+// in its reason ("stuck after: e-mail entered").
+//
 // The browser sits behind LoginBrowser, so tests drive the flow with a fake and the bridge
 // starts without Playwright. The automatic login gives every attempt a fresh profile;
 // npm run mc:login keeps a persistent one on the operator's computer.
 
-import { browserFailureDetail } from "./browser-errors.js";
+import { BrowserActionError, browserFailureDetail } from "./browser-errors.js";
 import {
-  ACCEPT_BUTTON,
   CAPTCHA_FRAME,
-  CLOSE_LABEL,
-  CLOSE_SYMBOL,
+  CONSENT_DIALOG,
   CONTINUE_BUTTON,
-  DECLINE_BUTTON,
+  CONTINUE_EXACT,
   DEVICE_CHOICE,
   DEVICE_PROMPT,
-  DIALOG_SELECTOR,
   EMAIL_SWITCH,
+  EMAIL_SWITCH_TEXT,
   ERROR_SELECTOR,
   HINT_BUTTON,
   IGNORED_FRAME,
@@ -57,12 +65,14 @@ import {
   PHONE_FIELD,
   PHONE_WORDS,
   SIGN_IN_BUTTON,
+  SIGN_IN_EXACT,
   SKIP_BUTTONS,
   TERMS_CONFIRM,
   TERMS_LABEL,
   UNKNOWN_ACCOUNT,
   VERIFICATION_TEXT,
   WRONG_PASSWORD,
+  type DialogPatterns,
 } from "./login-pages.js";
 
 export const MC_BASE_URL = "https://www.monsieur-cuisine.com";
@@ -70,18 +80,30 @@ export const MC_BASE_URL = "https://www.monsieur-cuisine.com";
 // The hosts of the Lidl account pages the login form may be filled on.
 export const DEFAULT_LOGIN_HOSTS: readonly string[] = ["accounts.lidl.com"];
 
-// Selectors of the Lidl login form.
+// Selectors of the Lidl login form. The e-mail field is looked up by its id as well, in case
+// its type changes.
 export const EMAIL_FIELD = 'input[type="email"]';
+export const EMAIL_FIELD_BY_ID = "input#input-email";
 export const PASSWORD_FIELD = 'input[type="password"]';
 export { SKIP_BUTTONS };
 
-// After each navigation the flow looks up to this long for a consent dialog to decline; it
-// stops at once when the page has no dialog.
+// How long the first try of an action may wait before the flow looks for a dialog in front
+// of the page and tries once more with the browser's full timeout.
+export const FIRST_TRY_MS = 1000;
+// How long a dismissed dialog may take to go away.
+export const DIALOG_GONE_MS = 3000;
+// Dialogs dismissed per look, so a dialog that keeps coming back does not hold the flow.
+export const MAX_DIALOGS_PER_LOOK = 3;
+// Close clicks per attempt, so a close control that does nothing is not clicked forever.
+export const MAX_CLOSE_CLICKS = 4;
+// Without stored credentials a person may be at the window: the flow then looks for dialogs
+// only this long after each navigation.
 export const CONSENT_WINDOW_MS = 3000;
-export const CONSENT_POLL_MS = 500;
+// The pause after each action, between these bounds, like a person.
+export const ACTION_PAUSE_MS = { min: 300, max: 700 } as const;
 // How long the Lidl page may take to show its e-mail field.
 export const EMAIL_WAIT_MS = 15_000;
-// Clicks on the link from the phone login to the e-mail address.
+// Clicks on the control from the phone login to the e-mail address.
 export const MAX_SWITCH_CLICKS = 2;
 // How long after the redirect to monsieur-cuisine.com the session may take before the flow
 // looks for the terms of use and the device chooser.
@@ -91,44 +113,101 @@ const WELCOME_SKIP = new RegExp(`${SKIP_BUTTONS.source}|${PHONE_WORDS.source}`, 
 // What a click that sends the form or switches it skips: the same, and other identity
 // providers ("Weiter mit Google").
 const FORM_SKIP = new RegExp(`${WELCOME_SKIP.source}|${OTHER_PROVIDER.source}`, "iu");
-// Close buttons clicked per look, so a close button that stays does not get clicked forever.
-export const MAX_CLOSE_CLICKS = 2;
 // An error message or a captcha must show on this many polls in a row to end the login.
 export const INDICATOR_POLLS = 2;
+
+// The steps of a login, in the order they happen. A failure names the last one reached.
+export const LOGIN_STEPS = [
+  "page_reached",
+  "consent_dismissed",
+  "email_entered",
+  "continue_clicked",
+  "password_page",
+  "password_entered",
+  "redirect_reached",
+  "terms_confirmed",
+  "device_chosen",
+  "cookies_received",
+] as const;
+export type LoginStep = (typeof LOGIN_STEPS)[number];
+
+// The steps in the reason of a failure, which is English like the rest of it.
+export const LOGIN_STEP_TEXT: Readonly<Record<LoginStep, string>> = {
+  page_reached: "login page reached",
+  consent_dismissed: "consent dismissed",
+  email_entered: "e-mail entered",
+  continue_clicked: "continue clicked",
+  password_page: "password page reached",
+  password_entered: "password entered",
+  redirect_reached: "redirect reached",
+  terms_confirmed: "terms confirmed",
+  device_chosen: "device chosen",
+  cookies_received: "cookies received",
+};
+
+// How far an attempt got: the steps reached, in LOGIN_STEPS order, and how many dialogs it
+// dismissed on the way.
+export interface LoginProgress {
+  reached: LoginStep[];
+  consentDismissals: number;
+}
+
+// "; stuck after: e-mail entered" for the reason of a failure; empty when no step was reached.
+export function stuckAfter(progress: LoginProgress): string {
+  const last = progress.reached[progress.reached.length - 1];
+  return last === undefined ? "" : `; stuck after: ${LOGIN_STEP_TEXT[last]}`;
+}
 
 export interface BrowserCookie {
   name: string;
   value: string;
 }
 
-// What the flow needs from a browser page.
+// Options of an action. Without timeoutMs the browser's own action timeout applies.
+export interface ActionOptions {
+  timeoutMs?: number;
+}
+
+// How a dialog was dismissed.
+export type DialogAction = "declined" | "closed";
+
+// What the flow needs from a browser page. Every action works on visible elements only.
 export interface LoginPage {
   goto(url: string): Promise<void>;
   url(): string;
   // Fills the first visible and enabled element matching the CSS selector; false when none.
-  fillVisible(selector: string, value: string): Promise<boolean>;
+  fillVisible(selector: string, value: string, options?: ActionOptions): Promise<boolean>;
   // Whether an element matching the selector is visible.
   isVisible(selector: string): Promise<boolean>;
   // Presses Enter in the first visible element matching the selector.
-  pressEnter(selector: string): Promise<void>;
+  pressEnter(selector: string, options?: ActionOptions): Promise<void>;
   // Clicks the first visible button whose text does not match `skip`; false when none.
-  clickButton(skip: RegExp): Promise<boolean>;
+  clickButton(skip: RegExp, options?: ActionOptions): Promise<boolean>;
   // Clicks the first visible and enabled button, in the page or one of its frames, whose
-  // text matches `match` and not `avoid`; returns its text, or null when there is none.
-  clickButtonByText(match: RegExp, avoid: RegExp): Promise<string | null>;
+  // text matches `match` and not `avoid`, preferring one whose text matches `exact`; returns
+  // its text, or null when there is none.
+  clickButtonByText(
+    match: RegExp,
+    avoid: RegExp,
+    options?: ActionOptions & { exact?: RegExp },
+  ): Promise<string | null>;
   // Like clickButtonByText, for links and other controls as well (labels, radios, options).
   // With `anyElement`, falls back to any visible element whose text matches, such as a card.
   clickByText(
     match: RegExp,
     avoid: RegExp,
-    options?: { anyElement?: boolean },
+    options?: ActionOptions & { anyElement?: boolean },
   ): Promise<string | null>;
   // Ticks the first visible checkbox whose label matches `label` and not `avoid`. True when
   // such a checkbox is ticked afterwards, also when it was ticked already; never unticks.
-  checkBox(label: RegExp, avoid: RegExp): Promise<boolean>;
-  // Clicks a visible control that closes a dialog: a button whose accessible name matches
-  // `label`, or a button inside a dialog whose text matches `symbol`. False when none.
-  closeDialog(label: RegExp, symbol: RegExp): Promise<boolean>;
+  checkBox(label: RegExp, avoid: RegExp, options?: ActionOptions): Promise<boolean>;
+  // Dismisses one visible dialog: clicks the decline button inside it, else (with `close`)
+  // its close control, then waits up to `waitMs` until the dialog is hidden or gone. Never
+  // clicks an accept button or a hidden element. Null when no dialog could be dismissed.
+  dismissDialog(
+    patterns: DialogPatterns,
+    options: { close: boolean; waitMs: number },
+  ): Promise<DialogAction | null>;
   // The text of the first visible, non-empty element matching the selector that is at most
   // `maxLength` characters long; null when there is none.
   visibleMessage(selector: string, maxLength: number): Promise<string | null>;
@@ -175,11 +254,13 @@ export type BrowserLoginFailure =
   | "error";
 
 // What the flow did on the person's behalf: declined or closed a consent dialog, confirmed
-// the terms of use of monsieur-cuisine.com, chose MC Smart in the device chooser.
+// the terms of use of monsieur-cuisine.com, chose MC Smart in the device chooser; and how
+// far it got. browserLogin always sets progress.
 export interface LoginNotes {
   consentDismissed?: true;
   termsAccepted?: true;
   deviceChosen?: true;
+  progress?: LoginProgress;
 }
 
 export type BrowserLoginResult =
@@ -210,6 +291,8 @@ export interface BrowserLoginOptions {
   screenshotPath?: () => string | null;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  // A number in [0, 1) for the pauses between actions; Math.random by default.
+  random?: () => number;
   // Progress for a person watching ("login form filled"); never carries secrets.
   onStep?: (message: string) => void;
 }
@@ -319,13 +402,31 @@ interface Outcome {
   step: string;
 }
 
+// A timeout of a single action, as the browser adapter reports it.
+function isActionTimeout(error: unknown): boolean {
+  return error instanceof BrowserActionError && error.kind === "timeout";
+}
+
 export async function browserLogin(options: BrowserLoginOptions): Promise<BrowserLoginResult> {
+  const reached = new Set<LoginStep>();
+  let consentDismissals = 0;
+  const progress = (): LoginProgress => ({
+    reached: LOGIN_STEPS.filter((name) => reached.has(name)),
+    consentDismissals,
+  });
   const unavailable = await options.browser.unavailable();
   if (unavailable !== null) {
-    return { ok: false, code: "browser_unavailable", detail: unavailable, screenshot: null };
+    return {
+      ok: false,
+      code: "browser_unavailable",
+      detail: unavailable,
+      screenshot: null,
+      progress: progress(),
+    };
   }
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? defaultSleep;
+  const random = options.random ?? Math.random;
   const pollMs = options.pollMs ?? 1000;
   const step = options.onStep ?? (() => undefined);
   const baseUrl = options.baseUrl ?? MC_BASE_URL;
@@ -340,11 +441,12 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
   let passwordSent = false;
   let clicks = 0;
   let switchClicks = 0;
-  let consentDismissed = false;
+  let closeClicks = 0;
   let termsAccepted = false;
   let deviceChosen = false;
-  let consentPending = true;
   let lastUrl: string | null = null;
+  // Without credentials, dialogs are looked for until this time after a navigation.
+  let watchDialogsUntil = 0;
   // When the flow came to the Lidl page without an e-mail field, and to monsieur-cuisine.com
   // without a session.
   let lidlSince: number | null = null;
@@ -353,10 +455,11 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
   let messageBefore: string | null = null;
   let indicator: { key: string; count: number } | null = null;
 
-  const consent = (): LoginNotes => ({
-    ...(consentDismissed ? { consentDismissed: true } : {}),
+  const notes = (): LoginNotes => ({
+    ...(consentDismissals > 0 ? { consentDismissed: true } : {}),
     ...(termsAccepted ? { termsAccepted: true } : {}),
     ...(deviceChosen ? { deviceChosen: true } : {}),
+    progress: progress(),
   });
 
   const fail = async (code: BrowserLoginFailure, detail: string): Promise<BrowserLoginResult> => {
@@ -370,38 +473,57 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
         // A missing screenshot must not hide the login failure.
       }
     }
-    return { ok: false, code, detail, screenshot, ...consent() };
+    return {
+      ok: false,
+      code,
+      detail: `${detail}${stuckAfter(progress())}`,
+      screenshot,
+      ...notes(),
+    };
   };
 
-  // Declines or closes consent dialogs for up to CONSENT_WINDOW_MS. Stops early when the page
-  // has no dialog, once a dialog was dismissed and the next look finds none, or once the
-  // session exists.
-  const dismissConsent = async (context: LoginContext): Promise<void> => {
-    const page = context.page;
-    const until = Math.min(now() + CONSENT_WINDOW_MS, deadline);
-    let dismissed = false;
-    let closes = 0;
-    while (now() < until) {
-      // A saved profile logs in through redirects; no need to wait for a dialog then.
-      if ((await readSessionCookie(context, options.editorPath, baseUrl)) !== null) return;
-      let done = (await page.clickButtonByText(DECLINE_BUTTON, ACCEPT_BUTTON)) !== null;
-      if (
-        !done &&
-        closes < MAX_CLOSE_CLICKS &&
-        (await page.closeDialog(CLOSE_LABEL, CLOSE_SYMBOL))
-      ) {
-        closes++;
-        done = true;
+  const pause = () =>
+    sleep(Math.round(ACTION_PAUSE_MS.min + random() * (ACTION_PAUSE_MS.max - ACTION_PAUSE_MS.min)));
+
+  // Declines or closes the dialogs in front of the page, a few per look. A dialog that does
+  // not take the click does not end the login: the action behind it reports what is wrong.
+  const dismissDialogs = async (page: LoginPage): Promise<void> => {
+    for (let look = 0; look < MAX_DIALOGS_PER_LOOK; look++) {
+      let action: DialogAction | null;
+      try {
+        action = await page.dismissDialog(CONSENT_DIALOG, {
+          close: closeClicks < MAX_CLOSE_CLICKS,
+          waitMs: DIALOG_GONE_MS,
+        });
+      } catch (error) {
+        if (error instanceof BrowserActionError) return;
+        throw error;
       }
-      if (done) {
-        dismissed = true;
-        consentDismissed = true;
-        step("consent dialog dismissed");
-      } else if (dismissed || !(await page.isVisible(DIALOG_SELECTOR))) {
-        return;
-      }
-      await sleep(CONSENT_POLL_MS);
+      if (action === null) return;
+      if (action === "closed") closeClicks++;
+      consentDismissals++;
+      reached.add("consent_dismissed");
+      step("consent dialog dismissed");
+      await pause();
     }
+  };
+
+  // One page action: dialogs are dismissed first; a first try that times out, most often
+  // because a dialog came up over the element, is followed by another look for dialogs and
+  // one more try with the browser's full timeout. A pause follows every action that did
+  // something.
+  const act = async <T>(page: LoginPage, action: (options: ActionOptions) => Promise<T>) => {
+    await dismissDialogs(page);
+    let result: T;
+    try {
+      result = await action({ timeoutMs: FIRST_TRY_MS });
+    } catch (error) {
+      if (!isActionTimeout(error)) throw error;
+      await dismissDialogs(page);
+      result = await action({});
+    }
+    if (result !== null && result !== false) await pause();
+    return result;
   };
 
   const verificationShown = async (page: LoginPage): Promise<boolean> => {
@@ -452,26 +574,50 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
     return indicator.count >= INDICATOR_POLLS ? found : null;
   };
 
-  // Sends a step of the form with its button; Enter only when there is no button and the
-  // field is still visible.
-  const submit = async (page: LoginPage, field: string, buttons: readonly RegExp[]) => {
-    for (const button of buttons) {
-      if ((await page.clickButtonByText(button, FORM_SKIP)) !== null) return;
+  // Sends a step of the form with its button, the one with the exact text first; Enter only
+  // when there is no button and the field is still visible.
+  const submit = async (
+    page: LoginPage,
+    field: string,
+    buttons: readonly (readonly [RegExp, RegExp])[],
+  ) => {
+    for (const [button, exact] of buttons) {
+      const clicked = await act(page, (o) =>
+        page.clickButtonByText(button, FORM_SKIP, { ...o, exact }),
+      );
+      if (clicked !== null) return;
     }
-    if (await page.isVisible(field)) await page.pressEnter(field);
+    if (await page.isVisible(field)) await act(page, (o) => page.pressEnter(field, o));
   };
+
+  const emailVisible = async (page: LoginPage) =>
+    (await page.isVisible(EMAIL_FIELD)) || (await page.isVisible(EMAIL_FIELD_BY_ID));
+
+  const fillEmail = async (page: LoginPage, email: string) =>
+    (await act(page, (o) => page.fillVisible(EMAIL_FIELD, email, o))) ||
+    (await act(page, (o) => page.fillVisible(EMAIL_FIELD_BY_ID, email, o)));
+
+  // The control from the phone login to the e-mail address: a button or a link, else any
+  // element that carries one of the switch phrases.
+  const switchToEmail = async (page: LoginPage) =>
+    (await act(page, (o) => page.clickByText(EMAIL_SWITCH, FORM_SKIP, o))) ??
+    (await act(page, (o) =>
+      page.clickByText(EMAIL_SWITCH_TEXT, FORM_SKIP, { ...o, anyElement: true }),
+    ));
 
   // One step of the Lidl form; an outcome when the attempt has to end.
   const fillForm = async (
     page: LoginPage,
     login: { email: string; password: string },
   ): Promise<Outcome | null> => {
-    if (!emailFilled && (await page.fillVisible(EMAIL_FIELD, login.email))) {
+    if (!emailFilled && (await fillEmail(page, login.email))) {
       emailFilled = true;
       sawForm = true;
+      reached.add("email_entered");
       step("e-mail address entered");
     }
     if (await page.isVisible(PASSWORD_FIELD)) {
+      reached.add("password_page");
       if (emailSent && NEW_ACCOUNT_TEXT.test(await page.text())) {
         return {
           code: "unknown_account",
@@ -479,12 +625,17 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
           step: "the site does not know the e-mail address",
         };
       }
-      if (!(await page.fillVisible(PASSWORD_FIELD, login.password))) return null;
+      if (!(await act(page, (o) => page.fillVisible(PASSWORD_FIELD, login.password, o)))) {
+        return null;
+      }
+      reached.add("password_entered");
       messageBefore = await page.visibleMessage(ERROR_SELECTOR, MAX_ERROR_LENGTH);
-      await submit(page, PASSWORD_FIELD, [CONTINUE_BUTTON, SIGN_IN_BUTTON]);
+      await submit(page, PASSWORD_FIELD, [
+        [CONTINUE_BUTTON, CONTINUE_EXACT],
+        [SIGN_IN_BUTTON, SIGN_IN_EXACT],
+      ]);
       passwordSent = true;
       sawForm = true;
-      consentPending = true;
       indicator = null;
       step("login form sent");
       return null;
@@ -493,10 +644,11 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
       if (!emailSent) {
         // A login in two steps: the address first, the password on the next screen.
         messageBefore = await page.visibleMessage(ERROR_SELECTOR, MAX_ERROR_LENGTH);
-        await submit(page, EMAIL_FIELD, [CONTINUE_BUTTON]);
+        const field = (await page.isVisible(EMAIL_FIELD)) ? EMAIL_FIELD : EMAIL_FIELD_BY_ID;
+        await submit(page, field, [[CONTINUE_BUTTON, CONTINUE_EXACT]]);
         emailSent = true;
-        consentPending = true;
         indicator = null;
+        reached.add("continue_clicked");
         step("e-mail address sent");
       }
       return null;
@@ -505,23 +657,18 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
     // The Lidl page without a usable e-mail field. A visible one that is still disabled is
     // waited for; otherwise the page is the phone login or a welcome screen.
     lidlSince ??= now();
-    if (!(await page.isVisible(EMAIL_FIELD))) {
-      if (
-        switchClicks < MAX_SWITCH_CLICKS &&
-        (await page.clickByText(EMAIL_SWITCH, FORM_SKIP)) !== null
-      ) {
+    if (!(await emailVisible(page))) {
+      if (switchClicks < MAX_SWITCH_CLICKS && (await switchToEmail(page)) !== null) {
         switchClicks++;
-        consentPending = true;
         step("switched the Lidl login from the phone number to the e-mail address");
         return null;
       }
       if (
         clicks < 3 &&
         !(await page.isVisible(PHONE_FIELD)) &&
-        (await page.clickButton(WELCOME_SKIP))
+        (await act(page, (o) => page.clickButton(WELCOME_SKIP, o)))
       ) {
         clicks++;
-        consentPending = true;
         return null;
       }
     }
@@ -536,12 +683,18 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
   };
 
   // The first-login screens of monsieur-cuisine.com: the terms of use, the device chooser
-  // and its hint. One action per call; consent dialogs are looked for after each.
+  // and its hint. One action per call.
   const finishOnboarding = async (page: LoginPage) => {
-    if (!termsAccepted && (await page.checkBox(TERMS_LABEL, OPTIONAL_CONSENT))) {
-      if ((await page.clickButtonByText(TERMS_CONFIRM, SKIP_BUTTONS)) !== null) {
+    if (
+      !termsAccepted &&
+      (await act(page, (o) => page.checkBox(TERMS_LABEL, OPTIONAL_CONSENT, o)))
+    ) {
+      const confirmed = await act(page, (o) =>
+        page.clickButtonByText(TERMS_CONFIRM, SKIP_BUTTONS, o),
+      );
+      if (confirmed !== null) {
         termsAccepted = true;
-        consentPending = true;
+        reached.add("terms_confirmed");
         step("terms of use confirmed");
         return;
       }
@@ -549,16 +702,16 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
     if (!deviceChosen && !DEVICE_PROMPT.test(await page.text())) return;
     if (
       !deviceChosen &&
-      (await page.clickByText(DEVICE_CHOICE, OTHER_DEVICES, { anyElement: true })) !== null
+      (await act(page, (o) =>
+        page.clickByText(DEVICE_CHOICE, OTHER_DEVICES, { ...o, anyElement: true }),
+      )) !== null
     ) {
       deviceChosen = true;
-      consentPending = true;
+      reached.add("device_chosen");
       step("device MC Smart chosen");
       return;
     }
-    if ((await page.clickButtonByText(HINT_BUTTON, SKIP_BUTTONS)) !== null) {
-      consentPending = true;
-    }
+    await act(page, (o) => page.clickButtonByText(HINT_BUTTON, SKIP_BUTTONS, o));
   };
 
   try {
@@ -570,22 +723,26 @@ export async function browserLogin(options: BrowserLoginOptions): Promise<Browse
     await context.page.goto(ssoLoginUrl(options.editorPath, baseUrl));
 
     while (now() < deadline) {
-      const cookie = await readSessionCookie(context, options.editorPath, baseUrl);
-      if (cookie !== null) {
-        step("logged in");
-        return { ok: true, cookie, ...consent() };
-      }
       const page = context.page;
       const url = page.url();
+      if (onLoginHost(url, loginHosts)) {
+        reached.add("page_reached");
+      } else if (reached.has("page_reached") && hostOf(url) === hostOf(baseUrl)) {
+        reached.add("redirect_reached");
+      }
+      const cookie = await readSessionCookie(context, options.editorPath, baseUrl);
+      if (cookie !== null) {
+        reached.add("cookies_received");
+        step("logged in");
+        return { ok: true, cookie, ...notes() };
+      }
       if (url !== lastUrl) {
         lastUrl = url;
-        consentPending = true;
+        watchDialogsUntil = now() + CONSENT_WINDOW_MS;
       }
-      if (consentPending) {
-        consentPending = false;
-        await dismissConsent(context);
-        continue;
-      }
+      // With credentials the flow looks for dialogs on every poll, also while it waits for the
+      // form; without, a person may be at the window, so only for a while after a navigation.
+      if (credentials || now() < watchDialogsUntil) await dismissDialogs(page);
       if (credentials) {
         if (emailSent || passwordSent) {
           const outcome = await answer(page, credentials.email);

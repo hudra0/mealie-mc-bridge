@@ -3,6 +3,7 @@ import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../testing/temp.js";
 import { BrowserActionError } from "./browser-errors.js";
+import { CONSENT_DIALOG, DIALOG_SELECTOR } from "./login-pages.js";
 import {
   PROFILE_LOCKS,
   PlaywrightBrowser,
@@ -25,6 +26,8 @@ interface FakeElement {
 
 // Elements Playwright's getByText finds, under this key.
 const TEXT_KEY = "getByText";
+// The selector the adapter reads buttons with.
+const BUTTONS = 'button, [role="button"]';
 
 function fakeChromium(
   elements: Record<string, FakeElement[]>,
@@ -33,11 +36,14 @@ function fakeChromium(
   fillError: Error | null = null,
 ) {
   const actions: string[] = [];
+  // The timeout of every fill and click, in order.
+  const timeouts: Array<number | undefined> = [];
   const listOf = (items: FakeElement[], selector = "") => {
     const at = (index: number): Record<string, unknown> => ({
       isVisible: () => Promise.resolve(items[index]?.visible ?? false),
-      fill: (value: string) => {
+      fill: (value: string, options?: { timeout?: number }) => {
         if (fillError) return Promise.reject(fillError);
+        timeouts.push(options?.timeout);
         actions.push(`fill ${selector} ${value.length}`);
         return Promise.resolve();
       },
@@ -45,7 +51,8 @@ function fakeChromium(
         actions.push(`press ${selector} ${key}`);
         return Promise.resolve();
       },
-      click: () => {
+      click: (options?: { timeout?: number }) => {
+        timeouts.push(options?.timeout);
         actions.push(`click ${items[index]?.text ?? ""}`);
         items[index]?.onClick?.();
         return Promise.resolve();
@@ -55,6 +62,14 @@ function fakeChromium(
       innerText: () => Promise.resolve(items[index]?.text ?? ""),
       isEnabled: () => Promise.resolve(items[index]?.enabled ?? true),
       getAttribute: (name: string) => Promise.resolve(items[index]?.attributes?.[name] ?? null),
+      elementHandle: () =>
+        Promise.resolve({
+          waitForElementState: (state: string, options?: { timeout?: number }) => {
+            actions.push(`wait ${state} ${options?.timeout}`);
+            return Promise.resolve();
+          },
+          dispose: () => Promise.resolve(),
+        }),
     });
     return {
       count: () => Promise.resolve(items.length),
@@ -91,7 +106,7 @@ function fakeChromium(
     ),
     launchPersistentContext: vi.fn(() => Promise.resolve(context)),
   };
-  return { chromium, actions, page, context };
+  return { chromium, actions, timeouts, page, context };
 }
 
 // The fake has the shape the adapter uses, not Playwright's full types.
@@ -318,15 +333,6 @@ describe("PlaywrightBrowser", () => {
           { visible: true, text: " Zustimmen " },
           { visible: false, text: "Ablehnen" },
         ],
-        '[role="dialog"] button, [role="alertdialog"] button, [aria-modal="true"] button, dialog button':
-          [
-            { visible: true, text: "Mehr" },
-            { visible: true, text: "×" },
-          ],
-        "button[aria-label]": [
-          { visible: true, text: "", attributes: { "aria-label": "Menü" } },
-          { visible: true, text: "", attributes: { "aria-label": "Dialog schließen" } },
-        ],
         '[role="alert"]': [
           { visible: true, text: "" },
           { visible: true, text: "x".repeat(400) },
@@ -348,14 +354,144 @@ describe("PlaywrightBrowser", () => {
       "Alle ablehnen",
     );
     expect(await page.clickButtonByText(/^weiter/i, /zustimmen/i)).toBeNull();
-    expect(await page.closeDialog(/schließen/i, /^×$/)).toBe(true);
-    expect(await page.closeDialog(/schließen/i, /^✕$/)).toBe(true);
-    expect(await page.closeDialog(/close/i, /^✕$/)).toBe(false);
     expect(await page.visibleMessage('[role="alert"]', 300)).toBe("Passwort falsch");
     expect(await page.visibleMessage(".none", 300)).toBeNull();
     expect(await page.frameSources()).toEqual(["https://example.com/captcha"]);
     expect(await page.text()).toBe("Anmelden");
-    expect(fake.actions).toEqual(["click Alle ablehnen", "click ×", "click "]);
+    expect(fake.actions).toEqual(["click Alle ablehnen"]);
+  });
+
+  it("declines the Lidl consent dialog inside it and ignores its hidden accept button", async () => {
+    const fake = fakeChromium({
+      // The hidden fallback button matches a consent selector too; it is not a dialog.
+      [DIALOG_SELECTOR]: [
+        { visible: false, text: "accept", attributes: { id: "cookie-consent-accept" } },
+        {
+          visible: false,
+          children: { [BUTTONS]: [{ visible: true, text: "Ablehnen" }] },
+        },
+        {
+          visible: true,
+          children: {
+            [BUTTONS]: [
+              { visible: true, text: "", attributes: { "aria-label": "Schließen" } },
+              { visible: false, text: "accept" },
+              { visible: true, text: "Akzeptieren" },
+              { visible: true, text: "Ablehnen und mehr erfahren" },
+              { visible: true, text: "Ablehnen" },
+            ],
+          },
+        },
+      ],
+      [BUTTONS]: [
+        { visible: false, text: "accept" },
+        { visible: true, text: "Akzeptieren" },
+      ],
+    });
+    const { page } = await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    expect(await page.dismissDialog(CONSENT_DIALOG, { close: true, waitMs: 3000 })).toBe(
+      "declined",
+    );
+    expect(fake.actions).toEqual(["click Ablehnen", "wait hidden 3000"]);
+  });
+
+  it("closes a dialog without a decline button by its close control, never by accept", async () => {
+    const dialog = (buttons: FakeElement[]) => ({
+      [DIALOG_SELECTOR]: [{ visible: true, children: { [BUTTONS]: buttons } }],
+    });
+    const labelled = fakeChromium(
+      dialog([
+        {
+          visible: true,
+          text: "Akzeptieren",
+          attributes: { "aria-label": "Akzeptieren und schließen" },
+        },
+        { visible: false, text: "", attributes: { "aria-label": "Schließen" } },
+        { visible: true, text: "", attributes: { "aria-label": "Menü" } },
+        { visible: true, text: "", attributes: { "aria-label": "Schließen" } },
+      ]),
+    );
+    const open = async (fake: ReturnType<typeof fakeChromium>) =>
+      (
+        await new PlaywrightBrowser({ load: loader(fake.chromium) }).open({
+          profileDir: "/tmp/profile",
+          headless: true,
+        })
+      ).page;
+    const page = await open(labelled);
+    expect(await page.dismissDialog(CONSENT_DIALOG, { close: false, waitMs: 3000 })).toBeNull();
+    expect(labelled.actions).toEqual([]);
+    expect(await page.dismissDialog(CONSENT_DIALOG, { close: true, waitMs: 3000 })).toBe("closed");
+    expect(labelled.actions).toEqual(["click ", "wait hidden 3000"]);
+
+    const symbol = fakeChromium(dialog([{ visible: true, text: "×" }]));
+    expect(
+      await (await open(symbol)).dismissDialog(CONSENT_DIALOG, { close: true, waitMs: 3000 }),
+    ).toBe("closed");
+    expect(symbol.actions).toEqual(["click ×", "wait hidden 3000"]);
+
+    const acceptOnly = fakeChromium(dialog([{ visible: true, text: "Alle akzeptieren" }]));
+    expect(
+      await (await open(acceptOnly)).dismissDialog(CONSENT_DIALOG, { close: true, waitMs: 3000 }),
+    ).toBeNull();
+    expect(acceptOnly.actions).toEqual([]);
+  });
+
+  it("declines a consent page in a frame and leaves a page without a dialog alone", async () => {
+    const framed = fakeChromium({}, null, [
+      {
+        [BUTTONS]: [
+          { visible: true, text: "Akzeptieren" },
+          { visible: true, text: "Alle ablehnen" },
+        ],
+      },
+    ]);
+    const first = await new PlaywrightBrowser({ load: loader(framed.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    expect(await first.page.dismissDialog(CONSENT_DIALOG, { close: true, waitMs: 3000 })).toBe(
+      "declined",
+    );
+    expect(framed.actions).toEqual(["click Alle ablehnen"]);
+
+    const plain = fakeChromium({ [BUTTONS]: [{ visible: true, text: "Weiter" }] });
+    const second = await new PlaywrightBrowser({ load: loader(plain.chromium) }).open({
+      profileDir: "/tmp/profile",
+      headless: true,
+    });
+    expect(
+      await second.page.dismissDialog(CONSENT_DIALOG, { close: true, waitMs: 3000 }),
+    ).toBeNull();
+    expect(plain.actions).toEqual([]);
+  });
+
+  it("prefers the exact button text and passes the timeout of the first try", async () => {
+    const fake = fakeChromium({
+      [BUTTONS]: [
+        { visible: true, text: "Weiter mit Google" },
+        { visible: true, text: "Weiter" },
+      ],
+      'input[type="email"]': [{ visible: true }],
+    });
+    const { page } = await new PlaywrightBrowser({
+      load: loader(fake.chromium),
+      actionTimeoutMs: 5000,
+    }).open({ profileDir: "/tmp/profile", headless: true });
+    expect(
+      await page.clickButtonByText(/^weiter/i, /^$/, { exact: /^weiter$/i, timeoutMs: 1000 }),
+    ).toBe("Weiter");
+    expect(await page.clickButtonByText(/^weiter/i, /^$/)).toBe("Weiter mit Google");
+    expect(await page.fillVisible('input[type="email"]', "x", { timeoutMs: 1000 })).toBe(true);
+    expect(fake.actions).toEqual([
+      "click Weiter",
+      "click Weiter mit Google",
+      'fill input[type="email"] 1',
+    ]);
+    expect(fake.timeouts).toEqual([1000, 5000, 1000]);
   });
   it("clicks links and cards by their text and skips disabled buttons", async () => {
     const controls =

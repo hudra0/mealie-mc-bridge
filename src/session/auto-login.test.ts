@@ -121,6 +121,32 @@ describe("run", () => {
     expect(autoLogin.status().last).toMatchObject({ ok: true, manual: false, code: null });
   });
 
+  it("records the steps the login reached and names the last one in the reason", async () => {
+    const { autoLogin, accept } = setup({
+      script: { form: "continue", consent: ["Ablehnen"], siteError: "Passwort ist falsch." },
+    });
+    const run = await autoLogin.run({ manual: true, accept });
+    expect(run).toMatchObject({
+      status: "failed",
+      attempt: {
+        code: "wrong_password",
+        detail: expect.stringMatching(/; stuck after: password entered$/) as string,
+        progress: {
+          reached: [
+            "page_reached",
+            "consent_dismissed",
+            "email_entered",
+            "continue_clicked",
+            "password_page",
+            "password_entered",
+          ],
+          consentDismissals: 1,
+        },
+      },
+    });
+    expect(autoLogin.status().last?.progress?.consentDismissals).toBe(1);
+  });
+
   it("records a consent dialog the login declined", async () => {
     const { autoLogin, accept } = setup({
       script: { form: "both", loginWorks: true, consent: ["Ablehnen"] },

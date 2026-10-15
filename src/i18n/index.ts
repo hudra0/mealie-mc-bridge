@@ -48,6 +48,19 @@ export type AutoLoginFailureName =
   | "verify_failed"
   | "error";
 
+// The steps of a browser login (LOGIN_STEPS in src/session/browser-login.ts).
+export type LoginStepName =
+  | "page_reached"
+  | "consent_dismissed"
+  | "email_entered"
+  | "continue_clicked"
+  | "password_page"
+  | "password_entered"
+  | "redirect_reached"
+  | "terms_confirmed"
+  | "device_chosen"
+  | "cookies_received";
+
 export type SessionStateName = "valid" | "invalid" | "expired" | "unknown";
 
 // How a recipe sits in the Monsieur Cuisine account: a draft, or saved on the device.
@@ -348,6 +361,10 @@ export interface AdminMessages {
     consentDismissed: string;
     termsAccepted: string;
     deviceChosen: string;
+    // The steps an attempt reached, as a short list; the dismissed dialogs with their count.
+    progressTitle: string;
+    steps: Readonly<Record<LoginStepName, string>>;
+    consentSteps(count: number): string;
     screenshot: string;
     nextAttempt: string;
     running: string;

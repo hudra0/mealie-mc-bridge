@@ -1091,16 +1091,71 @@ describe("settings page", () => {
     expect((await get(link ?? "", {})).statusCode).toBe(303);
   });
 
-  it("shows a wrong password and a declined consent dialog", async () => {
+  it("shows a wrong password, the steps reached and the declined consent dialogs", async () => {
     svc = testService({
-      browser: { form: "both", consent: ["Ablehnen"], siteError: "Passwort ist falsch." },
+      browser: {
+        form: "both",
+        consent: ["Ablehnen"],
+        consentAgainAfterEmail: true,
+        siteError: "Passwort ist falsch.",
+      },
     });
     svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
     await svc.session.loginNow();
     const body = (await get("/admin/settings")).body;
     expect(body).toContain("The site reported a wrong password.");
     expect(body).toContain("wrong password reported by the site");
-    expect(body).toContain("A consent dialog was declined on the way.");
+    expect(body).toContain("stuck after: password entered");
+    expect(body).toContain("Steps reached:");
+    const steps = [...body.matchAll(/<li>([^<]+)<\/li>/g)].map((match) => match[1]);
+    expect(steps).toEqual(
+      expect.arrayContaining([
+        "login page reached",
+        "consent dialog declined",
+        "e-mail address entered",
+        "password page reached",
+        "password entered",
+      ]),
+    );
+    expect(steps.indexOf("login page reached")).toBeLessThan(steps.indexOf("password entered"));
+    // The list replaces the line older records show.
+    expect(body).not.toContain("A consent dialog was declined on the way.");
+  });
+
+  it("leaves out a stored step it does not know", async () => {
+    svc = testService();
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    svc.store.settings.setJson("autologin.last_attempt", {
+      at: "2026-10-15T10:00:00.000Z",
+      ok: false,
+      manual: true,
+      code: "not_logged_in",
+      detail: "no login within the time limit",
+      screenshot: null,
+      progress: { reached: ["page_reached", "future_step"], consentDismissals: 0 },
+    });
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("<li>login page reached</li>");
+    expect(body).not.toContain("future_step");
+    expect(body).not.toContain("<li>undefined</li>");
+  });
+
+  it("counts the declined consent dialogs in the list, in German", async () => {
+    svc = testService({
+      config: { UI_LANGUAGE: "de" },
+      browser: {
+        form: "continue",
+        consent: ["Ablehnen"],
+        consentAgainAfterEmail: true,
+        siteError: "Passwort ist falsch.",
+      },
+    });
+    svc.autoLogin.saveCredentials("cook@example.com", PASSWORD);
+    await svc.session.loginNow();
+    const body = (await get("/admin/settings")).body;
+    expect(body).toContain("Erreichte Schritte:");
+    expect(body).toContain("<li>Zustimmungsdialog abgelehnt (2×)</li>");
+    expect(body).toContain("<li>Weiter geklickt</li>");
   });
 
   it("says when the login confirmed the terms and chose the device", async () => {

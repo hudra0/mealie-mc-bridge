@@ -323,11 +323,15 @@ export const de: Messages = {
         browser_unavailable: "Der Browser ist nicht verfügbar.",
         no_login_form:
           "Es kam kein Anmeldeformular: Die Seite hat sich geändert, oder ein Captcha oder eine Zustimmungsseite kam dazwischen.",
+        wrong_password: "Die Seite meldet ein falsches Passwort. Prüfe das hinterlegte Konto.",
+        verification_required:
+          "Die Seite verlangt ein Captcha oder einen Bestätigungscode. Melde dich einmal von Hand mit dem Anmelde-Helfer an.",
         not_logged_in:
           "Das Formular wurde abgeschickt, aber es kam keine Sitzung: falsches Passwort, Captcha oder zweiter Faktor.",
         verify_failed: "Die Anmeldung lief durch, aber Monsieur Cuisine lehnt die neue Sitzung ab.",
         error: "Der Browser ist ausgefallen.",
       },
+      consentDismissed: "Unterwegs wurde ein Zustimmungsdialog abgelehnt.",
       screenshot: "Bildschirmfoto der Seite",
       nextAttempt: "Nächster automatischer Versuch frühestens",
       running: "Eine Anmeldung läuft.",

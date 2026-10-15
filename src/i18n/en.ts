@@ -320,11 +320,15 @@ export const en: Messages = {
         browser_unavailable: "The browser is not available.",
         no_login_form:
           "No login form showed up: the page changed, or a captcha or consent screen came first.",
+        wrong_password: "The site reported a wrong password. Check the stored account.",
+        verification_required:
+          "The site asked for a captcha or a verification code. Log in by hand once with the login helper.",
         not_logged_in:
           "The form was sent, but no session followed: a wrong password, a captcha or a second factor.",
         verify_failed: "The site logged in, but Monsieur Cuisine refused the new session.",
         error: "The browser failed.",
       },
+      consentDismissed: "A consent dialog was declined on the way.",
       screenshot: "Screenshot of the page",
       nextAttempt: "Next automatic attempt not before",
       running: "A login is running.",

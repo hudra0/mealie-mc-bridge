@@ -2,6 +2,13 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+### Fixed
+
+- Automatic login: a consent dialog on accounts.lidl.com (or the cookie banner on monsieur-cuisine.com) no longer blocks the form. After every navigation the login looks for such a dialog for up to 5 seconds and declines it, or closes it with its close button; it never clicks an accept button, also not as a welcome screen button. The decline words cover all site languages, independent of `MC_LOCALE`.
+- The login fills only an enabled e-mail field, clicks "Weiter" (or "Continue" and the like) in a login in two steps, and after sending the form ends with a precise reason: a wrong password the site reports, another error message of the site, or a captcha or verification request. The settings page shows these reasons and notes a declined consent dialog; the screenshot of a failed attempt stays.
+
 ## 0.2.0 (2026-10-15)
 
 ### Added

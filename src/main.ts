@@ -9,7 +9,7 @@ import { catalogMatchRules } from "./ingredients/catalog-match.js";
 import { loggerOptions } from "./logger.js";
 import { McClient, McTransport, StaticSessionProvider } from "./mc/index.js";
 import { MealieClient } from "./mealie/index.js";
-import { createNotifier } from "./notify/email.js";
+import { Mailer } from "./notify/mailer.js";
 import { loadConverter } from "./pipeline/converter-port.js";
 import { IngredientResolver } from "./pipeline/ingredient-resolver.js";
 import { loadPipelineLocale } from "./pipeline/locale.js";
@@ -82,7 +82,12 @@ async function main(): Promise<void> {
     );
   }
   const mealie = new MealieClient(config.MEALIE_URL, config.MEALIE_API_TOKEN, fetch, { logger });
-  const notifier = createNotifier(config, logger, {
+  // SMTP_URL wins over the mail settings of the settings page; saving them there swaps the
+  // transport without a restart.
+  const mailer = new Mailer({
+    env: config,
+    settings: store.settings,
+    logger,
     recipeUrl: (job) => (job.mealieSlug ? mealieRecipeLink(config, job.mealieSlug) : null),
   });
   const transport = new McTransport({
@@ -114,7 +119,7 @@ async function main(): Promise<void> {
       new McClient(transport, new StaticSessionProvider(cookie), {
         editorPath: mcLocale.editorPath,
       }).getCurrentUser(),
-    notifier,
+    notifier: mailer,
     logger,
     seedCookie: config.MC_COOKIE,
     checkIntervalMs: config.SESSION_CHECK_MINUTES * 60_000,
@@ -141,7 +146,8 @@ async function main(): Promise<void> {
     converter,
     limits,
     locale,
-    notifier,
+    notifier: mailer,
+    mail: mailer,
     ingredients,
     logger,
     adminSessionKey: settingsKey,

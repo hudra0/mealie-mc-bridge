@@ -1,8 +1,9 @@
 // The routes of the settings page (views/settings.ts): the page with its tabs, the Lidl
-// account (save, delete, test login, screenshots of failed attempts) and the test mail. It
-// runs inside the admin plugin, so the login, the form token and the host check apply.
+// account (save, delete, test login, screenshots of failed attempts) and the mail settings
+// (save, delete, test mail). It runs inside the admin plugin, so the login, the form token
+// and the host check apply.
 //
-// The password is never shown, logged or sent back to the browser; the field stays empty
+// The passwords are never shown, logged or sent back to the browser; the fields stay empty
 // and an empty field keeps the stored password.
 
 import { readFile } from "node:fs/promises";
@@ -10,7 +11,8 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { errorMessage } from "../app-logger.js";
 import type { ConfigEntry } from "../config-reference.js";
 import type { SavedStatus } from "../i18n/index.js";
-import type { Notifier } from "../notify/email.js";
+import type { MailFieldErrors, MailFormValues } from "../notify/mail-settings.js";
+import type { MailPort } from "../notify/mailer.js";
 import {
   InvalidCredentialsError,
   type AutoLogin,
@@ -45,8 +47,8 @@ export interface SettingsDeps {
   mealieUrl: string | null;
   ai: AiInfo | null;
   limits: { jobs: number; costUsd: number };
-  notifier: Pick<Notifier, "testMail"> | null;
-  notifyRecipient: string | null;
+  // Null when the service runs without the mailer.
+  mail: MailPort | null;
   dataDir: string | null;
 }
 
@@ -63,6 +65,7 @@ export function registerSettings(
 ): (request: FastifyRequest, reply: FastifyReply, extra?: RenderExtra) => Promise<FastifyReply> {
   const { app, t, render, notice, view } = context;
   const autoLogin = deps.autoLogin;
+  const mail = deps.mail;
   let lastTestMail = 0;
 
   const show = async (
@@ -70,6 +73,7 @@ export function registerSettings(
     reply: FastifyReply,
     extra: RenderExtra = {},
     tab?: SettingsTab,
+    mailForm: { values: MailFormValues; errors: MailFieldErrors } | null = null,
   ) => {
     const ctx = view(request);
     const status = autoLogin?.status() ?? null;
@@ -100,10 +104,7 @@ export function registerSettings(
             month: deps.jobs.summarySince(monthStart),
             today: deps.jobs.usageSince(new Date(now - DAY_MS)),
           },
-          notify: {
-            recipient: deps.notifyRecipient,
-            canTest: deps.notifier?.testMail !== undefined,
-          },
+          notify: mail ? { status: mail.status(), form: mailForm } : null,
           system: { version, uptimeMs: process.uptime() * 1000, dataDir: deps.dataDir },
         },
         ctx,
@@ -123,11 +124,33 @@ export function registerSettings(
   // The routes of mail and the automatic login exist in every setup, so a visitor without a
   // login cannot tell from the answer whether they are configured; after the login they say
   // so when they are not.
-  const notifier = deps.notifier;
-  const sendTestMail =
-    notifier?.testMail && deps.notifyRecipient ? notifier.testMail.bind(notifier) : null;
+  const mailMissing = (request: FastifyRequest, reply: FastifyReply) =>
+    show(request, reply, { status: 404, error: t.settings.notify.unavailable }, "notify");
+  const mailFromEnv = (request: FastifyRequest, reply: FastifyReply) =>
+    show(request, reply, { status: 409, error: t.errors.mailFromEnv }, "notify");
+
+  // Saves the mail settings; the next mail goes out with them.
+  app.post("/admin/settings/notify", (request, reply) => {
+    if (mail === null) return mailMissing(request, reply);
+    const result = mail.save((request.body ?? {}) as Record<string, unknown>);
+    if (result.status === "env") return mailFromEnv(request, reply);
+    if (result.status === "invalid") {
+      return show(request, reply, { status: 400, error: t.errors.mailInvalid }, "notify", {
+        values: result.values,
+        errors: result.errors,
+      });
+    }
+    return reply.redirect("/admin/settings?tab=notify&notice=mail-saved", 303);
+  });
+
+  app.post("/admin/settings/notify/delete", (request, reply) => {
+    if (mail === null) return mailMissing(request, reply);
+    if (mail.delete() === "env") return mailFromEnv(request, reply);
+    return reply.redirect("/admin/settings?tab=notify&notice=mail-deleted", 303);
+  });
+
   app.post("/admin/settings/notify/test", async (request, reply) => {
-    if (sendTestMail === null) {
+    if (mail === null || mail.status().source === "off") {
       return show(request, reply, { status: 404, error: t.errors.mailUnavailable }, "notify");
     }
     const at = context.now().getTime();
@@ -136,7 +159,7 @@ export function registerSettings(
     }
     lastTestMail = at;
     try {
-      await sendTestMail();
+      await mail.testMail();
     } catch (error) {
       return show(
         request,

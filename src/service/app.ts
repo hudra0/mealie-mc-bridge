@@ -7,6 +7,7 @@ import type { AppLogger } from "../app-logger.js";
 import type { McRecipeSink } from "../mc/index.js";
 import type { MealieClient } from "../mealie/index.js";
 import type { Notifier } from "../notify/email.js";
+import type { MailPort } from "../notify/mailer.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
 import type { PipelineLocale } from "../pipeline/locale.js";
@@ -40,14 +41,12 @@ export interface ServiceConfig extends PipelineConfig {
   // Daily limits of the webhook; without them it queues every click.
   JOB_DAILY_LIMIT?: number | undefined;
   JOB_DAILY_COST_LIMIT_USD?: number | undefined;
-  // What the settings page shows of the language model, the mail and the data directory.
+  // What the settings page shows of the language model and the data directory.
   LLM_PROVIDER?: "openai" | "anthropic" | undefined;
   OPENAI_MODEL?: string | undefined;
   OPENAI_REASONING_EFFORT?: string | undefined;
   ANTHROPIC_MODEL?: string | undefined;
   LLM_MAX_CORRECTIONS?: number | undefined;
-  SMTP_URL?: string | undefined;
-  NOTIFY_EMAIL?: string | undefined;
   DATA_DIR?: string | undefined;
 }
 
@@ -62,7 +61,10 @@ export interface ServiceParts {
   limits: DeviceLimits;
   // The locale pack of MC_LOCALE and the category words of every pack.
   locale: PipelineLocale;
+  // The session manager and the pipeline report through it; the mailer in production.
   notifier: Notifier;
+  // The mail settings of the settings page: the same mailer. Left out, the page says so.
+  mail?: MailPort;
   // Resolves the systemIngredientId of each ingredient; without it, none is set.
   ingredients?: IngredientResolverPort;
   // The app logger is taken from Fastify once the server exists.
@@ -229,8 +231,7 @@ export function buildService(parts: ServiceParts): Service {
       jobs: config.JOB_DAILY_LIMIT ?? 0,
       costUsd: config.JOB_DAILY_COST_LIMIT_USD ?? 0,
     },
-    notifier: parts.notifier,
-    notifyRecipient: config.SMTP_URL && config.NOTIFY_EMAIL ? config.NOTIFY_EMAIL : null,
+    ...(parts.mail ? { mail: parts.mail } : {}),
     ...(config.DATA_DIR ? { dataDir: config.DATA_DIR } : {}),
     ...(parts.assets ? { assets: parts.assets } : {}),
   });

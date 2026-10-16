@@ -36,7 +36,7 @@ import { errorMessage, type AppLogger } from "../app-logger.js";
 import { messages, type AdminMessages, type UiLanguage } from "../i18n/index.js";
 import { McSessionError, type McRecipeSink } from "../mc/index.js";
 import { quantizeScale, type MealieClient } from "../mealie/index.js";
-import type { Notifier } from "../notify/email.js";
+import type { MailPort } from "../notify/mailer.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import {
   checkConverted,
@@ -137,10 +137,8 @@ export interface AdminOptions {
   ai?: AiInfo;
   // JOB_DAILY_LIMIT and JOB_DAILY_COST_LIMIT_USD; 0 is no limit.
   dailyLimits?: { jobs: number; costUsd: number };
-  // The mail notifier; its testMail backs the test button of the settings page.
-  notifier?: Pick<Notifier, "testMail">;
-  // NOTIFY_EMAIL when mails are configured, else null.
-  notifyRecipient?: string | null;
+  // The mail settings and the test mail of the settings page; left out, that part says so.
+  mail?: MailPort;
   // DATA_DIR, shown on the settings page.
   dataDir?: string;
   // The built stylesheet, script, font and icons; read from dist/assets when left out.
@@ -652,8 +650,7 @@ export function admin(
     mealieUrl: options.mealieUrl ?? null,
     ai: options.ai ?? null,
     limits: options.dailyLimits ?? { jobs: 0, costUsd: 0 },
-    notifier: options.notifier ?? null,
-    notifyRecipient: options.notifyRecipient ?? null,
+    mail: options.mail ?? null,
     dataDir: options.dataDir ?? null,
   });
 

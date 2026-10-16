@@ -5,6 +5,7 @@
 // a test compares them at run time as well. Texts that end up in Markdown or HTML are plain
 // here; the callers escape what they insert.
 
+import type { MailErrorCode, MailEvent, MailSecurity } from "../notify/mail-settings.js";
 import type { JobEventCode, JobEventParams } from "../store/job-events.js";
 import { de } from "./de.js";
 import { en } from "./en.js";
@@ -214,6 +215,9 @@ export interface AdminMessages {
     credentialsInvalid(field: "email" | "password"): string;
     testMailFailed(reason: string): string;
     mailUnavailable: string;
+    // Saving or deleting mail settings while SMTP_URL decides.
+    mailFromEnv: string;
+    mailInvalid: string;
     server: string;
     badRequest: string;
   };
@@ -566,11 +570,49 @@ export interface AdminMessages {
       state: string;
       on: string;
       off: string;
+      // Where the mail settings come from.
+      fromEnv: string;
+      fromPage: string;
+      server: string;
+      security: string;
+      securityNames: Readonly<Record<MailSecurity, string>>;
+      insecureAllowed: string;
       recipient: string;
+      sender: string;
+      events: string;
+      eventNames: Readonly<Record<MailEvent, string>>;
+      noEvents: string;
       test: string;
       sending: string;
       what: string;
       setUp: string;
+      unreadable: string;
+      unavailable: string;
+      formTitle: string;
+      // How to edit the settings here while the environment decides.
+      envHint: string;
+      host: string;
+      hostHint: string;
+      port: string;
+      securityHint: string;
+      allowInsecure: string;
+      allowInsecureHint: string;
+      username: string;
+      usernameHint: string;
+      password: string;
+      passwordHint: string;
+      passwordStored: string;
+      from: string;
+      fromHint: string;
+      to: string;
+      toHint: string;
+      save: string;
+      dangerZone: string;
+      remove: string;
+      removeHint: string;
+      removeConfirm: string;
+      // One text per problem of a form field (src/notify/mail-settings.ts).
+      errors: Readonly<Record<MailErrorCode, string>>;
     };
     system: {
       title: string;

@@ -253,6 +253,8 @@ export const de: Messages = {
         "Ein manueller Test läuft höchstens alle 3 Minuten. Bitte gleich noch einmal versuchen.",
       "test-mail-sent": "Testmail gesendet. Sieh im Postfach nach.",
       "test-mail-cooldown": "Eine Testmail geht höchstens einmal pro Minute hinaus.",
+      "mail-saved": "Mail-Einstellungen verschlüsselt gespeichert. Sie gelten ab sofort.",
+      "mail-deleted": "Mail-Einstellungen gelöscht. Es gehen keine Mails mehr hinaus.",
     },
     plain: {
       unknownHost: "Unbekannter Hostname. Trage ihn in ADMIN_HOSTS ein oder nutze die IP-Adresse.",
@@ -288,7 +290,11 @@ export const de: Messages = {
           ? "Das Konto wurde nicht gespeichert: Die E-Mail-Adresse ist ungültig."
           : "Das Konto wurde nicht gespeichert: Das Passwort fehlt.",
       testMailFailed: (reason) => `Die Testmail ging nicht hinaus: ${reason}`,
-      mailUnavailable: "Mails sind nicht eingerichtet: SMTP_URL und NOTIFY_EMAIL fehlen.",
+      mailUnavailable:
+        "Mails sind nicht eingerichtet: Trage auf dieser Seite einen Mailserver ein oder setze SMTP_URL und NOTIFY_EMAIL.",
+      mailFromEnv:
+        "Die Mail-Einstellungen kommen aus der Umgebung (SMTP_URL) und lassen sich hier nicht ändern.",
+      mailInvalid: "Die Mail-Einstellungen wurden nicht gespeichert. Prüfe die markierten Felder.",
       server: "Die Bridge konnte diese Anfrage nicht bearbeiten. Details stehen im Log.",
       badRequest: "Die Bridge konnte diese Anfrage nicht lesen.",
     },
@@ -759,12 +765,73 @@ export const de: Messages = {
         state: "Zustand",
         on: "An",
         off: "Aus",
+        fromEnv: "aus der Umgebung",
+        fromPage: "auf dieser Seite gespeichert",
+        server: "Server",
+        security: "Verschlüsselung",
+        securityNames: { starttls: "STARTTLS", tls: "SSL/TLS", none: "Keine" },
+        insecureAllowed: "unverschlüsselt erlaubt",
         recipient: "Empfänger",
+        sender: "Absender",
+        events: "Benachrichtigungen",
+        eventNames: {
+          session: "Sitzung abgelaufen oder ungültig",
+          job: "Auftrag endgültig fehlgeschlagen",
+          health: "Sitzungsprüfung scheitert",
+        },
+        noEvents: "Keine",
         test: "Testmail senden",
         sending: "Wird gesendet…",
         what: "Mails gehen hinaus, wenn die Sitzung abläuft, ein Auftrag endgültig fehlschlägt oder die Sitzungsprüfung immer wieder scheitert.",
         setUp:
-          "Setze SMTP_URL und NOTIFY_EMAIL in der .env, um Mails zu abgelaufenen Sitzungen und fehlgeschlagenen Aufträgen zu bekommen.",
+          "Trage hier einen Mailserver ein oder setze SMTP_URL und NOTIFY_EMAIL in der Umgebung, um Mails zu abgelaufenen Sitzungen und fehlgeschlagenen Aufträgen zu bekommen.",
+        unreadable:
+          "Die gespeicherten Mail-Einstellungen lassen sich nicht lesen; vermutlich hat sich SETTINGS_KEY geändert. Bis du sie neu speicherst, gehen keine Mails hinaus.",
+        unavailable: "Mail-Einstellungen sind in dieser Installation nicht verfügbar.",
+        formTitle: "Mailserver",
+        envHint:
+          "Um die Werte hier zu bearbeiten, entferne SMTP_URL aus der Umgebung und starte die Bridge neu.",
+        host: "Server",
+        hostHint: "Host-Name oder IP-Adresse, zum Beispiel mail.example.com.",
+        port: "Port",
+        securityHint:
+          "STARTTLS meist auf Port 587, SSL/TLS meist auf Port 465. Ohne Verschlüsselung gehen Passwort und Mails im Klartext durchs Netz.",
+        allowInsecure: "Unverschlüsselt erlauben",
+        allowInsecureHint:
+          "Nur für einen Mailserver auf demselben Rechner oder in einem vertrauenswürdigen Netz. Mit STARTTLS sendet die Bridge dann auch, wenn der Server es nicht anbietet.",
+        username: "Benutzername",
+        usernameHint: "Leer lassen, wenn der Server keine Anmeldung verlangt.",
+        password: "Passwort",
+        passwordHint:
+          "Wird verschlüsselt gespeichert und nie angezeigt. Nach einem Wechsel von Server oder Benutzername neu eingeben.",
+        passwordStored: "gespeichert; leer lassen, um es zu behalten",
+        from: "Absender",
+        fromHint: "Leer lassen für den ersten Empfänger. Mit Namen: Bridge <bridge@example.com>.",
+        to: "Empfänger",
+        toHint: "Eine oder mehrere Adressen, durch Kommas getrennt, höchstens 10.",
+        save: "Speichern",
+        dangerZone: "Mail-Einstellungen löschen",
+        remove: "Mail-Einstellungen löschen",
+        removeHint:
+          "Entfernt Server, Zugangsdaten und Empfänger. Danach gehen keine Mails mehr hinaus.",
+        removeConfirm:
+          "Die Bridge vergisst Mailserver, Zugangsdaten und Empfänger und sendet keine Mails mehr.",
+        errors: {
+          host_required: "Bitte einen Server angeben.",
+          host_invalid: "Nur Host-Name oder IP-Adresse, ohne smtp:// und ohne Port.",
+          port_invalid: "Ein Port von 1 bis 65535.",
+          security_invalid: "Bitte STARTTLS, SSL/TLS oder Keine wählen.",
+          security_insecure: "Ohne Verschlüsselung nur mit „Unverschlüsselt erlauben“.",
+          username_invalid: "Höchstens 254 Zeichen, ohne Steuerzeichen.",
+          password_required: "Bitte das Passwort eingeben.",
+          password_reenter:
+            "Server oder Benutzername sind neu: Bitte das Passwort noch einmal eingeben.",
+          password_invalid: "Höchstens 1024 Zeichen.",
+          from_invalid: "Eine E-Mail-Adresse, gern mit Namen: Bridge <bridge@example.com>.",
+          to_required: "Bitte mindestens einen Empfänger angeben.",
+          to_invalid: "Mindestens eine Adresse ist ungültig.",
+          to_too_many: "Höchstens 10 Empfänger.",
+        },
       },
       system: {
         title: "System",

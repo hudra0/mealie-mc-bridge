@@ -323,6 +323,8 @@ describe("recipe thumbnails", () => {
 describe("configuration privacy", () => {
   it("answers a visitor without a login alike, whatever is configured", async () => {
     const urls = [
+      "/admin/settings/notify",
+      "/admin/settings/notify/delete",
       "/admin/settings/notify/test",
       "/admin/settings/credentials",
       "/admin/settings/credentials/delete",
@@ -332,7 +334,7 @@ describe("configuration privacy", () => {
     const answers: string[] = [];
     for (const options of [
       { noAutoLogin: true },
-      { config: { SMTP_URL: "smtps://u:p@mail.example.com", NOTIFY_EMAIL: "cook@example.com" } },
+      { mailEnv: { SMTP_URL: "smtps://u:p@mail.example.com", NOTIFY_EMAIL: "cook@example.com" } },
     ]) {
       svc = testService(options);
       for (const url of urls) {
@@ -350,6 +352,13 @@ describe("configuration privacy", () => {
     }
     expect(answers.slice(0, answers.length / 2)).toEqual(answers.slice(answers.length / 2));
     expect(answers.every((answer) => / 303 /.test(`${answer} `))).toBe(true);
+    expect(answers.filter((answer) => answer.startsWith("/admin/settings/notify"))).toEqual(
+      Array.from(
+        { length: 6 },
+        (_, i) =>
+          `${["/admin/settings/notify", "/admin/settings/notify/delete", "/admin/settings/notify/test"][i % 3]} 303 /admin/login`,
+      ),
+    );
   });
 
   it("says after the login that mail or the automatic login is not set up", async () => {
@@ -357,7 +366,7 @@ describe("configuration privacy", () => {
     const mail = await post("/admin/settings/notify/test", { _csrf: SESSION_CSRF });
     expect(mail.statusCode).toBe(404);
     expect(mail.body).toContain("Mail is not set up");
-    expect(svc.notifier.sent).toEqual([]);
+    expect(svc.mail.sent).toEqual([]);
     for (const url of ["/admin/settings/credentials", "/admin/settings/login"]) {
       const response = await post(url, { _csrf: SESSION_CSRF });
       expect(response.statusCode, url).toBe(404);

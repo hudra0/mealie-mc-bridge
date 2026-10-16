@@ -1,8 +1,11 @@
 // Builds the whole service on a temp store with fake clients, for route and admin tests.
 
 import { vi } from "vitest";
+import type { AppLogger } from "../app-logger.js";
 import type { ConfigEntry } from "../config-reference.js";
 import type { McUser } from "../mc/index.js";
+import type { MailEnv } from "../notify/mail-settings.js";
+import { Mailer } from "../notify/mailer.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
 import {
@@ -12,7 +15,12 @@ import {
   formTokenFor,
   loginTokenFor,
 } from "../service/admin-auth.js";
-import { buildService, type Service, type ServiceConfig } from "../service/app.js";
+import {
+  buildService,
+  mealieRecipeLink,
+  type Service,
+  type ServiceConfig,
+} from "../service/app.js";
 import { join } from "node:path";
 import { AutoLogin } from "../session/auto-login.js";
 import {
@@ -26,14 +34,14 @@ import {
   fakeConverter,
   fakeMc,
   fakeMealie,
-  fakeNotifier,
   limits,
   silentLogger,
+  stubMail,
   type FakeMc,
   type FakeMcOptions,
   type FakeMealie,
   type FakeMealieOptions,
-  type FakeNotifier,
+  type StubMail,
 } from "./fakes.js";
 import { testAssets } from "./assets.js";
 import { deLocale } from "./locale.js";
@@ -53,7 +61,9 @@ export interface TestService extends Service {
   mealie: FakeMealie;
   mc: FakeMc;
   converter: Converter;
-  notifier: FakeNotifier;
+  // The real mailer on stub transports: the notifier of the session and the pipeline.
+  mailer: Mailer;
+  mail: StubMail;
   session: SessionManager;
   validate: ReturnType<typeof vi.fn<(cookie: string) => Promise<McUser>>>;
   config: ServiceConfig;
@@ -80,8 +90,12 @@ export interface TestServiceOptions {
   configEntries?: readonly ConfigEntry[];
   // Leaves the automatic login out, as a service without it.
   noAutoLogin?: boolean;
-  // Makes the notifier's test mail fail.
-  testMail?: Error;
+  // SMTP_URL, NOTIFY_EMAIL, SMTP_FROM and SMTP_ALLOW_INSECURE of the environment.
+  mailEnv?: MailEnv;
+  // Makes every mail fail with this error.
+  mailError?: Error;
+  // The logger of the mailer, the session manager and the service; silent by default.
+  appLogger?: AppLogger;
 }
 
 export function testService(options: TestServiceOptions = {}): TestService {
@@ -89,7 +103,6 @@ export function testService(options: TestServiceOptions = {}): TestService {
   const mealie = fakeMealie(options.mealie);
   const mc = fakeMc(options.mc);
   const converter = options.converter ?? fakeConverter();
-  const notifier = fakeNotifier(options.testMail ? { testMail: options.testMail } : {});
   const built = testAssets();
   const validate = vi.fn<(cookie: string) => Promise<McUser>>(() =>
     Promise.resolve({ id: 1, displayName: "test-user" }),
@@ -106,15 +119,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     // The real flow on a clock that jumps with every poll.
     login: options.login ?? ((login) => browserLogin({ ...login, ...loopClock() })),
   });
-  const session = new SessionManager({
-    settings: store.settings,
-    jobs: store.jobs,
-    validate,
-    notifier,
-    logger: silentLogger(),
-    seedCookie: options.seedCookie,
-    autoLogin,
-  });
+  const logger = options.appLogger ?? silentLogger();
   const config: ServiceConfig = {
     WEBHOOK_TOKEN,
     WORKER_POLL_SECONDS: 0.01,
@@ -127,6 +132,23 @@ export function testService(options: TestServiceOptions = {}): TestService {
     ...(options.auth === false ? {} : { ADMIN_USER: ADMIN.user, ADMIN_PASSWORD: ADMIN.password }),
     ...options.config,
   };
+  const mail = stubMail(options.mailError ?? null);
+  const mailer = new Mailer({
+    env: { ...options.mailEnv, UI_LANGUAGE: config.UI_LANGUAGE },
+    settings: store.settings,
+    logger,
+    recipeUrl: (job) => (job.mealieSlug ? mealieRecipeLink(config, job.mealieSlug) : null),
+    createTransport: mail.createTransport,
+  });
+  const session = new SessionManager({
+    settings: store.settings,
+    jobs: store.jobs,
+    validate,
+    notifier: mailer,
+    logger,
+    seedCookie: options.seedCookie,
+    autoLogin,
+  });
   const service = buildService({
     config,
     store,
@@ -136,8 +158,9 @@ export function testService(options: TestServiceOptions = {}): TestService {
     converter,
     limits,
     locale: deLocale,
-    notifier,
-    logger: silentLogger(),
+    notifier: mailer,
+    mail: mailer,
+    logger,
     formToken: FORM_TOKEN,
     adminSessionKey: ADMIN_SESSION_KEY,
     ...(options.throttle ? { adminThrottle: options.throttle } : {}),
@@ -162,7 +185,8 @@ export function testService(options: TestServiceOptions = {}): TestService {
     mealie,
     mc,
     converter,
-    notifier,
+    mailer,
+    mail,
     session,
     validate,
     config,

@@ -2,6 +2,19 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+### Added
+
+- The mail server can be set up on the settings page, tab "Notifications" ("Benachrichtigungen"): server, port, encryption (STARTTLS, SSL/TLS, or none with an explicit "Allow unencrypted"), user name, password, sender and up to 10 recipients, with a switch per kind of mail (session expired, job failed for good, session check failing). The settings are stored in `bridge.db` encrypted with `SETTINGS_KEY` and apply on saving, without a restart. The password is never shown or logged; an empty field keeps it for the same server and user name. "Delete mail settings" removes them. See [Email notifications](README.md#email-notifications).
+
+### Changed
+
+- `SMTP_URL` with `NOTIFY_EMAIL` still works and wins over the settings page, which then shows the server, port and user name read only, marked "from the environment". Nothing to do for an existing setup.
+- The settings page now shows the mail server and port of `SMTP_URL`, which it used to hide; the password stays masked.
+- Mail connections give up after 15 seconds without a connection or greeting and after 60 seconds of silence, instead of nodemailer's two and ten minutes, so "Send test mail" answers quickly.
+- The mail server's error text has the account's user name and password cut out before it reaches the log or the settings page.
+
 ## 0.4.0 (2026-10-16)
 
 ### What to do

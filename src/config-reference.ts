@@ -47,7 +47,7 @@ export const REFERENCE = {
   },
   SETTINGS_KEY: {
     description:
-      "Base64 of 32 random bytes; `generate-secrets` prints one. Encrypts the Monsieur Cuisine cookie and the Lidl account in `bridge.db`. With another key they cannot be read, and you enter them again.",
+      "Base64 of 32 random bytes; `generate-secrets` prints one. Encrypts the Monsieur Cuisine cookie, the Lidl account and the mail settings of the settings page in `bridge.db`. With another key they cannot be read, and you enter them again.",
   },
   WEBHOOK_TOKEN: {
     description:
@@ -180,7 +180,7 @@ export const REFERENCE = {
   },
   SMTP_URL: {
     description:
-      "`smtp://` or `smtps://` URL with credentials, for example `smtps://user:password@mail.example.com:465`. `smtp://` must upgrade with STARTTLS. Without it no mail is sent.",
+      "`smtp://` or `smtps://` URL with credentials, for example `smtps://user:password@mail.example.com:465`. `smtp://` must upgrade with STARTTLS. Instead of it, you can enter the mail server under Settings, Notifications; when it is set, it wins and that tab shows it read only. Without either, no mail is sent.",
   },
   SMTP_ALLOW_INSECURE: {
     description:
@@ -189,7 +189,7 @@ export const REFERENCE = {
   NOTIFY_EMAIL: {
     default: "required with `SMTP_URL`",
     description:
-      "Recipient of the mails: session expired or invalid, a job failed for good, the session check keeps failing.",
+      "Recipient of the mails: session expired or invalid, a job failed for good, the session check keeps failing. Not needed when the mail server is entered under Settings, Notifications.",
   },
   SMTP_FROM: {
     default: "`NOTIFY_EMAIL`",

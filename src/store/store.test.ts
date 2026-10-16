@@ -237,6 +237,56 @@ describe("JobStore", () => {
     expect(store.jobs.listRecent({ limit: 1, offset: 1 }).map((job) => job.id)).toEqual([a.id]);
   });
 
+  it("counts jobs per status for a search", () => {
+    store = tempStore();
+    const soup = store.jobs.enqueue({ recipeId: RECIPE, scale: 1, title: "Soup" }).job;
+    store.jobs.enqueue({ recipeId: OTHER, scale: 1, title: "Bread" });
+    store.jobs.finish(soup.id, "failed", { error: "boom" });
+    expect(store.jobs.stats({ search: "soup" })).toMatchObject({ failed: 1, queued: 0 });
+    expect(store.jobs.stats({ search: "bread" })).toMatchObject({ failed: 0, queued: 1 });
+  });
+
+  it("sums up the jobs created since a point in time", () => {
+    const clock = steppingClock("2026-10-01T10:00:00.000Z");
+    store = tempStore({ now: clock.now });
+    expect(store.jobs.summarySince(new Date("2026-01-01T00:00:00.000Z"))).toEqual({
+      total: 0,
+      done: 0,
+      failed: 0,
+      skipped: 0,
+      avgDurationMs: null,
+      costUsd: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+    const old = store.jobs.enqueue({ recipeId: OTHER, scale: 1 }).job;
+    store.jobs.finish(old.id, "done", { costUsd: 5 });
+    const since = new Date("2026-10-01T10:00:30.000Z");
+    clock.set("2026-10-02T10:00:00.000Z");
+    const done = store.jobs.enqueue({ recipeId: RECIPE, scale: 1 }).job;
+    store.jobs.update(done.id, {
+      startedAt: "2026-10-02T10:00:00.000Z",
+      usage: { inputTokens: 100, outputTokens: 40 },
+      costUsd: 0.25,
+    });
+    clock.set("2026-10-02T10:01:30.000Z");
+    store.jobs.finish(done.id, "done");
+    const failed = store.jobs.enqueue({ recipeId: RECIPE, scale: 2 }).job;
+    store.jobs.finish(failed.id, "failed", { costUsd: 0.5, error: "boom" });
+    const skipped = store.jobs.enqueue({ recipeId: RECIPE, scale: 3 }).job;
+    store.jobs.finish(skipped.id, "skipped");
+    expect(store.jobs.summarySince(since)).toEqual({
+      total: 3,
+      done: 1,
+      failed: 1,
+      skipped: 1,
+      avgDurationMs: 90_000,
+      costUsd: 0.75,
+      inputTokens: 100,
+      outputTokens: 40,
+    });
+  });
+
   it("counts jobs per status", () => {
     store = tempStore();
     store.jobs.enqueue({ recipeId: RECIPE, scale: 1 });

@@ -144,6 +144,19 @@ export interface ListJobsOptions {
 
 export type JobStats = Record<JobStatus, number>;
 
+// What the jobs created since a point in time came to, for the overview.
+export interface JobSummary {
+  total: number;
+  done: number;
+  failed: number;
+  skipped: number;
+  // Mean run time of the done jobs; null without one.
+  avgDurationMs: number | null;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 export class JobConflictError extends Error {
   constructor(message: string) {
     super(message);
@@ -370,18 +383,7 @@ export class JobStore {
   listRecent(options: ListJobsOptions = {}): Job[] {
     const limit = clamp(options.limit ?? 20, 1, MAX_LIST);
     const offset = Math.max(0, Math.trunc(options.offset ?? 0));
-    const where: string[] = [];
-    const values: unknown[] = [];
-    if (options.status) {
-      where.push("status = ?");
-      values.push(options.status);
-    }
-    const search = options.search?.trim();
-    if (search) {
-      where.push("(mealie_recipe_id = ? OR mealie_slug = ? OR title LIKE ? ESCAPE '\\')");
-      values.push(search, search, `%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
-    }
-    const clause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    const { clause, values } = filter(options);
     return this.#db
       .prepare<unknown[], JobRow>(
         `SELECT * FROM jobs ${clause} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
@@ -390,15 +392,45 @@ export class JobStore {
       .map(toJob);
   }
 
-  stats(): JobStats {
+  // Jobs per status: all of them, or those a search matches as in listRecent.
+  stats(options: Pick<ListJobsOptions, "search"> = {}): JobStats {
     const stats = Object.fromEntries(JOB_STATUSES.map((status) => [status, 0])) as JobStats;
+    const { clause, values } = filter({ ...(options.search ? { search: options.search } : {}) });
     const rows = this.#db
-      .prepare<[], { status: JobStatus; count: number }>(
-        "SELECT status, COUNT(*) AS count FROM jobs GROUP BY status",
+      .prepare<unknown[], { status: JobStatus; count: number }>(
+        `SELECT status, COUNT(*) AS count FROM jobs ${clause} GROUP BY status`,
       )
-      .all();
+      .all(...values);
     for (const row of rows) stats[row.status] = row.count;
     return stats;
+  }
+
+  // Counts, mean run time, cost and tokens of the jobs created since the given time.
+  summarySince(since: Date): JobSummary {
+    const row = this.#db
+      .prepare<[string], SummaryRow>(
+        `SELECT COUNT(*) AS total,
+           COALESCE(SUM(status = 'done'), 0) AS done,
+           COALESCE(SUM(status = 'failed'), 0) AS failed,
+           COALESCE(SUM(status = 'skipped'), 0) AS skipped,
+           AVG(CASE WHEN status = 'done' AND started_at IS NOT NULL AND finished_at IS NOT NULL
+               THEN (julianday(finished_at) - julianday(started_at)) * 86400000 END) AS avg_ms,
+           COALESCE(SUM(cost_usd), 0) AS cost,
+           COALESCE(SUM(json_extract(usage_json, '$.inputTokens')), 0) AS input,
+           COALESCE(SUM(json_extract(usage_json, '$.outputTokens')), 0) AS output
+         FROM jobs WHERE created_at >= ?`,
+      )
+      .get(since.toISOString());
+    return {
+      total: row?.total ?? 0,
+      done: row?.done ?? 0,
+      failed: row?.failed ?? 0,
+      skipped: row?.skipped ?? 0,
+      avgDurationMs: typeof row?.avg_ms === "number" ? Math.round(row.avg_ms) : null,
+      costUsd: row?.cost ?? 0,
+      inputTokens: row?.input ?? 0,
+      outputTokens: row?.output ?? 0,
+    };
   }
 
   // Puts a finished or waiting job back into the queue. A plain retry reuses a stored
@@ -589,6 +621,37 @@ function parseJson<T>(json: string | null): T | null {
   } catch {
     return null;
   }
+}
+
+interface SummaryRow {
+  total: number;
+  done: number;
+  failed: number;
+  skipped: number;
+  avg_ms: number | null;
+  cost: number;
+  input: number;
+  output: number;
+}
+
+// The WHERE clause of a list or a count: a status, and a search that matches the recipe id
+// or slug exactly or the title in part.
+function filter(options: Pick<ListJobsOptions, "status" | "search">): {
+  clause: string;
+  values: unknown[];
+} {
+  const where: string[] = [];
+  const values: unknown[] = [];
+  if (options.status) {
+    where.push("status = ?");
+    values.push(options.status);
+  }
+  const search = options.search?.trim();
+  if (search) {
+    where.push("(mealie_recipe_id = ? OR mealie_slug = ? OR title LIKE ? ESCAPE '\\')");
+    values.push(search, search, `%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
+  }
+  return { clause: where.length > 0 ? `WHERE ${where.join(" AND ")}` : "", values };
 }
 
 function clamp(value: number, min: number, max: number): number {

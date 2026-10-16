@@ -120,6 +120,9 @@ export interface EmailMessages {
   healthSubject: string;
   healthLead: string;
   healthOutro: string;
+  // The mail the settings page sends on request.
+  testSubject: string;
+  testText: string;
 }
 
 // The admin pages. Text in backticks is shown as code.

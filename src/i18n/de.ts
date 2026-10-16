@@ -193,6 +193,9 @@ export const de: Messages = {
       "Die regelmäßige Prüfung der Monsieur-Cuisine-Sitzung ist fehlgeschlagen. Die Sitzung selbst wurde dabei nicht abgelehnt; meist ist die Website kurz nicht erreichbar.",
     healthOutro:
       "Die Bridge prüft weiter. Bleibt der Fehler bestehen, hilft ein Blick in die Logs.",
+    testSubject: "Testmail",
+    testText:
+      "Dies ist eine Testmail von der Einstellungsseite. Mails zu einer abgelaufenen Sitzung und zu fehlgeschlagenen Aufträgen gehen an diese Adresse.",
   },
   admin: {
     htmlLang: "de",

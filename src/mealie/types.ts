@@ -225,6 +225,14 @@ export const mealieCommentSchema = z.looseObject({
 });
 export type MealieComment = z.infer<typeof mealieCommentSchema>;
 
+// A recipe in a list answer (GET /api/recipes): enough to pick one.
+export const mealieRecipeSummarySchema = z.looseObject({
+  id: z.string(),
+  slug: z.string(),
+  name: z.string(),
+});
+export type MealieRecipeSummary = z.infer<typeof mealieRecipeSummarySchema>;
+
 // List endpoints wrap their items in a snake_case pagination envelope.
 export const paginated = <T extends z.ZodType>(item: T) =>
   z.looseObject({

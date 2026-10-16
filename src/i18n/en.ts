@@ -187,6 +187,9 @@ export const en: Messages = {
     healthLead:
       "The regular check of the Monsieur Cuisine session failed. Monsieur Cuisine did not refuse the session; usually the website is briefly unreachable.",
     healthOutro: "The bridge keeps checking. If the error persists, look at the logs.",
+    testSubject: "Test mail",
+    testText:
+      "This is a test mail from the settings page. Mails about an expired session and failed jobs go to this address.",
   },
   admin: {
     htmlLang: "en",

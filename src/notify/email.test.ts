@@ -211,6 +211,26 @@ describe("EmailNotifier", () => {
     await expect(n.healthFailed("x")).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalledWith({ err: "connection refused" }, "notification failed");
   });
+
+  it("sends a test mail on request and reports a failure", async () => {
+    const transport = stub();
+    await notifier(transport).testMail();
+    expect(transport.sent[0]).toMatchObject({
+      to: "cook@example.com",
+      subject: "Monsieur-Cuisine-Bridge: Testmail",
+    });
+    expect(transport.sent[0]?.text).toContain("Testmail von der Einstellungsseite");
+    const failing = new EmailNotifier({
+      transport: { sendMail: () => Promise.reject(new Error("auth failed for token=abc123")) },
+      to: "cook@example.com",
+      from: "bridge@example.com",
+      logger: silentLogger(),
+    });
+    const error = await failing.testMail().catch((caught: unknown) => caught as Error);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("auth failed");
+    expect(new NullNotifier()).not.toHaveProperty("testMail");
+  });
 });
 
 describe("createNotifier", () => {

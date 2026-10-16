@@ -1,14 +1,16 @@
 // Notifications for problems nobody watches the admin page for: a dead Monsieur Cuisine
 // session, a job that failed for good, a session check that keeps failing. Mails are plain
 // text in UI_LANGUAGE (src/i18n). They never carry cookies or tokens: the inputs contain
-// none, and every error text is scrubbed again before it is sent.
+// none, and every error text is scrubbed again before it is sent. The mail account's own
+// user name and password are cut out of the mail server's error texts before they reach a
+// log or the settings page.
 
-import { createTransport } from "nodemailer";
 import { errorMessage, scrubSecrets, type AppLogger } from "../app-logger.js";
 import { formatDate } from "../i18n/format.js";
 import { messages, type Messages, type UiLanguage } from "../i18n/index.js";
 import type { SessionStatus } from "../session/manager.js";
 import type { Job } from "../store/jobs.js";
+import { ALL_EVENTS, type MailEvents } from "./mail-settings.js";
 
 // autoLoginFailed: why the automatic login with the stored Lidl account did not work; the
 // mail then says that a manual login is needed.
@@ -51,19 +53,61 @@ export interface MailTransport {
   sendMail(message: MailMessage): Promise<unknown>;
 }
 
+// Job ids already reported; older ones drop out first.
+const MAX_REMEMBERED_JOBS = 500;
+
+// What has been reported already. The mailer hands the same memory to every notifier it
+// builds, so new mail settings do not repeat a mail about the same state or job.
+export class NotificationMemory {
+  lastSessionKey: string | null = null;
+  lastHealthError: string | null = null;
+  readonly #reportedJobs = new Set<string>();
+
+  hasJob(id: string): boolean {
+    return this.#reportedJobs.has(id);
+  }
+
+  rememberJob(id: string): void {
+    this.#reportedJobs.add(id);
+    if (this.#reportedJobs.size > MAX_REMEMBERED_JOBS) {
+      const oldest = this.#reportedJobs.values().next().value;
+      if (oldest !== undefined) this.#reportedJobs.delete(oldest);
+    }
+  }
+}
+
 export interface EmailNotifierOptions {
   transport: MailTransport;
-  to: string;
+  to: string | readonly string[];
   from: string;
   logger: AppLogger;
   // Builds the link to a recipe in Mealie, when the public URL is known.
   recipeUrl?: (job: Job) => string | null;
   // The language of the mails; German by default.
   language?: UiLanguage;
+  // Shared with other notifiers; a fresh one by default.
+  memory?: NotificationMemory;
+  // Which mails go out; all by default. The test mail always does.
+  events?: MailEvents;
+  // Values cut out of the mail server's error texts: the account's user name and password.
+  redact?: readonly string[];
 }
 
-// Job ids already reported; older ones drop out first.
-const MAX_REMEMBERED_JOBS = 500;
+// Values shorter than this are left alone: cutting out every "a" would garble the message
+// and protect nothing.
+const MIN_REDACTED_LENGTH = 3;
+
+// Replaces each value, as it is and URL-encoded, with "[redacted]".
+export function redactValues(text: string, values: readonly string[]): string {
+  let result = text;
+  for (const value of values) {
+    if (value.length < MIN_REDACTED_LENGTH) continue;
+    for (const form of new Set([value, encodeURIComponent(value)])) {
+      result = result.split(form).join("[redacted]");
+    }
+  }
+  return result;
+}
 
 export class EmailNotifier implements Notifier {
   readonly #transport: MailTransport;
@@ -72,27 +116,31 @@ export class EmailNotifier implements Notifier {
   readonly #logger: AppLogger;
   readonly #recipeUrl: (job: Job) => string | null;
   readonly #messages: Messages;
-  #lastSessionKey: string | null = null;
-  #lastHealthError: string | null = null;
-  readonly #reportedJobs = new Set<string>();
+  readonly #memory: NotificationMemory;
+  readonly #events: MailEvents;
+  readonly #redact: readonly string[];
 
   constructor(options: EmailNotifierOptions) {
     this.#transport = options.transport;
-    this.#to = options.to;
+    this.#to = typeof options.to === "string" ? options.to : options.to.join(", ");
     this.#from = options.from;
     this.#logger = options.logger;
     this.#recipeUrl = options.recipeUrl ?? (() => null);
     this.#messages = messages(options.language ?? "de");
+    this.#memory = options.memory ?? new NotificationMemory();
+    this.#events = options.events ?? ALL_EVENTS;
+    this.#redact = options.redact ?? [];
   }
 
   // One mail per state change: the same state for the same cookie is reported once.
   async sessionExpired(status: SessionStatus, details: SessionMailDetails = {}): Promise<void> {
+    if (!this.#events.session) return;
     const manual = details.autoLoginFailed !== undefined;
     const waiting = details.autoLoginNextAttempt !== undefined;
     const key = `${status.state}:${status.cookieSetAt ?? "none"}${manual ? ":manual" : waiting ? ":waiting" : ""}`;
-    if (key === this.#lastSessionKey) return;
-    this.#lastSessionKey = key;
-    this.#lastHealthError = null;
+    if (key === this.#memory.lastSessionKey) return;
+    this.#memory.lastSessionKey = key;
+    this.#memory.lastHealthError = null;
     const t = this.#messages.email;
     const text = status.state === "expired" ? t.session.expired : t.session.invalid;
     const lines = [
@@ -116,8 +164,8 @@ export class EmailNotifier implements Notifier {
 
   // One mail per job.
   async jobFailed(job: Job, error: string): Promise<void> {
-    if (this.#reportedJobs.has(job.id)) return;
-    this.#remember(job.id);
+    if (!this.#events.job || this.#memory.hasJob(job.id)) return;
+    this.#memory.rememberJob(job.id);
     const t = this.#messages.email;
     const title = job.title ?? job.mealieSlug ?? job.mealieRecipeId;
     const lines = [
@@ -135,9 +183,10 @@ export class EmailNotifier implements Notifier {
 
   // Consecutive failures with the same message are reported once.
   async healthFailed(error: string): Promise<void> {
+    if (!this.#events.health) return;
     const message = errorMessage(error);
-    if (message === this.#lastHealthError) return;
-    this.#lastHealthError = message;
+    if (message === this.#memory.lastHealthError) return;
+    this.#memory.lastHealthError = message;
     const t = this.#messages.email;
     await this.#send(t.healthSubject, [t.healthLead, "", t.error(message), "", t.healthOutro]);
   }
@@ -148,7 +197,7 @@ export class EmailNotifier implements Notifier {
     try {
       await this.#transport.sendMail(this.#message(t.testSubject, [t.testText]));
     } catch (error) {
-      throw new Error(errorMessage(error));
+      throw new Error(this.#errorText(error));
     }
     this.#logger.info({}, "test mail sent");
   }
@@ -169,64 +218,20 @@ export class EmailNotifier implements Notifier {
       this.#logger.info({ subject: message.subject }, "notification sent");
     } catch (error) {
       // A broken mail server must not break the job or the session check.
-      this.#logger.warn({ err: errorMessage(error) }, "notification failed");
+      this.#logger.warn({ err: this.#errorText(error) }, "notification failed");
     }
+  }
+
+  // The mail server's error as one scrubbed line, without the account's user name and
+  // password, which some servers repeat in their answer.
+  #errorText(error: unknown): string {
+    const raw = error instanceof Error ? error.message : String(error);
+    return errorMessage(redactValues(raw, this.#redact));
   }
 
   #date(iso: string | null): string {
     return iso ? formatDate(iso, this.#messages.intlLocale) : this.#messages.email.never;
   }
-
-  #remember(id: string): void {
-    this.#reportedJobs.add(id);
-    if (this.#reportedJobs.size > MAX_REMEMBERED_JOBS) {
-      const oldest = this.#reportedJobs.values().next().value;
-      if (oldest !== undefined) this.#reportedJobs.delete(oldest);
-    }
-  }
-}
-
-export interface NotifierConfig {
-  SMTP_URL?: string | undefined;
-  NOTIFY_EMAIL?: string | undefined;
-  SMTP_FROM?: string | undefined;
-  UI_LANGUAGE?: UiLanguage | undefined;
-  SMTP_ALLOW_INSECURE?: boolean | undefined;
-}
-
-// The transport options for SMTP_URL. smtps:// talks TLS from the start. smtp:// must
-// upgrade with STARTTLS (requireTLS), so a server or a man in the middle that does not offer
-// it cannot get the password and the mails in plain text; SMTP_ALLOW_INSECURE=true lifts
-// that for a mail server on the same host or network that has no TLS.
-export function smtpTransportOptions(
-  url: string,
-  allowInsecure = false,
-): { url: string; requireTLS: boolean } {
-  const secure = url.toLowerCase().startsWith("smtps:");
-  return { url, requireTLS: !secure && !allowInsecure };
-}
-
-// An EmailNotifier when SMTP_URL and NOTIFY_EMAIL are set, otherwise a NullNotifier.
-export function createNotifier(
-  config: NotifierConfig,
-  logger: AppLogger,
-  options: { recipeUrl?: (job: Job) => string | null; transport?: MailTransport } = {},
-): Notifier {
-  if (!config.SMTP_URL || !config.NOTIFY_EMAIL) {
-    logger.info({}, "email notifications are off (SMTP_URL or NOTIFY_EMAIL not set)");
-    return new NullNotifier();
-  }
-  const transport =
-    options.transport ??
-    createTransport(smtpTransportOptions(config.SMTP_URL, config.SMTP_ALLOW_INSECURE === true));
-  return new EmailNotifier({
-    transport,
-    to: config.NOTIFY_EMAIL,
-    from: config.SMTP_FROM ?? config.NOTIFY_EMAIL,
-    logger,
-    ...(options.recipeUrl ? { recipeUrl: options.recipeUrl } : {}),
-    ...(config.UI_LANGUAGE ? { language: config.UI_LANGUAGE } : {}),
-  });
 }
 
 function oneLine(text: string, max: number): string {

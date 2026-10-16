@@ -5,9 +5,9 @@ import type { Job } from "../store/jobs.js";
 import { silentLogger } from "../testing/fakes.js";
 import {
   EmailNotifier,
+  NotificationMemory,
   NullNotifier,
-  createNotifier,
-  smtpTransportOptions,
+  redactValues,
   type MailMessage,
   type MailTransport,
 } from "./email.js";
@@ -233,96 +233,70 @@ describe("EmailNotifier", () => {
   });
 });
 
-describe("createNotifier", () => {
-  it("returns a NullNotifier without SMTP_URL or NOTIFY_EMAIL", async () => {
-    const none = createNotifier({}, silentLogger());
-    expect(none).toBeInstanceOf(NullNotifier);
-    await expect(none.sessionExpired(status())).resolves.toBeUndefined();
-    await expect(none.jobFailed(job(), "x")).resolves.toBeUndefined();
-    await expect(none.healthFailed("x")).resolves.toBeUndefined();
-    expect(createNotifier({ SMTP_URL: "smtp://mail.example.com" }, silentLogger())).toBeInstanceOf(
-      NullNotifier,
-    );
+describe("shared memory, notification types and redaction", () => {
+  it("does not repeat what an earlier notifier with the same memory reported", async () => {
+    const memory = new NotificationMemory();
+    const first = stub();
+    const second = stub();
+    const build = (transport: MailTransport) =>
+      new EmailNotifier({
+        transport,
+        to: ["cook@example.com", "other@example.com"],
+        from: "bridge@example.com",
+        logger: silentLogger(),
+        memory,
+      });
+    await build(first).jobFailed(job(), "boom");
+    await build(first).healthFailed("down");
+    const next = build(second);
+    await next.jobFailed(job(), "boom");
+    await next.healthFailed("down");
+    await next.jobFailed(job({ id: "job-2" }), "boom");
+    expect(first.sent).toHaveLength(2);
+    expect(second.sent).toHaveLength(1);
+    expect(first.sent[0]?.to).toBe("cook@example.com, other@example.com");
   });
 
-  it("requires STARTTLS on smtp:// unless SMTP_ALLOW_INSECURE is set", () => {
-    expect(smtpTransportOptions("smtp://user:pw@mail.example.com:587")).toEqual({
-      url: "smtp://user:pw@mail.example.com:587",
-      requireTLS: true,
+  it("skips the notification types that are off, but not the test mail", async () => {
+    const transport = stub();
+    const n = new EmailNotifier({
+      transport,
+      to: "cook@example.com",
+      from: "bridge@example.com",
+      logger: silentLogger(),
+      events: { session: false, job: false, health: false },
     });
-    expect(smtpTransportOptions("smtp://mail.example.com:25", true).requireTLS).toBe(false);
-    expect(smtpTransportOptions("smtps://user:pw@mail.example.com:465").requireTLS).toBe(false);
-    const built = createNotifier(
-      { SMTP_URL: "smtp://mail.example.com:587", NOTIFY_EMAIL: "cook@example.com" },
-      silentLogger(),
-    );
-    expect(built).toBeInstanceOf(EmailNotifier);
-  });
-
-  it("keeps a browser call log with the password out of the session mail", async () => {
-    const transport = stub();
-    const n = createNotifier(
-      { SMTP_URL: "smtps://mail.example.com", NOTIFY_EMAIL: "cook@example.com" },
-      silentLogger(),
-      { transport },
-    );
-    await n.sessionExpired(status(), {
-      autoLoginFailed:
-        'locator.fill: Timeout 5000ms exceeded.\nCall log:\n  - fill("MARKER-PASSWORD-12")',
-    });
-    expect(transport.sent[0]?.text).toContain("locator.fill: Timeout 5000ms exceeded.");
-    expect(transport.sent[0]?.text).not.toContain("MARKER-PASSWORD-12");
-  });
-
-  it("returns an EmailNotifier with the sender defaulting to the recipient", async () => {
-    const transport = stub();
-    const n = createNotifier(
-      { SMTP_URL: "smtp://mail.example.com:587", NOTIFY_EMAIL: "cook@example.com" },
-      silentLogger(),
-      { transport },
-    );
-    expect(n).toBeInstanceOf(EmailNotifier);
-    await n.healthFailed("x");
-    expect(transport.sent[0]?.from).toBe("cook@example.com");
-  });
-
-  it("writes the mails in UI_LANGUAGE", async () => {
-    const transport = stub();
-    const n = createNotifier(
-      {
-        SMTP_URL: "smtp://mail.example.com:587",
-        NOTIFY_EMAIL: "cook@example.com",
-        UI_LANGUAGE: "en",
-      },
-      silentLogger(),
-      { transport, recipeUrl: () => "https://mealie.example.com/g/home/r/soup" },
-    );
     await n.sessionExpired(status());
-    await n.sessionExpired(status({ state: "invalid", cookieSetAt: null, checkedAt: null }));
-    await n.jobFailed(job({ title: "Pumpkin soup" }), "boom");
-    await n.healthFailed("site down");
-    const [expired, invalid, failed, health] = transport.sent;
-    expect(expired?.subject).toBe("Monsieur Cuisine bridge: Session expired");
-    expect(expired?.text).toContain("What to do, one of three ways:");
-    expect(expired?.text).toContain("Last checked: ");
-    expect(invalid?.subject).toBe("Monsieur Cuisine bridge: Session invalid");
-    expect(invalid?.text).toContain("Last checked: never");
-    expect(failed?.subject).toBe("Monsieur Cuisine bridge: “Pumpkin soup” not sent");
-    expect(failed?.text).toContain("Recipe in Mealie: https://mealie.example.com/g/home/r/soup");
-    expect(health?.subject).toBe("Monsieur Cuisine bridge: Session check failed");
-    expect(health?.text).toContain("Error: site down");
+    await n.jobFailed(job(), "boom");
+    await n.healthFailed("down");
+    expect(transport.sent).toEqual([]);
+    await n.testMail();
+    expect(transport.sent).toHaveLength(1);
   });
 
-  it("creates an SMTP transport from the URL without connecting", () => {
-    const n = createNotifier(
-      {
-        SMTP_URL: "smtps://user:pass@mail.example.com:465",
-        NOTIFY_EMAIL: "cook@example.com",
-        SMTP_FROM: "Bridge <bridge@example.com>",
+  it("cuts the account out of the mail server's errors", async () => {
+    const warn = vi.fn();
+    const n = new EmailNotifier({
+      transport: {
+        sendMail: () =>
+          Promise.reject(new Error("535 bad login for mailer%40example.com/hunter22")),
       },
-      silentLogger(),
-      { recipeUrl: () => null },
+      to: "cook@example.com",
+      from: "bridge@example.com",
+      logger: { ...silentLogger(), warn },
+      redact: ["mailer@example.com", "hunter22", "ab"],
+    });
+    await n.healthFailed("x");
+    expect(warn).toHaveBeenCalledWith(
+      { err: "535 bad login for [redacted]/[redacted]" },
+      "notification failed",
     );
-    expect(n).toBeInstanceOf(EmailNotifier);
+    const error = await n.testMail().then(
+      () => new Error("no error"),
+      (caught: unknown) => caught as Error,
+    );
+    expect(error.message).toBe("535 bad login for [redacted]/[redacted]");
+    // Values shorter than three characters are left alone.
+    expect(redactValues("a b ab abc", ["ab", "abc"])).toBe("a b ab [redacted]");
   });
 });

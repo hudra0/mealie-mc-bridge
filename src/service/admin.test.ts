@@ -8,6 +8,7 @@ import { effectiveConfig } from "../config-reference.js";
 import { TOKEN_MASK } from "./views/settings.js";
 import {
   RECIPE_ID,
+  capturingLogger,
   conversionResult,
   convertedRecipe,
   fakeConverter,
@@ -1483,35 +1484,32 @@ describe("settings page", () => {
   });
 
   it("sends a test mail with the form token, at most once a minute, and reports a failure", async () => {
-    svc = testService({
-      config: { SMTP_URL: "smtps://u:p@mail.example.com", NOTIFY_EMAIL: "cook@example.com" },
-    });
+    const mailEnv = { SMTP_URL: "smtps://u:p@mail.example.com", NOTIFY_EMAIL: "cook@example.com" };
+    svc = testService({ mailEnv });
     const page = (await get("/admin/settings?tab=notify")).body;
     expect(page).toContain("cook@example.com");
     expect(page).toContain('action="/admin/settings/notify/test"');
-    expect(page).not.toContain("mail.example.com");
     expect((await post("/admin/settings/notify/test", {})).statusCode).toBe(403);
     const sent = await post("/admin/settings/notify/test", { _csrf: SESSION_CSRF });
     expect(sent.headers.location).toBe("/admin/settings?tab=notify&notice=test-mail-sent");
-    expect(svc.notifier.sent).toEqual([{ kind: "test", detail: null }]);
+    expect(svc.mail.sent.map((mail) => mail.subject)).toEqual([
+      "Monsieur Cuisine bridge: Test mail",
+    ]);
     const soon = await post("/admin/settings/notify/test", { _csrf: SESSION_CSRF });
     expect(soon.headers.location).toBe("/admin/settings?tab=notify&notice=test-mail-cooldown");
-    expect(svc.notifier.sent).toHaveLength(1);
+    expect(svc.mail.sent).toHaveLength(1);
     await svc.dispose();
 
-    svc = testService({
-      config: { SMTP_URL: "smtps://u:p@mail.example.com", NOTIFY_EMAIL: "cook@example.com" },
-      testMail: new Error("535 authentication failed"),
-    });
+    svc = testService({ mailEnv, mailError: new Error("535 authentication failed") });
     const failed = await post("/admin/settings/notify/test", { _csrf: SESSION_CSRF });
     expect(failed.statusCode).toBe(502);
     expect(failed.body).toContain("The test mail did not go out: 535 authentication failed");
     await svc.dispose();
 
     svc = testService();
-    expect((await get("/admin/settings?tab=notify")).body).toContain(
-      "Set SMTP_URL and NOTIFY_EMAIL",
-    );
+    const off = (await get("/admin/settings?tab=notify")).body;
+    expect(off).toContain("Enter a mail server here, or set SMTP_URL and NOTIFY_EMAIL");
+    expect(off).not.toContain('action="/admin/settings/notify/test"');
   });
 
   it("lists the effective configuration under advanced and masks secrets", async () => {
@@ -1540,6 +1538,211 @@ describe("settings page", () => {
     expect((await get("/admin/settings?tab=%3Cx%3E")).body).toContain(
       'action="/admin/session/check"',
     );
+  });
+});
+
+describe("mail settings", () => {
+  const MARKER = "MARKER-PASSWORD-SMTP-63";
+  const USER = "marker-user-smtp-63@example.com";
+  const MAIL_FORM = {
+    host: "mail.example.com",
+    port: "587",
+    security: "starttls",
+    username: USER,
+    password: MARKER,
+    from: "",
+    to: "cook@example.com",
+    event_session: "1",
+    event_job: "1",
+    event_health: "1",
+  };
+
+  async function waitForStatus(id: string, status: string) {
+    await vi.waitFor(() => expect(svc?.store.jobs.get(id)?.status).toBe(status), {
+      timeout: 3000,
+    });
+  }
+
+  it("shows the settings of the environment read only and refuses to change them", async () => {
+    svc = testService({
+      mailEnv: {
+        SMTP_URL: `smtps://env-user:${MARKER}@mail.example.com:465`,
+        NOTIFY_EMAIL: "cook@example.com",
+      },
+    });
+    const body = (await get("/admin/settings?tab=notify")).body;
+    expect(body).toContain("from the environment");
+    expect(body).toContain("mail.example.com:465");
+    expect(body).toContain('value="env-user"');
+    expect(body).toMatch(/<fieldset[^>]*\sdisabled/);
+    expect(body).toContain(
+      "To edit these values here, remove SMTP_URL from the environment and restart the bridge.",
+    );
+    expect(body).toContain(`placeholder="${TOKEN_MASK}"`);
+    expect(body).not.toContain(MARKER);
+    expect(body).not.toContain('action="/admin/settings/notify/delete"');
+    const save = await post("/admin/settings/notify", { _csrf: SESSION_CSRF, ...MAIL_FORM });
+    expect(save.statusCode).toBe(409);
+    expect(save.body).toContain("The mail settings come from the environment (SMTP_URL)");
+    const remove = await post("/admin/settings/notify/delete", { _csrf: SESSION_CSRF });
+    expect(remove.statusCode).toBe(409);
+    expect(svc.store.settings.get("notify.smtp")).toBeNull();
+    expect(svc.mailer.status().source).toBe("env");
+  });
+
+  it("saves the settings encrypted, keeps an empty password and never shows it", async () => {
+    svc = testService();
+    const empty = (await get("/admin/settings?tab=notify")).body;
+    expect(empty).toContain('action="/admin/settings/notify"');
+    expect(empty).not.toMatch(/<fieldset[^>]*\sdisabled/);
+    expect(empty).not.toContain('action="/admin/settings/notify/delete"');
+    const saved = await post("/admin/settings/notify", { _csrf: SESSION_CSRF, ...MAIL_FORM });
+    expect(saved.statusCode).toBe(303);
+    expect(saved.headers.location).toBe("/admin/settings?tab=notify&notice=mail-saved");
+    const page = (await get("/admin/settings?tab=notify&notice=mail-saved")).body;
+    expect(page).toContain("Mail settings saved, encrypted. They apply right away.");
+    expect(page).toContain("stored on this page");
+    expect(page).toContain("mail.example.com:587");
+    expect(page).toContain('value="mail.example.com"');
+    expect(page).toContain('placeholder="stored; leave empty to keep it"');
+    expect(page).toContain('data-confirm="The bridge forgets the mail server');
+    expect(page).not.toContain(MARKER);
+    expect(svc.store.settings.get("notify.smtp")).not.toContain(MARKER);
+    expect(svc.store.settings.get("notify.smtp")).not.toContain(USER);
+
+    const again = await post("/admin/settings/notify", {
+      _csrf: SESSION_CSRF,
+      ...MAIL_FORM,
+      password: "",
+      port: "2525",
+    });
+    expect(again.statusCode).toBe(303);
+    await svc.mailer.testMail();
+    expect(svc.mail.transports.at(-1)?.options).toMatchObject({
+      host: "mail.example.com",
+      port: 2525,
+      auth: { user: USER, pass: MARKER },
+    });
+  });
+
+  it("refuses an invalid form, marks the fields and keeps what was typed but the password", async () => {
+    svc = testService();
+    const response = await post("/admin/settings/notify", {
+      _csrf: SESSION_CSRF,
+      ...MAIL_FORM,
+      host: "",
+      security: "none",
+      to: "nope",
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toContain("The mail settings were not saved. Check the marked fields.");
+    expect(response.body).toContain("Enter a server.");
+    expect(response.body).toContain("No encryption only together with “Allow unencrypted”.");
+    expect(response.body).toContain("At least one address is not valid.");
+    expect(response.body).toContain('aria-invalid="true"');
+    expect(response.body).toContain('value="nope"');
+    expect(response.body).toMatch(/<option value="none"\s+selected/);
+    expect(response.body).toMatch(/aria-current="page"\s*>.*Notifications<\/a/s);
+    expect(response.body).not.toContain(MARKER);
+    expect(svc.store.settings.get("notify.smtp")).toBeNull();
+    expect(svc.mailer.status().source).toBe("off");
+  });
+
+  it("deletes the settings and sends nothing afterwards", async () => {
+    svc = testService();
+    await post("/admin/settings/notify", { _csrf: SESSION_CSRF, ...MAIL_FORM });
+    const response = await post("/admin/settings/notify/delete", { _csrf: SESSION_CSRF });
+    expect(response.headers.location).toBe("/admin/settings?tab=notify&notice=mail-deleted");
+    expect(svc.store.settings.get("notify.smtp")).toBeNull();
+    expect(svc.mailer.status().source).toBe("off");
+    const test = await post("/admin/settings/notify/test", { _csrf: SESSION_CSRF });
+    expect(test.statusCode).toBe(404);
+    expect(svc.mail.sent).toEqual([]);
+  });
+
+  it("needs the form token to save, delete or test", async () => {
+    svc = testService();
+    svc.mailer.save(MAIL_FORM);
+    for (const url of [
+      "/admin/settings/notify",
+      "/admin/settings/notify/delete",
+      "/admin/settings/notify/test",
+    ]) {
+      const response = await post(url, { ...MAIL_FORM, host: "evil.example.com" });
+      expect(response.statusCode, url).toBe(403);
+    }
+    expect(svc.mailer.status().summary?.host).toBe("mail.example.com");
+    expect(svc.mail.sent).toEqual([]);
+  });
+
+  it("mails a job that fails after saving through the new transport, without a restart", async () => {
+    svc = testService({
+      seedCookie: "a=1",
+      converter: fakeConverter(new ConverterNotConfiguredError()),
+    });
+    svc.start();
+    const before = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 }).job;
+    svc.worker.nudge();
+    await waitForStatus(before.id, "failed");
+    expect(svc.mail.transports).toEqual([]);
+
+    await post("/admin/settings/notify", { _csrf: SESSION_CSRF, ...MAIL_FORM });
+    const after = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 2 }).job;
+    svc.worker.nudge();
+    await waitForStatus(after.id, "failed");
+    await vi.waitFor(() => expect(svc?.mail.sent).toHaveLength(1));
+    expect(svc.mail.transports.map((transport) => transport.options.host)).toEqual([
+      "mail.example.com",
+    ]);
+    expect(svc.mail.sent[0]).toMatchObject({ to: "cook@example.com", from: "cook@example.com" });
+    expect(svc.mail.sent[0]?.text).toContain(after.id);
+    expect(JSON.stringify(svc.mail.sent)).not.toMatch(new RegExp(`${MARKER}|${USER}`));
+  });
+
+  it("keeps the password and the user name out of pages, logs, mails, /health and /jobs", async () => {
+    const { logger, text } = capturingLogger();
+    svc = testService({
+      appLogger: logger,
+      seedCookie: "a=1",
+      converter: fakeConverter(new ConverterNotConfiguredError()),
+      mailError: new Error(`535 5.7.8 authentication failed for ${USER} (${MARKER})`),
+    });
+    await post("/admin/settings/notify", { _csrf: SESSION_CSRF, ...MAIL_FORM });
+    const test = await post("/admin/settings/notify/test", { _csrf: SESSION_CSRF });
+    expect(test.statusCode).toBe(502);
+    expect(test.body).toContain(
+      "The test mail did not go out: 535 5.7.8 authentication failed for [redacted] ([redacted])",
+    );
+    expect(test.body).not.toContain(MARKER);
+
+    svc.start();
+    const job = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 }).job;
+    svc.worker.nudge();
+    await waitForStatus(job.id, "failed");
+    await vi.waitFor(() => expect(text()).toContain("notification failed"));
+
+    const pages = [
+      "/admin",
+      "/admin/jobs",
+      `/admin/jobs/${job.id}`,
+      `/admin/jobs/${job.id}?tab=events`,
+      "/admin/settings",
+      "/admin/settings?tab=system",
+      "/admin/settings?tab=notify",
+    ];
+    for (const url of pages) {
+      const body = (await get(url)).body;
+      expect(body, url).not.toContain(MARKER);
+      // The user name shows in the mail form only.
+      if (!url.endsWith("tab=notify")) expect(body, url).not.toContain(USER);
+    }
+    for (const url of ["/health", `/jobs/${job.id}`]) {
+      const body = (await svc.app.inject({ method: "GET", url })).body;
+      expect(body, url).not.toContain(MARKER);
+      expect(body, url).not.toContain(USER);
+    }
+    expect(text()).not.toContain(MARKER);
+    expect(text()).not.toContain(USER);
   });
 });
 

@@ -1,6 +1,7 @@
 // Fakes for the network clients and the converter, shared by the service tests.
 
 import { readFileSync } from "node:fs";
+import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { pino } from "pino";
 import { vi } from "vitest";
@@ -17,7 +18,9 @@ import {
   type RecipePatch,
   type TimelineEventInput,
 } from "../mealie/index.js";
-import type { Notifier, SessionMailDetails } from "../notify/email.js";
+import { loggerOptions } from "../logger.js";
+import type { MailMessage, MailTransport, Notifier, SessionMailDetails } from "../notify/email.js";
+import type { SmtpOptions } from "../notify/mail-settings.js";
 import type { SessionStatus } from "../session/manager.js";
 import type { Job } from "../store/jobs.js";
 import type { ConversionRequest, ConversionResult, Converter } from "../pipeline/converter-port.js";
@@ -33,6 +36,19 @@ export const limits = await loadDeviceLimits(
 
 export function silentLogger(): AppLogger {
   return pino({ level: "silent" });
+}
+
+// A logger with the masking of the real one that keeps every line, for tests that look for
+// secrets in the log.
+export function capturingLogger(): { logger: AppLogger; text: () => string } {
+  const lines: string[] = [];
+  const stream = new Writable({
+    write(chunk: Buffer, _encoding, callback) {
+      lines.push(chunk.toString());
+      callback();
+    },
+  });
+  return { logger: pino(loggerOptions("debug"), stream), text: () => lines.join("") };
 }
 
 export function mealieRecipe(overrides: Record<string, unknown> = {}): MealieRecipe {
@@ -334,6 +350,38 @@ export function fakeNotifier(options: { testMail?: Error } = {}): FakeNotifier {
       return Promise.resolve();
     }),
   };
+}
+
+// Stands in for nodemailer: every transport the mailer builds, with its options and the mails
+// it sent.
+export interface StubMail {
+  transports: Array<{ options: SmtpOptions; sent: MailMessage[] }>;
+  // Every mail sent, over all transports.
+  sent: MailMessage[];
+  // Makes every send fail with this error.
+  fail: Error | null;
+  createTransport: (options: SmtpOptions) => MailTransport;
+}
+
+export function stubMail(fail: Error | null = null): StubMail {
+  const stub: StubMail = {
+    transports: [],
+    sent: [],
+    fail,
+    createTransport: (options) => {
+      const entry = { options, sent: [] as MailMessage[] };
+      stub.transports.push(entry);
+      return {
+        sendMail: (message) => {
+          if (stub.fail) return Promise.reject(stub.fail);
+          entry.sent.push(message);
+          stub.sent.push(message);
+          return Promise.resolve({});
+        },
+      };
+    },
+  };
+  return stub;
 }
 
 // Stands in for sharp in pipeline tests.

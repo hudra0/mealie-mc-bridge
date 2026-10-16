@@ -488,11 +488,11 @@ export function segmented(label: string, items: readonly SegmentItem[]): SafeHtm
 }
 
 export const INPUT_CLASS =
-  "block h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-fg shadow-xs placeholder:text-fg-subtle focus:border-brand focus:outline-2 focus:outline-offset-0 focus:outline-brand/25";
+  "block h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-fg shadow-xs placeholder:text-fg-subtle focus:border-brand focus:outline-2 focus:outline-offset-0 focus:outline-brand/25 disabled:cursor-not-allowed disabled:bg-subtle disabled:text-fg-muted aria-invalid:border-danger";
 export const TEXTAREA_CLASS =
   "block w-full rounded-md border border-line-strong bg-surface px-3 py-2 font-mono text-xs text-fg shadow-xs placeholder:text-fg-subtle focus:border-brand focus:outline-2 focus:outline-offset-0 focus:outline-brand/25";
 export const CHECKBOX_CLASS =
-  "mt-0.5 size-4 shrink-0 rounded border-line-strong accent-[var(--ui-accent)]";
+  "mt-0.5 size-4 shrink-0 rounded border-line-strong accent-[var(--ui-accent)] disabled:cursor-not-allowed";
 
 export function field(options: {
   id: string;

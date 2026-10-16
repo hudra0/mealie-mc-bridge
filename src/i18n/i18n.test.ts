@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import {
+  MAIL_ERROR_CODES,
+  MAIL_EVENTS,
+  MAIL_SECURITY,
+  MAX_RECIPIENTS,
+} from "../notify/mail-settings.js";
 import { escapeMarkdown, formatDate, shorten } from "./format.js";
 import {
   CATALOGS,
@@ -55,6 +61,18 @@ describe("message catalogs", () => {
       for (const stage of FAILURE_STAGES) {
         expect(catalog.timeline.failureReasons[stage], `${language} ${stage}`).toBeTruthy();
       }
+    }
+  });
+
+  it("explain every problem of the mail form and name the recipient limit", () => {
+    for (const language of UI_LANGUAGES) {
+      const notify = CATALOGS[language].admin.settings.notify;
+      expect(Object.keys(notify.errors).sort(), language).toEqual([...MAIL_ERROR_CODES].sort());
+      for (const code of MAIL_ERROR_CODES) expect(notify.errors[code], code).toBeTruthy();
+      expect(notify.errors.to_too_many).toContain(String(MAX_RECIPIENTS));
+      expect(notify.toHint).toContain(String(MAX_RECIPIENTS));
+      expect(Object.keys(notify.securityNames).sort()).toEqual([...MAIL_SECURITY].sort());
+      expect(Object.keys(notify.eventNames).sort()).toEqual([...MAIL_EVENTS].sort());
     }
   });
 

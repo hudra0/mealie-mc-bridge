@@ -1,12 +1,24 @@
 // The settings page in six tabs: the Monsieur Cuisine session, the Lidl account of the
 // automatic login, the Mealie connection with the recipe action URL, the language model
-// (read only), notifications and the system with the effective configuration.
+// (read only), notifications with the mail server and the system with the effective
+// configuration.
 //
-// The Lidl password is never shown or sent back; secrets of the configuration arrive here
-// already reduced to "set" or "unset" (src/config-reference.ts).
+// The Lidl password and the mail password are never shown or sent back; secrets of the
+// configuration arrive here already reduced to "set" or "unset" (src/config-reference.ts).
 
 import { REQUIRED_DEFAULT, type ConfigEntry } from "../../config-reference.js";
 import type { AdminMessages, SavedStatus } from "../../i18n/index.js";
+import {
+  ALL_EVENTS,
+  MAIL_EVENTS,
+  MAIL_SECURITY,
+  summaryValues,
+  type MailEvents,
+  type MailField,
+  type MailFieldErrors,
+  type MailFormValues,
+} from "../../notify/mail-settings.js";
+import type { MailStatus } from "../../notify/mailer.js";
 import type { AutoLoginStatus } from "../../session/auto-login.js";
 import { browserName, type LoginProgress } from "../../session/browser-login.js";
 import type { SessionStatus } from "../../session/manager.js";
@@ -17,6 +29,7 @@ import {
   button,
   callout,
   card,
+  CHECKBOX_CLASS,
   confirmAttributes,
   copyField,
   csrfField,
@@ -67,9 +80,15 @@ export interface SettingsViewData {
   ai: AiInfo | null;
   limits: { jobs: number; costUsd: number };
   usage: { month: JobSummary; today: { jobs: number; costUsd: number } };
-  // Null when no mail is configured.
-  notify: { recipient: string | null; canTest: boolean };
+  // Null when the service runs without the mailer.
+  notify: NotifyViewData | null;
   system: { version: string; uptimeMs: number; dataDir: string | null };
+}
+
+export interface NotifyViewData {
+  status: MailStatus;
+  // After a refused save: what was submitted (never the password) and what is wrong.
+  form: { values: MailFormValues; errors: MailFieldErrors } | null;
 }
 
 function sessionTab(data: SettingsViewData, ctx: ViewContext): SafeHtml {
@@ -246,6 +265,33 @@ function lastAttemptCard(status: AutoLoginStatus, ctx: ViewContext): SafeHtml | 
   });
 }
 
+// A red box with one delete button that asks first.
+function dangerZone(options: {
+  title: string;
+  hint: string;
+  action: string;
+  label: string;
+  confirm: string;
+  csrf: string;
+}): SafeHtml {
+  return html`<section class="rounded-lg border border-danger/40 bg-surface shadow-xs">
+    <div class="flex flex-wrap items-center justify-between gap-3 p-4">
+      <div class="min-w-0">
+        <h2 class="text-sm font-semibold text-danger-fg">${options.title}</h2>
+        <p class="text-[13px] text-fg-muted">${options.hint}</p>
+      </div>
+      <form
+        method="post"
+        action="${options.action}"
+        ${confirmAttributes({ title: options.label, message: options.confirm, ok: options.label })}
+      >
+        ${csrfField(options.csrf)}
+        ${button({ label: options.label, variant: "danger", icon: "trash-2", size: "sm" })}
+      </form>
+    </div>
+  </section>`;
+}
+
 function lidlTab(data: SettingsViewData, ctx: ViewContext): SafeHtml {
   const l = ctx.t.settings.lidl;
   if (data.autoLogin === null) {
@@ -336,22 +382,14 @@ function lidlTab(data: SettingsViewData, ctx: ViewContext): SafeHtml {
     </form>`,
   });
   const danger = status.configured
-    ? html`<section class="rounded-lg border border-danger/40 bg-surface shadow-xs">
-        <div class="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div class="min-w-0">
-            <h2 class="text-sm font-semibold text-danger-fg">${l.dangerZone}</h2>
-            <p class="text-[13px] text-fg-muted">${l.removeHint}</p>
-          </div>
-          <form
-            method="post"
-            action="/admin/settings/credentials/delete"
-            ${confirmAttributes({ title: l.remove, message: l.removeConfirm, ok: l.remove })}
-          >
-            ${csrfField(ctx.csrf)}
-            ${button({ label: l.remove, variant: "danger", icon: "trash-2", size: "sm" })}
-          </form>
-        </div>
-      </section>`
+    ? dangerZone({
+        title: l.dangerZone,
+        hint: l.removeHint,
+        action: "/admin/settings/credentials/delete",
+        label: l.remove,
+        confirm: l.removeConfirm,
+        csrf: ctx.csrf,
+      })
     : "";
   return html`<div class="grid items-start gap-4 xl:grid-cols-2">
     <div class="space-y-4">${account}${lastAttemptCard(status, ctx)}</div>
@@ -480,26 +518,240 @@ function aiTab(data: SettingsViewData, ctx: ViewContext): SafeHtml {
   return html`<div class="grid items-start gap-4 xl:grid-cols-2">${model}${quota}</div>`;
 }
 
+// The mail server form when nothing is set up yet.
+const NEW_MAIL_FORM: MailFormValues = {
+  host: "",
+  port: "587",
+  security: "starttls",
+  allowInsecure: false,
+  username: "",
+  from: "",
+  to: "",
+  events: ALL_EVENTS,
+};
+
+function mailEvents(events: MailEvents, l: AdminMessages["settings"]["notify"]): SafeHtml {
+  const on = MAIL_EVENTS.filter((event) => events[event]);
+  if (on.length === 0) return html`<span class="text-fg-muted">${l.noEvents}</span>`;
+  return html`<ul class="space-y-0.5">
+    ${on.map((event) => html`<li>${l.eventNames[event]}</li>`)}
+  </ul>`;
+}
+
+function mailStateCard(status: MailStatus, ctx: ViewContext): SafeHtml {
+  const l = ctx.t.settings.notify;
+  const summary = status.summary;
+  const env = status.source === "env";
+  return card({
+    title: l.title,
+    icon: "mail",
+    actions: summary
+      ? html`<form method="post" action="/admin/settings/notify/test" data-busy="${l.sending}">
+          ${csrfField(ctx.csrf)}
+          ${button({ label: l.test, icon: "send", size: "sm", busyLabel: true })}
+        </form>`
+      : undefined,
+    body: html`${descriptionList([
+        [
+          l.state,
+          summary
+            ? html`<span class="flex flex-wrap items-center gap-2"
+                >${statusDot("ok", l.on)}
+                ${badge(env ? "info" : "neutral", env ? l.fromEnv : l.fromPage)}</span
+              >`
+            : statusDot("neutral", l.off),
+        ],
+        ...(summary
+          ? ([
+              [l.server, html`<code class="text-xs">${summary.host}:${summary.port}</code>`],
+              [
+                l.security,
+                html`${l.securityNames[summary.security]}${
+                  summary.allowInsecure && summary.security !== "tls"
+                    ? html` ${badge("warn", l.insecureAllowed)}`
+                    : ""
+                }`,
+              ],
+              [l.recipient, summary.to.join(", ")],
+              [l.sender, summary.from],
+              [l.events, mailEvents(summary.events, l)],
+            ] as const)
+          : []),
+      ])}
+      ${
+        status.unreadable
+          ? html`<div class="mt-4">${callout({ tone: "warn", body: l.unreadable })}</div>`
+          : ""
+      }
+      <p class="mt-4 text-[13px] text-fg-muted">${summary ? l.what : l.setUp}</p>`,
+  });
+}
+
+// The mail server form. While the environment decides, it shows those values, disabled,
+// with the password masked. The password field is always empty.
+function mailFormCard(notify: NotifyViewData, ctx: ViewContext): SafeHtml {
+  const l = ctx.t.settings.notify;
+  const { status } = notify;
+  const env = status.source === "env";
+  const values =
+    notify.form?.values ?? (status.summary ? summaryValues(status.summary) : NEW_MAIL_FORM);
+  const errors = notify.form?.errors ?? {};
+  const passwordSet = status.summary?.passwordSet === true;
+  const error = (name: MailField) => {
+    const code = errors[name];
+    return code === undefined ? {} : { error: l.errors[code] };
+  };
+  const invalid = (name: MailField) => (errors[name] ? html`aria-invalid="true"` : "");
+  const input = (options: {
+    name: MailField;
+    value: string;
+    type?: string;
+    autocomplete?: string;
+    extra?: SafeHtml;
+  }) =>
+    html`<input
+      id="mail-${options.name}"
+      type="${options.type ?? "text"}"
+      name="${options.name}"
+      value="${options.value}"
+      autocomplete="${options.autocomplete ?? "off"}"
+      autocapitalize="none"
+      spellcheck="false"
+      ${invalid(options.name)}
+      ${options.extra ?? ""}
+      class="${INPUT_CLASS}"
+    />`;
+  const checkbox = (name: string, isChecked: boolean, label: string, hint?: string) =>
+    html`<label class="flex gap-2.5">
+      <input
+        type="checkbox"
+        name="${name}"
+        value="1"
+        ${isChecked ? html`checked` : ""}
+        class="${CHECKBOX_CLASS}"
+      />
+      <span>
+        <span class="block font-medium">${label}</span>
+        ${hint ? html`<span class="block text-xs text-fg-muted">${hint}</span>` : ""}
+      </span>
+    </label>`;
+  return card({
+    title: l.formTitle,
+    icon: "server",
+    ...(env ? { actions: badge("info", l.fromEnv) } : {}),
+    body: html`<form method="post" action="/admin/settings/notify" class="space-y-4">
+      ${csrfField(ctx.csrf)} ${env ? callout({ tone: "info", body: l.envHint }) : ""}
+      <fieldset class="min-w-0 space-y-4" ${env ? html`disabled` : ""}>
+        <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem]">
+          ${field({
+            id: "mail-host",
+            label: l.host,
+            hint: l.hostHint,
+            ...error("host"),
+            control: input({ name: "host", value: values.host }),
+          })}
+          ${field({
+            id: "mail-port",
+            label: l.port,
+            ...error("port"),
+            control: input({
+              name: "port",
+              type: "number",
+              value: values.port,
+              extra: html`min="1" max="65535" inputmode="numeric"`,
+            }),
+          })}
+        </div>
+        ${field({
+          id: "mail-security",
+          label: l.security,
+          hint: l.securityHint,
+          ...error("security"),
+          control: html`<select
+            id="mail-security"
+            name="security"
+            ${invalid("security")}
+            class="${INPUT_CLASS}"
+          >
+            ${MAIL_SECURITY.map(
+              (option) =>
+                html`<option value="${option}" ${values.security === option ? html`selected` : ""}>
+                  ${l.securityNames[option]}
+                </option>`,
+            )}
+          </select>`,
+        })}
+        ${checkbox("allow_insecure", values.allowInsecure, l.allowInsecure, l.allowInsecureHint)}
+        ${field({
+          id: "mail-username",
+          label: l.username,
+          hint: l.usernameHint,
+          ...error("username"),
+          control: input({ name: "username", value: values.username }),
+        })}
+        ${field({
+          id: "mail-password",
+          label: l.password,
+          hint: l.passwordHint,
+          ...error("password"),
+          control: input({
+            name: "password",
+            type: "password",
+            value: "",
+            autocomplete: "new-password",
+            extra: html`placeholder="${passwordSet ? (env ? TOKEN_MASK : l.passwordStored) : ""}"`,
+          }),
+        })}
+        ${field({
+          id: "mail-from",
+          label: l.from,
+          hint: l.fromHint,
+          ...error("from"),
+          control: input({ name: "from", value: values.from }),
+        })}
+        ${field({
+          id: "mail-to",
+          label: l.to,
+          hint: l.toHint,
+          ...error("to"),
+          control: input({ name: "to", value: values.to }),
+        })}
+        <fieldset class="space-y-2">
+          <legend class="mb-1.5 text-sm font-medium">${l.events}</legend>
+          ${MAIL_EVENTS.map((event) =>
+            checkbox(`event_${event}`, values.events[event], l.eventNames[event]),
+          )}
+        </fieldset>
+        ${button({ label: l.save, variant: "primary" })}
+      </fieldset>
+    </form>`,
+  });
+}
+
 function notifyTab(data: SettingsViewData, ctx: ViewContext): SafeHtml {
   const l = ctx.t.settings.notify;
-  const { recipient, canTest } = data.notify;
+  const notify = data.notify;
+  if (notify === null) return card({ body: callout({ tone: "info", title: l.unavailable }) });
+  const { status } = notify;
+  // Settings that cannot be read can still be deleted.
+  const stored = status.source === "ui" || (status.source === "off" && status.unreadable);
   return html`<div class="grid items-start gap-4 xl:grid-cols-2">
-    ${card({
-      title: l.title,
-      icon: "mail",
-      actions:
-        recipient && canTest
-          ? html`<form method="post" action="/admin/settings/notify/test" data-busy="${l.sending}">
-              ${csrfField(ctx.csrf)}
-              ${button({ label: l.test, icon: "send", size: "sm", busyLabel: true })}
-            </form>`
-          : undefined,
-      body: html`${descriptionList([
-          [l.state, recipient ? statusDot("ok", l.on) : statusDot("neutral", l.off)],
-          ...(recipient ? [[l.recipient, recipient] as const] : []),
-        ])}
-        <p class="mt-4 text-[13px] text-fg-muted">${recipient ? l.what : l.setUp}</p>`,
-    })}
+    ${mailStateCard(status, ctx)}
+    <div class="space-y-4">
+      ${mailFormCard(notify, ctx)}
+      ${
+        stored
+          ? dangerZone({
+              title: l.dangerZone,
+              hint: l.removeHint,
+              action: "/admin/settings/notify/delete",
+              label: l.remove,
+              confirm: l.removeConfirm,
+              csrf: ctx.csrf,
+            })
+          : ""
+      }
+    </div>
   </div>`;
 }
 

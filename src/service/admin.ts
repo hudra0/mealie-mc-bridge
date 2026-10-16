@@ -1,5 +1,5 @@
-// The admin pages: session status and renewal, the queue, job details with retry and
-// cancel, and a dry run that shows what the converter would get and make.
+// The admin pages: overview, jobs with retry and cancel, a dry run, and the settings
+// (admin-settings.ts), on server-rendered HTML with self-hosted assets.
 //
 // Protection, in layers:
 // - A login form for ADMIN_USER and ADMIN_PASSWORD, compared in constant time. A correct
@@ -25,6 +25,9 @@
 //   ADMIN_HOSTS get through. A malicious site could otherwise rebind its own name to the
 //   bridge's address and use the pages as same-origin. With a login, the session cookie is
 //   bound to the name it was set for, so the list applies only when set.
+// - The pages allow scripts, styles, fonts and images from the bridge itself only (CSP):
+//   no inline script, style or event handler. The static assets under /admin/assets/ are
+//   the only thing served without a login; they hold no data.
 
 import { randomBytes } from "node:crypto";
 import formbody from "@fastify/formbody";
@@ -32,7 +35,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { errorMessage, type AppLogger } from "../app-logger.js";
 import { messages, type AdminMessages, type UiLanguage } from "../i18n/index.js";
 import { McSessionError, type McRecipeSink } from "../mc/index.js";
-import { quantizeScale } from "../mealie/index.js";
+import { quantizeScale, type MealieClient } from "../mealie/index.js";
+import type { Notifier } from "../notify/email.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import {
   checkConverted,
@@ -54,8 +58,10 @@ import {
 import { JOB_STATUSES, JobConflictError, type JobStatus, type JobStore } from "../store/jobs.js";
 import type { McRecipeStore } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
+import { version } from "../version.js";
 import {
   ADMIN_COOKIE,
+  ADMIN_COOKIE_PATH,
   HSTS_VALUE,
   LoginThrottle,
   SESSIONS_VALID_AFTER_KEY,
@@ -70,21 +76,24 @@ import {
 } from "./admin-auth.js";
 import type { ConfigEntry } from "../config-reference.js";
 import { registerSettings, type AutoLoginPort } from "./admin-settings.js";
-import {
-  REFRESH_SECONDS,
-  SESSION_CLASS,
-  dashboardView,
-  dryRunView,
-  jobDetailView,
-  jobListView,
-  loginView,
-  pageHead,
-  type DryRunData,
-  type MealieCheck,
-  type WebhookInfo,
-} from "./admin-views.js";
-import { html, page, type NavKey, type SafeHtml } from "./html.js";
+import type { SafeHtml } from "./html.js";
 import { credentialsMatch, parseBasicAuth, safeEqual, type Credentials } from "./security.js";
+import { isAssetPath, loadAssets, type AssetCatalog } from "./ui/assets.js";
+import type { Notice, Tone } from "./ui/components.js";
+import { adminTimeZone } from "./ui/format.js";
+import { parseTheme, renderPage, THEME_COOKIE, type NavKey } from "./ui/shell.js";
+import { isActive, type ViewContext } from "./views/context.js";
+import { dashboardView, type AiInfo, type MealieCheck } from "./views/dashboard.js";
+import { dryRunView, type DryRunData } from "./views/dry-run.js";
+import { JOB_TABS, jobDetailView, type JobTab } from "./views/job-detail.js";
+import { FILTER_STATUSES, JOB_FILTERS, jobListView, type JobFilter } from "./views/jobs.js";
+import { errorView, loginView } from "./views/login.js";
+import type { WebhookInfo } from "./views/settings.js";
+
+// The content security policy of every page: the bridge's own scripts, styles, fonts and
+// images, fetches to itself, forms to itself, no framing.
+export const CONTENT_SECURITY_POLICY =
+  "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 export interface AdminOptions {
   // Null turns the login off.
@@ -96,12 +105,13 @@ export interface AdminOptions {
   allowedHosts?: readonly string[];
   store: { jobs: JobStore; mcRecipes: McRecipeStore; settings: SettingsStore };
   session: Pick<SessionManager, "status" | "setCookie" | "check" | "loginNow">;
-  mealie: Pick<MealiePort, "getRecipe">;
+  mealie: Pick<MealiePort, "getRecipe"> &
+    Partial<Pick<MealieClient, "getRecipeThumbnail" | "searchRecipes">>;
   // Asks Mealie who the API token belongs to; the overview shows whether it answers.
   mealieCheck?: () => Promise<unknown>;
   // MEALIE_URL, shown next to that check.
   mealieUrl?: string;
-  // WEBHOOK_TOKEN and PORT, for the recipe action URL on the overview.
+  // WEBHOOK_TOKEN and PORT, for the recipe action URL on the settings page.
   webhook?: { token: string; port: number };
   // The automatic login and its part of the settings page; left out, that part says so.
   autoLogin?: AutoLoginPort;
@@ -123,6 +133,18 @@ export interface AdminOptions {
   worker?: { status(): WorkerStatus; nudge?(): void };
   // The link to a recipe in Mealie, or null when the public URL is unknown.
   mealieRecipeUrl?: (slug: string) => string | null;
+  // The language model of the converter, for the overview and the settings page.
+  ai?: AiInfo;
+  // JOB_DAILY_LIMIT and JOB_DAILY_COST_LIMIT_USD; 0 is no limit.
+  dailyLimits?: { jobs: number; costUsd: number };
+  // The mail notifier; its testMail backs the test button of the settings page.
+  notifier?: Pick<Notifier, "testMail">;
+  // NOTIFY_EMAIL when mails are configured, else null.
+  notifyRecipient?: string | null;
+  // DATA_DIR, shown on the settings page.
+  dataDir?: string;
+  // The built stylesheet, script, font and icons; read from dist/assets when left out.
+  assets?: AssetCatalog;
   // More pages inside the same protection (login, form token, host check).
   extend?: (context: AdminContext) => void;
   // The secret behind the form tokens. Fixed in tests; random otherwise.
@@ -134,12 +156,26 @@ export interface AdminOptions {
 
 const FORM_BODY_LIMIT = 64 * 1024;
 const API_BODY_LIMIT = 64 * 1024;
-export { REFRESH_SECONDS };
+// Pages that follow a queued or running job reload after this many seconds.
+export const REFRESH_SECONDS = 5;
 // The overview asks Mealie at most this often, and waits this long for an answer.
 const MEALIE_CHECK_TTL_MS = 30_000;
 const MEALIE_CHECK_TIMEOUT_MS = 4_000;
 // The compose service name of the bridge in compose.example.yml.
 const COMPOSE_SERVICE = "mc-bridge";
+// Thumbnails are kept this long: a hit an hour, a miss five minutes, at most 300 recipes.
+const THUMBNAIL_TTL_MS = 60 * 60_000;
+const THUMBNAIL_MISS_TTL_MS = 5 * 60_000;
+const THUMBNAIL_CACHE_SIZE = 300;
+const RECIPE_ID = /^[A-Za-z0-9-]{1,64}$/;
+const DAY_MS = 24 * 60 * 60_000;
+// The setup card of the overview stays away once dismissed.
+export const SETUP_DISMISSED_KEY = "ui.setup_dismissed_at";
+// Notices that report a state rather than a success.
+const INFO_NOTICES = new Set(["login-running", "login-cooldown", "login-no-credentials"]);
+
+// What the overview shows while Mealie has no image for a recipe: a neutral plate.
+export const THUMBNAIL_PLACEHOLDER = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><g fill="none" stroke="#a1a1aa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" transform="translate(20 20)"><path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8"/><path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7"/><path d="m2.1 21.8 6.4-6.3"/><path d="m19 5-7 7"/></g></svg>`;
 
 interface FormBody {
   _csrf?: string;
@@ -148,6 +184,7 @@ interface FormBody {
   user?: string;
   password?: string;
   next?: string;
+  theme?: string;
 }
 
 export interface RenderExtra {
@@ -166,8 +203,14 @@ export interface AdminContext {
   t: AdminMessages;
   // The form token for the session of a request.
   csrf: (request: FastifyRequest) => string;
+  // The texts, clock, time zone and form token a page body needs.
+  view: (request: FastifyRequest) => ViewContext;
   render: (reply: FastifyReply, title: string, body: SafeHtml, extra?: RenderExtra) => FastifyReply;
   notice: (request: FastifyRequest) => string | null;
+  // Whether Mealie answers with the API token, cached for a while.
+  checkMealie: () => Promise<MealieCheck>;
+  webhookInfo: (request: FastifyRequest) => WebhookInfo | null;
+  now: () => Date;
 }
 
 // The session state as the JSON endpoints report it. The cookie itself never leaves.
@@ -182,8 +225,31 @@ export function sessionJson(status: SessionStatus) {
   };
 }
 
+export const SESSION_TONE: Readonly<Record<SessionStatus["state"], Tone>> = {
+  valid: "ok",
+  invalid: "danger",
+  expired: "danger",
+  unknown: "neutral",
+};
+
 function requestPath(request: FastifyRequest): string {
   return request.url.split("?")[0] ?? "";
+}
+
+// The user name of a Mealie getSelf answer, if it has one.
+function mealieUser(answer: unknown): string | null {
+  if (answer === null || typeof answer !== "object") return null;
+  const record = answer as { username?: unknown; fullName?: unknown };
+  if (typeof record.username === "string" && record.username !== "") return record.username;
+  return typeof record.fullName === "string" && record.fullName !== "" ? record.fullName : null;
+}
+
+function isWebp(bytes: Buffer): boolean {
+  return (
+    bytes.length > 12 &&
+    bytes.toString("ascii", 0, 4) === "RIFF" &&
+    bytes.toString("ascii", 8, 12) === "WEBP"
+  );
 }
 
 export function admin(
@@ -201,8 +267,14 @@ export function admin(
         validAfter: () => Number(settings.get(SESSIONS_VALID_AFTER_KEY) ?? "0") || 0,
       })
     : null;
-  const t: AdminMessages = messages(options.language ?? "en").admin;
+  const catalog = messages(options.language ?? "en");
+  const t: AdminMessages = catalog.admin;
   const now = () => options.now?.() ?? new Date();
+  const timeZone = adminTimeZone();
+  const assets = options.assets ?? loadAssets();
+  if (assets.empty) {
+    options.logger.warn({}, "admin assets not built (npm run build): the pages have no styles");
+  }
   if (authDisabled) {
     options.logger.warn(
       {},
@@ -222,6 +294,15 @@ export function admin(
     const nonce = sessionNonce(request);
     return nonce === null ? "" : formTokenFor(secret, nonce);
   };
+  const view = (request: FastifyRequest): ViewContext => ({
+    m: catalog,
+    t,
+    now: now(),
+    timeZone,
+    csrf: csrf(request),
+  });
+  const theme = (request: FastifyRequest) =>
+    parseTheme(parseCookieHeader(request.headers.cookie)[THEME_COOKIE]);
 
   const securityHeaders = (reply: FastifyReply) => {
     if (isHttps(reply.request)) reply.header("strict-transport-security", HSTS_VALUE);
@@ -238,38 +319,47 @@ export function admin(
     body: SafeHtml,
     extra: RenderExtra & { bare?: boolean } = {},
   ) => {
+    const request = reply.request;
     const state = options.session.status().state;
+    const notices: Notice[] = extra.notice
+      ? [{ tone: INFO_NOTICES.has(noticeKey(request) ?? "") ? "info" : "ok", text: extra.notice }]
+      : [];
     return securityHeaders(reply)
       .code(extra.status ?? 200)
       .header("content-type", "text/html; charset=utf-8")
-      .header(
-        "content-security-policy",
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
-      )
+      .header("content-security-policy", CONTENT_SECURITY_POLICY)
       .send(
-        page({
+        renderPage({
           title,
-          labels: t,
+          t,
           body,
+          theme: theme(request),
+          assets,
+          notices,
           authDisabled,
-          notice: extra.notice ?? null,
           error: extra.error ?? null,
           refresh: extra.refresh ?? null,
-          active: extra.active ?? null,
-          header: extra.bare
+          nav: extra.bare
             ? null
             : {
-                session: { label: t.sessionState[state], className: SESSION_CLASS[state] },
+                active: extra.active ?? null,
                 user: auth?.user ?? null,
-                formToken: csrf(reply.request),
+                formToken: csrf(request),
+                session: { tone: SESSION_TONE[state], label: t.sessionState[state] },
+                version,
+                path: request.url,
               },
         }),
       );
   };
 
+  const noticeKey = (request: FastifyRequest): string | null => {
+    const key = (request.query as Record<string, unknown> | undefined)?.notice;
+    return typeof key === "string" ? key : null;
+  };
   const notice = (request: FastifyRequest): string | null => {
-    const key = (request.query as Record<string, unknown>).notice;
-    return typeof key === "string" ? (t.notices[key] ?? null) : null;
+    const key = noticeKey(request);
+    return key !== null && Object.hasOwn(t.notices, key) ? (t.notices[key] ?? null) : null;
   };
 
   const tokenValid = (value: unknown, expected: string): boolean =>
@@ -290,6 +380,10 @@ export function admin(
     const rest = params.toString();
     return `${path ?? "/admin"}${rest ? `?${rest}` : ""}`;
   };
+  const refresh = (request: FastifyRequest) => ({
+    seconds: REFRESH_SECONDS,
+    url: refreshUrl(request),
+  });
 
   void app.register(formbody, { bodyLimit: FORM_BODY_LIMIT });
 
@@ -308,7 +402,10 @@ export function admin(
       return;
     }
     const path = requestPath(request);
-    if (auth && path !== "/admin/login" && !signedIn(request)) {
+    // The stylesheet, script, font and icons carry no data; the login page needs them. Only
+    // one plain file name below the prefix: anything longer would reach other routes.
+    const publicAsset = request.method === "GET" && isAssetPath(path);
+    if (auth && path !== "/admin/login" && !publicAsset && !signedIn(request)) {
       if (path.startsWith("/admin/api/")) {
         const wait = throttle.blockedFor(request.ip);
         if (wait > 0) {
@@ -355,17 +452,44 @@ export function admin(
       return next();
     }
     const body = (request.body ?? {}) as FormBody;
-    const expected = requestPath(request) === "/admin/login" ? loginToken : csrf(request);
+    const login = requestPath(request) === "/admin/login";
+    const expected = login ? loginToken : csrf(request);
     if (!tokenValid(body._csrf, expected)) {
       void render(
         reply,
         t.titles.formExpired,
-        html`<p><a href="/admin">${t.links.backToDashboard}</a></p>`,
-        { status: 403, error: t.errors.formExpired, bare: requestPath(request) === "/admin/login" },
+        errorView({
+          icon: "clock",
+          code: "403",
+          title: t.titles.formExpired,
+          text: t.errors.formExpired,
+          back: login
+            ? { href: "/admin/login", label: t.login.title }
+            : { href: "/admin", label: t.links.backToDashboard },
+        }),
+        { status: 403, bare: login || !signedIn(request) },
       );
       return;
     }
     next();
+  });
+
+  // Hashed file names: a file never changes under its name, so browsers keep it for a year.
+  app.get<{ Params: { file: string } }>("/admin/assets/:file", (request, reply) => {
+    const file = assets.get(request.params.file);
+    if (!file) {
+      return reply
+        .code(404)
+        .header("cache-control", "no-store")
+        .header("content-type", "text/plain; charset=utf-8")
+        .send("Not Found");
+    }
+    return reply
+      .header("content-type", file.type)
+      .header("cache-control", "public, max-age=31536000, immutable")
+      .header("x-content-type-options", "nosniff")
+      .header("cross-origin-resource-policy", "same-origin")
+      .send(file.body);
   });
 
   app.get("/admin/login", (request, reply) => {
@@ -374,8 +498,11 @@ export function admin(
     return render(
       reply,
       t.login.title,
-      loginView({ formToken: loginToken, next: safeNext(query.next), user: "" }, t),
-      { bare: true, notice: notice(request) },
+      loginView(
+        { formToken: loginToken, next: safeNext(query.next), user: "", notice: notice(request) },
+        t,
+      ),
+      { bare: true },
     );
   });
 
@@ -388,24 +515,22 @@ export function admin(
     };
     const next = safeNext(body.next);
     const wait = throttle.blockedFor(request.ip);
+    const form = (error: string) =>
+      loginView({ formToken: loginToken, next, user: given.user.slice(0, 200), error }, t);
     if (wait > 0) {
       options.logger.warn({ ip: request.ip }, "admin login refused: too many failures");
-      return render(
-        reply,
-        t.login.title,
-        loginView({ formToken: loginToken, next, user: given.user.slice(0, 200) }, t),
-        { status: 429, bare: true, error: t.login.tooMany(Math.ceil(wait / 60_000)) },
-      );
+      return render(reply, t.login.title, form(t.login.tooMany(Math.ceil(wait / 60_000))), {
+        status: 429,
+        bare: true,
+      });
     }
     if (!credentialsMatch(given, auth)) {
       throttle.fail(request.ip);
       options.logger.warn({ ip: request.ip }, "admin login with wrong credentials");
-      return render(
-        reply,
-        t.login.title,
-        loginView({ formToken: loginToken, next, user: given.user.slice(0, 200) }, t),
-        { status: 401, bare: true, error: t.login.wrongCredentials },
-      );
+      return render(reply, t.login.title, form(t.login.wrongCredentials), {
+        status: 401,
+        bare: true,
+      });
     }
     throttle.succeed(request.ip);
     options.logger.info({ ip: request.ip }, "admin logged in");
@@ -425,18 +550,24 @@ export function admin(
       .redirect(authDisabled ? "/admin" : "/admin/login?notice=logged-out", 303);
   });
 
-  const context: AdminContext = { app, t, csrf, render, notice };
-  const settingsPage = registerSettings(context, {
-    autoLogin: options.autoLogin ?? null,
-    session: options.session,
-    config: options.config ?? null,
-    locale: {
-      mcLocale: options.locale.pack.locale,
-      verified: options.locale.pack.mc.verifiedOnDevice,
-      uiLanguage: options.language ?? "en",
-      recipeStatus: options.recipeStatus,
-    },
-    now,
+  // The theme switch without the script; with it, the script sets the same cookie. The
+  // cookie holds only "system", "light" or "dark".
+  app.post("/admin/theme", (request, reply) => {
+    const body = request.body as FormBody;
+    const value = parseTheme(body.theme);
+    const cookie = [
+      `${THEME_COOKIE}=${value}`,
+      `Path=${ADMIN_COOKIE_PATH}`,
+      "Max-Age=31536000",
+      "SameSite=Lax",
+      ...(isHttps(request) ? ["Secure"] : []),
+    ].join("; ");
+    return securityHeaders(reply).header("set-cookie", cookie).redirect(safeNext(body.next), 303);
+  });
+
+  app.post("/admin/setup/dismiss", (_request, reply) => {
+    settings.set(SETUP_DISMISSED_KEY, now().toISOString());
+    return reply.redirect("/admin", 303);
   });
 
   // Whether Mealie answers with the API token, asked at most every MEALIE_CHECK_TTL_MS so
@@ -445,7 +576,7 @@ export function admin(
   let mealiePending: Promise<MealieCheck> | null = null;
   const checkMealie = async (): Promise<MealieCheck> => {
     const probe = options.mealieCheck;
-    if (!probe) return { state: "unchecked", error: null, checkedAt: null };
+    if (!probe) return { state: "unchecked", error: null, checkedAt: null, user: null };
     const started = now();
     if (mealieChecked && started.getTime() - mealieChecked.at < MEALIE_CHECK_TTL_MS) {
       return mealieChecked.result;
@@ -454,16 +585,26 @@ export function admin(
       let timer: NodeJS.Timeout | undefined;
       const timeout = new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
-          () => reject(new Error(t.setup.mealie.timeout(MEALIE_CHECK_TIMEOUT_MS / 1000))),
+          () => reject(new Error(t.mealieTimeout(MEALIE_CHECK_TIMEOUT_MS / 1000))),
           MEALIE_CHECK_TIMEOUT_MS,
         );
       });
       let result: MealieCheck;
       try {
-        await Promise.race([probe(), timeout]);
-        result = { state: "ok", error: null, checkedAt: started.toISOString() };
+        const answer = await Promise.race([probe(), timeout]);
+        result = {
+          state: "ok",
+          error: null,
+          checkedAt: started.toISOString(),
+          user: mealieUser(answer),
+        };
       } catch (error) {
-        result = { state: "failed", error: errorMessage(error), checkedAt: started.toISOString() };
+        result = {
+          state: "failed",
+          error: errorMessage(error),
+          checkedAt: started.toISOString(),
+          user: null,
+        };
       } finally {
         clearTimeout(timer);
       }
@@ -485,33 +626,74 @@ export function admin(
     };
   };
 
-  const dashboard = async (reply: FastifyReply, extra: RenderExtra = {}) => {
+  const context: AdminContext = {
+    app,
+    t,
+    csrf,
+    view,
+    render,
+    notice,
+    checkMealie,
+    webhookInfo,
+    now,
+  };
+  const settingsPage = registerSettings(context, {
+    autoLogin: options.autoLogin ?? null,
+    session: options.session,
+    config: options.config ?? null,
+    jobs: options.store.jobs,
+    locale: {
+      mcLocale: options.locale.pack.locale,
+      verified: options.locale.pack.mc.verifiedOnDevice,
+      uiLanguage: options.language ?? "en",
+      recipeStatus: options.recipeStatus,
+    },
+    mealieUrl: options.mealieUrl ?? null,
+    ai: options.ai ?? null,
+    limits: options.dailyLimits ?? { jobs: 0, costUsd: 0 },
+    notifier: options.notifier ?? null,
+    notifyRecipient: options.notifyRecipient ?? null,
+    dataDir: options.dataDir ?? null,
+  });
+
+  app.get("/admin", async (request, reply) => {
+    const ctx = view(request);
+    const at = ctx.now.getTime();
     const autoLogin = options.autoLogin?.status() ?? null;
+    const recent = options.store.jobs.listRecent({ limit: 8 });
     return render(
       reply,
       t.titles.dashboard,
       dashboardView(
         {
           session: options.session.status(),
-          stats: options.store.jobs.stats(),
           worker: options.worker?.status() ?? null,
-          jobs: options.store.jobs.listRecent({ limit: 10 }),
-          recipeStatus: options.recipeStatus,
-          now: now(),
+          stats: options.store.jobs.stats(),
+          summary: options.store.jobs.summarySince(new Date(at - 30 * DAY_MS)),
+          today: options.store.jobs.usageSince(new Date(at - DAY_MS)),
+          limits: options.dailyLimits ?? { jobs: 0, costUsd: 0 },
+          jobs: recent,
           mealie: { url: options.mealieUrl ?? null, check: await checkMealie() },
           autoLogin: autoLogin
-            ? { configured: autoLogin.configured, email: autoLogin.email }
+            ? {
+                configured: autoLogin.configured,
+                email: autoLogin.email,
+                last: autoLogin.last ? { ok: autoLogin.last.ok, at: autoLogin.last.at } : null,
+              }
             : null,
-          webhook: webhookInfo(reply.request),
+          ai: options.ai ?? null,
           lastFailedJob: options.store.jobs.listRecent({ limit: 1, status: "failed" })[0] ?? null,
+          setupDismissed: settings.get(SETUP_DISMISSED_KEY) !== null,
         },
-        t,
+        ctx,
       ),
-      { ...extra, active: "dashboard" },
+      {
+        notice: notice(request),
+        active: "dashboard",
+        refresh: recent.some((job) => isActive(job.status)) ? refresh(request) : null,
+      },
     );
-  };
-
-  app.get("/admin", (request, reply) => dashboard(reply, { notice: notice(request) }));
+  });
 
   app.post("/admin/session", async (request, reply) => {
     const body = request.body as FormBody;
@@ -521,16 +703,16 @@ export function admin(
       return reply.redirect("/admin/settings?notice=session-saved", 303);
     } catch (error) {
       if (error instanceof InvalidCookieError) {
-        return settingsPage(reply, { status: 400, error: t.errors.cookieEmpty });
+        return settingsPage(request, reply, { status: 400, error: t.errors.cookieEmpty });
       }
       if (error instanceof SessionRejectedError) {
-        return settingsPage(reply, {
+        return settingsPage(request, reply, {
           status: 422,
           error: t.errors.cookieRejected(error.message),
         });
       }
       options.logger.warn({ err: errorMessage(error) }, "could not verify a new session cookie");
-      return settingsPage(reply, {
+      return settingsPage(request, reply, {
         status: 502,
         error: t.errors.cookieUnchecked(errorMessage(error)),
       });
@@ -578,57 +760,74 @@ export function admin(
 
   app.get("/admin/jobs", (request, reply) => {
     const query = request.query as Record<string, unknown>;
-    const status = JOB_STATUSES.includes(query.status as JobStatus)
-      ? (query.status as JobStatus)
-      : null;
+    const raw = typeof query.status === "string" ? query.status : "";
+    const filter: JobFilter = (JOB_FILTERS as readonly string[]).includes(raw)
+      ? (raw as JobFilter)
+      : "all";
+    // A single status, as older links and the overview's old tiles carry it.
+    const status =
+      filter === "all" && JOB_STATUSES.includes(raw as JobStatus) ? (raw as JobStatus) : null;
     const search = typeof query.q === "string" ? query.q.trim().slice(0, 200) : "";
     const offsetRaw = typeof query.offset === "string" ? Number.parseInt(query.offset, 10) : 0;
     const offset = Number.isFinite(offsetRaw) && offsetRaw > 0 ? offsetRaw : 0;
     const limit = 50;
+    const statuses = status ? [status] : FILTER_STATUSES[filter];
     const jobs = options.store.jobs.listRecent({
       limit,
       offset,
-      ...(status ? { status } : {}),
+      ...(statuses ? { status: statuses } : {}),
       ...(search ? { search } : {}),
     });
-    const refreshing = jobs.some((job) => job.status === "queued" || job.status === "running");
+    const refreshing = jobs.some((job) => isActive(job.status));
     return render(
       reply,
       t.titles.jobs,
       jobListView(
         {
           jobs,
+          stats: options.store.jobs.stats(search ? { search } : {}),
+          filter,
           status,
           search,
           offset,
           limit,
           recipeStatus: options.recipeStatus,
-          refreshing,
-          now: now(),
         },
-        t,
+        view(request),
       ),
       {
         notice: notice(request),
         active: "jobs",
-        refresh: refreshing ? { seconds: REFRESH_SECONDS, url: refreshUrl(request) } : null,
+        refresh: refreshing ? refresh(request) : null,
       },
     );
   });
 
+  const notFound = (reply: FastifyReply, text: string, back = "/admin") =>
+    render(
+      reply,
+      t.titles.notFound,
+      errorView({
+        icon: "search",
+        code: "404",
+        title: t.titles.notFound,
+        text,
+        back:
+          back === "/admin/jobs"
+            ? { href: back, label: t.links.backToJobs }
+            : { href: "/admin", label: t.links.backToDashboard },
+      }),
+      { status: 404, active: back === "/admin/jobs" ? "jobs" : null },
+    );
+
   app.get<{ Params: { id: string } }>("/admin/jobs/:id", (request, reply) => {
     const found = options.store.jobs.getWithEvents(request.params.id);
-    if (!found) {
-      return render(
-        reply,
-        t.titles.notFound,
-        html`${pageHead(t.titles.notFound, t.errors.noSuchJob)}
-          <p><a href="/admin/jobs">${t.links.backToJobs}</a></p>`,
-        { status: 404, active: "jobs" },
-      );
-    }
+    if (!found) return notFound(reply, t.errors.noSuchJob, "/admin/jobs");
+    const query = request.query as Record<string, unknown>;
+    const tab: JobTab = (JOB_TABS as readonly string[]).includes(query.tab as string)
+      ? (query.tab as JobTab)
+      : "overview";
     const slug = found.job.mealieSlug;
-    const refreshing = found.job.status === "queued" || found.job.status === "running";
     return render(
       reply,
       found.job.title ?? t.titles.job,
@@ -636,18 +835,16 @@ export function admin(
         {
           job: found.job,
           events: found.events,
-          formToken: csrf(request),
           mealieUrl: slug && options.mealieRecipeUrl ? options.mealieRecipeUrl(slug) : null,
           recipeStatus: options.recipeStatus,
-          now: now(),
-          refreshing,
+          tab,
         },
-        t,
+        view(request),
       ),
       {
         notice: notice(request),
         active: "jobs",
-        refresh: refreshing ? { seconds: REFRESH_SECONDS, url: refreshUrl(request) } : null,
+        refresh: isActive(found.job.status) ? refresh(request) : null,
       },
     );
   });
@@ -667,11 +864,16 @@ export function admin(
       return render(
         reply,
         t.titles.notPossible,
-        html`<p><a href="/admin/jobs">${t.links.backToJobs}</a></p>`,
-        {
-          status: missing ? 404 : 409,
-          error: error.message,
-        },
+        errorView({
+          icon: "ban",
+          code: missing ? "404" : "409",
+          title: t.titles.notPossible,
+          text: error.message,
+          back: missing
+            ? { href: "/admin/jobs", label: t.links.backToJobs }
+            : { href: `/admin/jobs/${encodeURIComponent(id)}`, label: t.links.backToJob },
+        }),
+        { status: missing ? 404 : 409, active: "jobs", error: error.message },
       );
     }
   };
@@ -692,6 +894,59 @@ export function admin(
     }),
   );
 
+  // The small Mealie image of a recipe, through the bridge, so the pages need no other
+  // origin and Mealie needs no login in the browser. Only WebP from Mealie passes; anything
+  // else, a missing image or an error gives the placeholder.
+  const thumbnails = new Map<string, { at: number; body: Buffer | null }>();
+  const loadThumbnail = async (recipeId: string): Promise<Buffer | null> => {
+    const at = now().getTime();
+    const cached = thumbnails.get(recipeId);
+    if (cached) {
+      const ttl = cached.body ? THUMBNAIL_TTL_MS : THUMBNAIL_MISS_TTL_MS;
+      if (at - cached.at < ttl) return cached.body;
+      thumbnails.delete(recipeId);
+    }
+    let body: Buffer | null = null;
+    try {
+      const bytes = (await options.mealie.getRecipeThumbnail?.(recipeId)) ?? null;
+      body = bytes && isWebp(bytes) ? bytes : null;
+    } catch (error) {
+      options.logger.debug({ recipeId, err: errorMessage(error) }, "thumbnail not loaded");
+    }
+    if (thumbnails.size >= THUMBNAIL_CACHE_SIZE) {
+      const oldest = thumbnails.keys().next().value;
+      if (oldest !== undefined) thumbnails.delete(oldest);
+    }
+    thumbnails.set(recipeId, { at, body });
+    return body;
+  };
+
+  app.get<{ Params: { id: string } }>("/admin/recipes/:id/thumbnail", async (request, reply) => {
+    const id = request.params.id;
+    const body = RECIPE_ID.test(id) ? await loadThumbnail(id) : null;
+    void reply
+      .header("cache-control", "private, max-age=3600")
+      .header("x-content-type-options", "nosniff")
+      .header("content-security-policy", "default-src 'none'; sandbox")
+      .header("cross-origin-resource-policy", "same-origin");
+    return body
+      ? reply.header("content-type", "image/webp").send(body)
+      : reply.header("content-type", "image/svg+xml").send(THUMBNAIL_PLACEHOLDER);
+  });
+
+  // The recipe picker of the dry run: recipes whose name matches, as JSON.
+  app.get("/admin/dry-run/recipes", async (request, reply) => {
+    const query = request.query as Record<string, unknown>;
+    const q = typeof query.q === "string" ? query.q.trim().slice(0, 100) : "";
+    securityHeaders(reply).header("content-type", "application/json; charset=utf-8");
+    if (q.length < 2 || !options.mealie.searchRecipes) return reply.send({ recipes: [] });
+    try {
+      return reply.send({ recipes: await options.mealie.searchRecipes(q, 10) });
+    } catch (error) {
+      return reply.code(502).send({ recipes: [], error: errorMessage(error, 200) });
+    }
+  });
+
   // The preview is a GET and costs nothing. The conversion, which is a paid model call, is
   // a POST: the form token travels in the body, never in a URL that proxies and browser
   // histories keep, and the preHandler has checked it before this runs.
@@ -704,25 +959,32 @@ export function admin(
     const recipeParam = typeof input.recipe === "string" ? input.recipe.trim().slice(0, 200) : "";
     const scaleRaw = typeof input.scale === "string" ? Number(input.scale) : 1;
     const scale = Number.isFinite(scaleRaw) && scaleRaw > 0 ? quantizeScale(scaleRaw) : 1;
-    const formToken = csrf(request);
-    const data: DryRunData = { recipeParam, scale, formToken, recipeStatus: options.recipeStatus };
-    if (!recipeParam)
-      return render(reply, t.titles.dryRun, dryRunView(data, t), { active: "dryRun" });
+    const ctx = view(request);
+    const data: DryRunData = { recipeParam, scale, recipeStatus: options.recipeStatus };
+    const show = (status = 200) =>
+      render(reply, t.titles.dryRun, dryRunView(data, ctx), { status, active: "dryRun" });
+    if (!recipeParam) return show();
 
     let recipe;
     try {
       recipe = await options.mealie.getRecipe(recipeParam);
     } catch (error) {
+      // Not an id or a slug: perhaps part of a name.
+      const matches = options.mealie.searchRecipes
+        ? await options.mealie.searchRecipes(recipeParam, 10).catch(() => [])
+        : [];
+      if (matches.length > 0) {
+        data.matches = matches;
+        return show();
+      }
       data.loadError = t.errors.recipeNotLoaded(errorMessage(error));
-      return render(reply, t.titles.dryRun, dryRunView(data, t), {
-        status: 502,
-        active: "dryRun",
-      });
+      return show(502);
     }
     const prepared = prepareRecipe(recipe, scale, options.limits, options.locale, {
       ...(options.tagName ? { excludeTags: [options.tagName] } : {}),
     });
     data.title = recipe.name;
+    data.recipeParam = recipe.slug || recipeParam;
     data.prepared = prepared;
     data.sent = options.store.mcRecipes.find(recipe.id, scale, prepared.hash);
 
@@ -748,7 +1010,7 @@ export function admin(
         data.conversionError = t.errors.conversionFailed(errorMessage(error));
       }
     }
-    return render(reply, t.titles.dryRun, dryRunView(data, t), { active: "dryRun" });
+    return show();
   };
 
   app.get("/admin/dry-run", (request, reply) =>
@@ -761,6 +1023,36 @@ export function admin(
   });
 
   options.extend?.(context);
+
+  // Any other page under /admin, after the login: a 404 in the frame of the pages.
+  app.get("/admin/*", (_request, reply) => notFound(reply, t.errors.noSuchPage));
+
+  // An unexpected error answers with the error page; the message stays in the log. The JSON
+  // endpoints keep the generic body of the server.
+  app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
+    const status = error.statusCode ?? 500;
+    if (status >= 500) request.log.error({ err: errorMessage(error) }, "request failed");
+    if (requestPath(request).startsWith("/admin/api/")) {
+      return reply.code(status >= 500 ? 500 : status).send({
+        statusCode: status >= 500 ? 500 : status,
+        error: status >= 500 ? "Internal Server Error" : "Bad Request",
+        message: status >= 500 ? "Internal Server Error" : errorMessage(error, 200),
+      });
+    }
+    const server = status >= 500;
+    return render(
+      reply,
+      server ? t.titles.error : t.titles.badRequest,
+      errorView({
+        icon: server ? "octagon-alert" : "circle-alert",
+        code: String(server ? 500 : status),
+        title: server ? t.titles.error : t.titles.badRequest,
+        text: server ? t.errors.server : t.errors.badRequest,
+        back: { href: "/admin", label: t.links.backToDashboard },
+      }),
+      { status: server ? 500 : status, bare: !signedIn(request) && !authDisabled },
+    );
+  });
 
   done();
 }

@@ -46,15 +46,35 @@ describe("message catalogs", () => {
       expect(catalog.email.sessionNextSteps).toHaveLength(
         CATALOGS.de.email.sessionNextSteps.length,
       );
-      expect(catalog.admin.settings.session.renewWays).toHaveLength(
-        CATALOGS.de.admin.settings.session.renewWays.length,
+      expect(catalog.admin.settings.lidl.facts).toHaveLength(
+        CATALOGS.de.admin.settings.lidl.facts.length,
       );
-      expect(catalog.admin.settings.facts).toHaveLength(CATALOGS.de.admin.settings.facts.length);
       expect(Object.keys(catalog.admin.notices).sort()).toEqual(
         Object.keys(CATALOGS.de.admin.notices).sort(),
       );
       for (const stage of FAILURE_STAGES) {
         expect(catalog.timeline.failureReasons[stage], `${language} ${stage}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("keep the page texts short and free of dashes as punctuation", () => {
+    const strings = (value: unknown, path = ""): Array<[string, string]> => {
+      if (typeof value === "string") return [[path, value]];
+      if (Array.isArray(value))
+        return value.flatMap((item, index) => strings(item, `${path}[${index}]`));
+      if (value !== null && typeof value === "object") {
+        return Object.entries(value).flatMap(([key, child]) =>
+          strings(child, path ? `${path}.${key}` : key),
+        );
+      }
+      return [];
+    };
+    for (const language of UI_LANGUAGES) {
+      for (const [path, text] of strings(CATALOGS[language].admin)) {
+        expect(text, `${language} ${path}`).not.toMatch(/—|\s–\s/);
+        // About two lines of a card at most.
+        expect(text.length, `${language} ${path}`).toBeLessThanOrEqual(220);
       }
     }
   });
@@ -107,43 +127,52 @@ describe("message catalogs", () => {
       expect(admin.errors.cookieUnchecked("nope")).toContain("nope");
       expect(admin.errors.recipeNotLoaded("nope")).toContain("nope");
       expect(admin.errors.conversionFailed("nope")).toContain("nope");
-      expect(admin.jobsTable.recipeLink(7, "draft")).toContain("7");
-      expect(admin.dashboard.age(2, "login")).toMatch(/^2 h /);
-      expect(admin.dashboard.age(330, "stored")).toMatch(/^13[.,]8 /);
-      expect(admin.dashboard.expiresAt("t", true)).toContain("t (");
-      expect(admin.dashboard.expiresAt("t", false)).not.toContain("(");
-      expect(admin.dashboard.workerError("t")).toContain("t");
-      expect(admin.dashboard.jobError("t")).toContain("t");
-      expect(admin.setup.mealie.ok("http://m")).toContain("`http://m`");
-      expect(admin.setup.mealie.failed("http://m")).toContain("`http://m`");
-      expect(admin.setup.mealie.unchecked("http://m")).toContain("`http://m`");
-      expect(admin.setup.mealie.timeout(4)).toContain("4");
-      expect(admin.setup.session.validUntil("t", false)).toContain("t");
-      expect(admin.setup.session.validUntil("t", true)).toContain("t");
-      expect(admin.setup.session.notValid("s")).toContain("s");
-      expect(admin.setup.autoLogin.configured("a@example.com")).toContain("a@example.com");
-      expect(admin.setup.action.seen(1)).toContain("1");
-      expect(admin.setup.action.seen(3)).toContain("3");
-      expect(admin.setup.firstJob.done(1)).toContain("1");
-      expect(admin.setup.firstJob.done(2)).toContain("2");
-      expect(admin.jobDetail.resolved(4)).toContain("4");
-      expect(admin.jobDetail.withoutId(5)).toContain("5");
-      expect(admin.dashboard.cookieLabel).toContain("`Cookie`");
-      expect(admin.jobDetail.openRecipe(7, "private-publish")).toContain("7");
-      expect(admin.jobDetail.servingSize(10, "Scheiben")).toContain("10 Scheiben");
-      expect(admin.jobDetail.tokens(100, 20, 50)).toContain("20");
-      expect(admin.jobDetail.tokens(100, null, 50)).not.toContain("(");
+      expect(admin.errors.testMailFailed("nope")).toContain("nope");
+      expect(admin.errors.credentialsInvalid("email")).not.toBe(
+        admin.errors.credentialsInvalid("password"),
+      );
+      expect(admin.login.tooMany(1)).toContain("1");
+      expect(admin.mealieTimeout(4)).toContain("4");
+      expect(admin.shell.signedIn("cook")).toContain("cook");
+      expect(admin.jobs.recipeLink(7, "draft")).toContain("7");
+      expect(admin.jobs.recipeLink(7, "draft")).not.toBe(
+        admin.jobs.recipeLink(7, "private-publish"),
+      );
+      expect(admin.jobs.scale("2")).toContain("2");
+      expect(admin.jobs.servings(10, "Scheiben")).toBe("10 Scheiben");
+      expect(admin.jobs.servings(4, null)).toMatch(/^4 \S/);
+      expect(admin.jobs.range(1, 50)).toContain("50");
+      expect(admin.settings.mc.ageValue(2, "login")).toMatch(/^2 h /);
+      expect(admin.settings.mc.ageValue(330, "stored")).toMatch(/^13[.,]8 /);
+      expect(admin.dashboard.health.asUser("cook")).toContain("cook");
+      expect(admin.dashboard.health.checked(true)).not.toBe(admin.dashboard.health.checked(false));
+      expect(admin.dashboard.kpi.sentHint(5, 2)).toMatch(/5.*2/);
+      expect(admin.dashboard.kpi.failed(3)).toContain("3");
+      expect(admin.dashboard.kpi.costToday("$1", "$10")).toMatch(/\$1.*\$10/);
+      expect(admin.dashboard.kpi.costTodayNoLimit("$1")).toContain("$1");
+      expect(admin.dashboard.setup.progress(3, 5)).toMatch(/3.*5/);
+      expect(admin.jobDetail.openEditor("draft")).not.toBe(
+        admin.jobDetail.openEditor("private-publish"),
+      );
+      expect(admin.jobDetail.tokenCounts("100", "20", "50")).toContain("20");
+      expect(admin.jobDetail.tokenCounts("100", null, "50")).not.toContain("(");
       expect(admin.jobDetail.resolutionOff(3)).toContain("3");
       expect(admin.jobDetail.resolution(7, 0, 2, 1, 2)).toContain("7");
       expect(admin.jobDetail.resolution(7, 3, 2, 1, 2)).toContain("3");
       expect(admin.jobDetail.resolution(7, 0, 2, 1, 2)).not.toContain("(");
-      expect(admin.dryRun.sentAt("t")).toContain("t");
-      expect(admin.dryRun.attempts(1)).toContain("1");
-      expect(admin.dryRun.attempts(2)).toContain("2");
-      expect(admin.dryRun.tokens(1, 2)).toContain("2");
-      expect(admin.dryRun.timesValue(10, 30)).toContain("30");
+      expect(admin.jobDetail.ingredientCounts(4, 5)).toMatch(/4.*5/);
+      expect(admin.steps.speed(3)).toContain("3");
+      expect(admin.steps.servings(4, "Portionen")).toBe("4 Portionen");
+      expect(admin.steps.preparation(10)).toContain("10");
+      expect(admin.steps.ready(35)).toContain("35");
+      expect(admin.dryRun.tokenCounts(1, 2)).toContain("2");
       expect(admin.dryRun.droppedIds("9")).toContain("9");
       expect(admin.dryRun.errors(2)).toContain("2");
+      expect(admin.dryRun.errors(1)).toContain("1");
+      expect(admin.settings.lidl.consentSteps(2)).toContain("2");
+      expect(admin.settings.lidl.browserMissing("x")).toContain("x");
+      expect(admin.settings.lidl.browserUsed(null, "window")).toBeTruthy();
+      expect(admin.settings.ai.tokens("1", "2")).toMatch(/1.*2/);
     }
   });
 });

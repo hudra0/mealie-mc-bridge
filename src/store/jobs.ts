@@ -137,7 +137,8 @@ export interface JobPatch {
 export interface ListJobsOptions {
   limit?: number;
   offset?: number;
-  status?: JobStatus;
+  // One status, or any of several.
+  status?: JobStatus | readonly JobStatus[];
   // Matches the recipe id or slug exactly, or the title in part.
   search?: string;
 }
@@ -642,9 +643,10 @@ function filter(options: Pick<ListJobsOptions, "status" | "search">): {
 } {
   const where: string[] = [];
   const values: unknown[] = [];
-  if (options.status) {
-    where.push("status = ?");
-    values.push(options.status);
+  const statuses = typeof options.status === "string" ? [options.status] : (options.status ?? []);
+  if (statuses.length > 0) {
+    where.push(`status IN (${statuses.map(() => "?").join(", ")})`);
+    values.push(...statuses);
   }
   const search = options.search?.trim();
   if (search) {

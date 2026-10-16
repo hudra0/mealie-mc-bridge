@@ -184,7 +184,9 @@ describe("POST /hooks/mealie/:token", () => {
       method: "GET",
       url: "/admin/typo?_csrf=secret-form-token",
     });
-    for (const response of [get, slash, csrf]) expect(response.statusCode).toBe(404);
+    for (const response of [get, slash]) expect(response.statusCode).toBe(404);
+    // Every other page under /admin asks for the login first.
+    expect(csrf.statusCode).toBe(303);
     const log = lines.join("");
     expect(log).toContain("/hooks/mealie/[redacted]");
     expect(log).not.toContain(WEBHOOK_TOKEN);

@@ -5,6 +5,7 @@
 import type { FastifyInstance, FastifyServerOptions } from "fastify";
 import type { AppLogger } from "../app-logger.js";
 import type { McRecipeSink } from "../mc/index.js";
+import type { MealieClient } from "../mealie/index.js";
 import type { Notifier } from "../notify/email.js";
 import type { Converter } from "../pipeline/converter-port.js";
 import type { IngredientResolverPort } from "../pipeline/ingredient-resolver.js";
@@ -22,6 +23,8 @@ import { errorMessage } from "../app-logger.js";
 import { timelineTexts } from "../pipeline/messages.js";
 import type { ConfigEntry } from "../config-reference.js";
 import { healthReport } from "./health.js";
+import type { AssetCatalog } from "./ui/assets.js";
+import type { AiInfo } from "./views/dashboard.js";
 import { routes, type LimitHit } from "./routes.js";
 
 export interface ServiceConfig extends PipelineConfig {
@@ -37,13 +40,23 @@ export interface ServiceConfig extends PipelineConfig {
   // Daily limits of the webhook; without them it queues every click.
   JOB_DAILY_LIMIT?: number | undefined;
   JOB_DAILY_COST_LIMIT_USD?: number | undefined;
+  // What the settings page shows of the language model, the mail and the data directory.
+  LLM_PROVIDER?: "openai" | "anthropic" | undefined;
+  OPENAI_MODEL?: string | undefined;
+  OPENAI_REASONING_EFFORT?: string | undefined;
+  ANTHROPIC_MODEL?: string | undefined;
+  LLM_MAX_CORRECTIONS?: number | undefined;
+  SMTP_URL?: string | undefined;
+  NOTIFY_EMAIL?: string | undefined;
+  DATA_DIR?: string | undefined;
 }
 
 export interface ServiceParts {
   config: ServiceConfig;
   store: Store;
   session: SessionManager;
-  mealie: MealiePort;
+  // The recipe search and thumbnails of the admin pages are optional.
+  mealie: MealiePort & Partial<Pick<MealieClient, "getRecipeThumbnail" | "searchRecipes">>;
   mc: McRecipeSink;
   converter: Converter;
   limits: DeviceLimits;
@@ -67,6 +80,8 @@ export interface ServiceParts {
   configEntries?: readonly ConfigEntry[];
   // Asks Mealie who the API token belongs to, for the overview's setup checklist.
   mealieCheck?: () => Promise<unknown>;
+  // The stylesheet, script, font and icons of the admin pages; dist/assets by default.
+  assets?: AssetCatalog;
 }
 
 // The port of the recipe action URL when the configuration does not name one.
@@ -79,6 +94,18 @@ export interface Service {
   start(): void;
   // Stops the worker (the current job goes back to the queue), the checks and the server.
   stop(): Promise<void>;
+}
+
+// The language model as the admin pages show it; null without a provider setting.
+export function aiInfo(config: ServiceConfig): AiInfo | null {
+  if (!config.LLM_PROVIDER) return null;
+  const openai = config.LLM_PROVIDER === "openai";
+  return {
+    provider: config.LLM_PROVIDER,
+    model: (openai ? config.OPENAI_MODEL : config.ANTHROPIC_MODEL) ?? "?",
+    effort: openai ? (config.OPENAI_REASONING_EFFORT ?? null) : null,
+    maxCorrections: config.LLM_MAX_CORRECTIONS ?? 0,
+  };
 }
 
 // The browser link to a recipe in Mealie.
@@ -197,6 +224,15 @@ export function buildService(parts: ServiceParts): Service {
     ...(parts.mealieCheck ? { mealieCheck: parts.mealieCheck } : {}),
     mealieUrl: config.MEALIE_URL,
     webhook: { token: config.WEBHOOK_TOKEN, port: config.PORT ?? DEFAULT_PORT },
+    ...(aiInfo(config) ? { ai: aiInfo(config)! } : {}),
+    dailyLimits: {
+      jobs: config.JOB_DAILY_LIMIT ?? 0,
+      costUsd: config.JOB_DAILY_COST_LIMIT_USD ?? 0,
+    },
+    notifier: parts.notifier,
+    notifyRecipient: config.SMTP_URL && config.NOTIFY_EMAIL ? config.NOTIFY_EMAIL : null,
+    ...(config.DATA_DIR ? { dataDir: config.DATA_DIR } : {}),
+    ...(parts.assets ? { assets: parts.assets } : {}),
   });
 
   return {

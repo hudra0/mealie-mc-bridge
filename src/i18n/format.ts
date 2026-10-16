@@ -21,6 +21,15 @@ export function formatNumber(value: number, intlLocale: string): string {
   return new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 1 }).format(value);
 }
 
+// US dollars with up to four decimals in the style of an Intl locale: "$0.1162", "0,1162 $".
+export function formatUsd(value: number, intlLocale: string): string {
+  return new Intl.NumberFormat(intlLocale, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 4,
+  }).format(value);
+}
+
 // A date and time in the style of an Intl locale.
 export function formatDate(iso: string, intlLocale: string): string {
   return new Intl.DateTimeFormat(intlLocale, { dateStyle: "medium", timeStyle: "short" }).format(

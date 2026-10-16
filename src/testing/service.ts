@@ -35,6 +35,7 @@ import {
   type FakeMealieOptions,
   type FakeNotifier,
 } from "./fakes.js";
+import { testAssets } from "./assets.js";
 import { deLocale } from "./locale.js";
 import { tempStore, type TempStore } from "./temp.js";
 
@@ -79,6 +80,8 @@ export interface TestServiceOptions {
   configEntries?: readonly ConfigEntry[];
   // Leaves the automatic login out, as a service without it.
   noAutoLogin?: boolean;
+  // Makes the notifier's test mail fail.
+  testMail?: Error;
 }
 
 export function testService(options: TestServiceOptions = {}): TestService {
@@ -86,7 +89,8 @@ export function testService(options: TestServiceOptions = {}): TestService {
   const mealie = fakeMealie(options.mealie);
   const mc = fakeMc(options.mc);
   const converter = options.converter ?? fakeConverter();
-  const notifier = fakeNotifier();
+  const notifier = fakeNotifier(options.testMail ? { testMail: options.testMail } : {});
+  const built = testAssets();
   const validate = vi.fn<(cookie: string) => Promise<McUser>>(() =>
     Promise.resolve({ id: 1, displayName: "test-user" }),
   );
@@ -141,6 +145,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     ...(options.mealieCheck ? { mealieCheck: options.mealieCheck } : {}),
     ...(options.configEntries ? { configEntries: options.configEntries } : {}),
     workerBackoffMs: () => 1,
+    assets: built.assets,
     ...(options.ingredients ? { ingredients: options.ingredients } : {}),
     ...(options.logger || options.trustProxy !== undefined
       ? {
@@ -166,6 +171,7 @@ export function testService(options: TestServiceOptions = {}): TestService {
     dispose: async () => {
       await service.stop();
       store.dispose();
+      built.cleanup();
     },
   };
 }

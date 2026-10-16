@@ -83,8 +83,71 @@ export const en: Messages = {
     failureReasons: FAILURE_REASONS,
   },
   jobEvents: {
-    converting: "Conversion started",
-    stillConverting: (seconds) => `Still converting, ${seconds} s`,
+    queued: ({ scale, force }) => `Queued with scale ${scale}${force ? ", forced" : ""}`,
+    requeued: ({ force }) => (force ? "Queued again, forced" : "Queued again"),
+    cancelled: () => "Cancelled",
+    paused: () => "Waiting for a valid Monsieur Cuisine session",
+    resumed: () => "Session renewed, queued again",
+    recovered_done: () =>
+      "Interrupted by a restart after the draft was created; the Mealie write-back may be incomplete",
+    recovered_failed: () =>
+      "Interrupted while the draft was being created. The draft may exist on monsieur-cuisine.com: check your drafts before you retry this job.",
+    recovered_queued: () => "Interrupted by a restart, queued again",
+    attempt_started: ({ attempt }) => `Attempt ${attempt} started`,
+    recipe_loaded: ({ name }) => `Loaded recipe "${name}" from Mealie`,
+    prepared: ({ ingredients, unparsed, servings, estimated, scale }) =>
+      `Prepared ${ingredients} ingredients (${unparsed} unparsed) for ${servings}${estimated ? " (not stated in the recipe; the converter may estimate)" : ""} at scale ${scale}`,
+    forced_unchanged: () => "Forced: sending again although the recipe is unchanged",
+    skip_exists: ({ since, recipeId }) =>
+      `Unchanged since ${formatDate(since, INTL)}; recipe ${recipeId} still exists on Monsieur Cuisine, skipped`,
+    skip_gone: ({ since, recipeId }) =>
+      `Unchanged since ${formatDate(since, INTL)}, but recipe ${recipeId} no longer exists on Monsieur Cuisine; converting again`,
+    skip_unchecked: ({ since, recipeId }) =>
+      `Unchanged since ${formatDate(since, INTL)}; recipe ${recipeId} could not be checked on Monsieur Cuisine, skipped`,
+    image_loaded: ({ kb }) => `Loaded the image (${kb} KB)`,
+    image_none: () => "The recipe has no image",
+    image_load_failed: () => "Image not loaded, continuing without",
+    categories: ({ count, matched }) =>
+      `${count} categories available; matched: ${matched.length > 0 ? matched.join(", ") : "none"}`,
+    conversion_reused: ({ provider, model }) =>
+      `Reusing the conversion of an earlier attempt (${provider}/${model}); no new model call`,
+    converting: () => "Conversion started",
+    still_converting: ({ seconds }) => `Still converting, ${seconds} s`,
+    converted: ({ provider, model, attempts, inputTokens, outputTokens, costUsd }) =>
+      `Converted with ${provider}/${model} in ${attempts} ${attempts === 1 ? "attempt" : "attempts"} (${inputTokens} input, ${outputTokens} output tokens${costUsd === null ? "" : `, $${costUsd.toFixed(4)}`})`,
+    converter_warning: ({ text }) => `Converter: ${text}`,
+    categories_dropped: ({ ids }) =>
+      `Dropped category ids the catalog does not know: ${ids.join(", ")}`,
+    servings_estimated: ({ servings }) => `The converter estimated the serving size: ${servings}`,
+    servings_changed: ({ requested, converted }) =>
+      `The converter set ${converted} instead of ${requested}`,
+    validation_passed: () => "Checks passed",
+    ingredients_resolved: ({ catalog, relaxed, cache, search, unresolved }) =>
+      `Ingredients resolved: ${catalog} catalog${relaxed > 0 ? ` (${relaxed} relaxed)` : ""}, ${cache} cache, ${search} search, ${unresolved} without id`,
+    ingredients_off: ({ unresolved }) =>
+      `Ingredient ids not resolved (MC_RESOLVE_INGREDIENTS=off): ${unresolved} without id`,
+    image_skipped: () => "Image skipped",
+    image_uploaded: () => "Uploaded the image",
+    draft_created: ({ recipeId }) => `Created recipe ${recipeId} on Monsieur Cuisine`,
+    status_private: () => "Saved on the device only",
+    status_failed: () =>
+      "Status change failed; the recipe stays a draft and does not show up on the device",
+    tag_unavailable: ({ tag }) => `Tag "${tag}" not available`,
+    writeback_done: ({ tagged }) =>
+      tagged ? "Tagged the Mealie recipe and stored the link" : "Stored the link in Mealie",
+    writeback_forbidden: () =>
+      "Mealie refused to update the recipe (403): the bridge user needs edit rights on it",
+    writeback_failed: () => "Updating the Mealie recipe failed",
+    timeline_posted: () => "Posted the timeline entry in Mealie",
+    timeline_failed: () => "Timeline entry in Mealie failed",
+    done: () => "Done",
+    interrupted: () => "Interrupted by shutdown; the job runs again after the restart",
+    session_unusable: ({ kind }) =>
+      `Monsieur Cuisine session not usable (${kind}); waiting for a new one`,
+    temporary_failure: ({ stage }) => `Temporary error: ${FAILURE_REASONS[stage]}`,
+    failed: ({ stage }) => capitalized(FAILURE_REASONS[stage]),
+    crashed: () => "Crashed",
+    retry_scheduled: ({ retry, max, seconds }) => `Retry ${retry} of ${max} in ${seconds} s`,
   },
   email: {
     subjectPrefix: "Monsieur Cuisine bridge",

@@ -1,11 +1,11 @@
-// Message catalogs for what people read: Mealie timeline entries, mails and the admin
-// pages, per UI_LANGUAGE, and the progress events of a running conversion. Logs, the other
-// job events and command line output stay English.
+// Message catalogs for what people read: Mealie timeline entries, mails, the admin pages
+// and the job events they show, per UI_LANGUAGE. Logs and command line output stay English.
 //
 // Each catalog implements Messages, so the compiler holds every language to the same keys;
 // a test compares them at run time as well. Texts that end up in Markdown or HTML are plain
 // here; the callers escape what they insert.
 
+import type { JobEventCode, JobEventParams } from "../store/job-events.js";
 import { de } from "./de.js";
 import { en } from "./en.js";
 
@@ -456,18 +456,18 @@ export interface AdminMessages {
   };
 }
 
-// Job events while the language model works, so the job page shows progress.
-export interface JobEventMessages {
-  converting: string;
-  stillConverting(seconds: number): string;
-}
+// One sentence per job event code (src/store/job-events.ts). The raw error text of a
+// failure is not part of it: the pages show the `error` parameter below the sentence.
+export type JobEventTexts = {
+  readonly [C in JobEventCode]: (params: JobEventParams[C]) => string;
+};
 
 export interface Messages {
   language: UiLanguage;
   // The Intl locale for dates.
   intlLocale: string;
   timeline: TimelineMessages;
-  jobEvents: JobEventMessages;
+  jobEvents: JobEventTexts;
   email: EmailMessages;
   admin: AdminMessages;
 }
@@ -487,6 +487,31 @@ export function messages(language: UiLanguage): Messages {
 export function defaultUiLanguage(locale: string): UiLanguage {
   const language = locale.split("-")[0]?.toLowerCase() ?? "";
   return isUiLanguage(language) ? language : "en";
+}
+
+// The sentence of a job event in a catalog's language. Null when the stored parameters do
+// not fit the code (a row edited by hand, or written by a release with other parameters).
+export function jobEventText(
+  catalog: Messages,
+  code: JobEventCode,
+  params: Readonly<Record<string, unknown>>,
+): string | null {
+  try {
+    const render = catalog.jobEvents[code] as (params: unknown) => string;
+    const text = render(params);
+    return typeof text === "string" && !/\bundefined\b|\bNaN\b/.test(text) ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+// The English line of an event as the message column, the log and GET /jobs/:id keep it:
+// the sentence, then the raw error when there is one.
+export function jobEventMessage(code: JobEventCode, params: Readonly<Record<string, unknown>>) {
+  const text = jobEventText(en, code, params) ?? code;
+  return typeof params.error === "string" && params.error !== ""
+    ? `${text}: ${params.error}`
+    : text;
 }
 
 // A date and time in the catalog's style, for timeline entries and mails.

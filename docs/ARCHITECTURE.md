@@ -22,7 +22,7 @@ The bridge turns a Mealie recipe into a private recipe in a Monsieur Cuisine acc
 9. The status is set to `MC_RECIPE_STATUS` (default `private-publish`). A failure here is a warning; the recipe stays a draft and the timeline entry says so. With `draft` the step is skipped.
 10. Write-back to Mealie: the tag (created on first use) and `extras` (`mc_recipe_id`, `mc_recipe_url`, `mc_source_hash`, `mc_synced_at`, `mc_servings`, `mc_serving_unit`) in one PATCH, then a timeline entry with the link, serving size, model and review hints. A 403 on the PATCH is logged, and the timeline entry, which needs no edit rights, is still written.
 
-Every stage appends a job event, shown as the job's log. Failures before the draft exists end the job as `failed`, with a short timeline entry in `UI_LANGUAGE` and a mail. Network errors and 5xx answers are retried three times with a pause of 2, 4 and 8 seconds; validation and conversion failures fail on the first attempt.
+Every stage appends a job event, shown as the job's log: a code with parameters (`src/store/job-events.ts`), rendered in `UI_LANGUAGE` on the admin pages and kept as an English line for logs and `GET /jobs/:id`. Failures before the draft exists end the job as `failed`, with a short timeline entry in `UI_LANGUAGE` and a mail. Network errors and 5xx answers are retried three times with a pause of 2, 4 and 8 seconds; validation and conversion failures fail on the first attempt.
 
 ## Job states
 
@@ -61,7 +61,7 @@ done, skipped, failed and cancelled go back to queued on admin retry or force re
 
 ## Languages
 
-The Mealie recipe may be in any language. `MC_LOCALE` selects a locale pack in `knowledge/locales/<locale>/` (`mc.json`, `units.json`, `phrases.json`, `technique-aliases.json`, `ingredient-catalog.json`, `prompt-rules.md`), which sets the language of the Monsieur Cuisine recipe and everything the site needs per language. The neutral knowledge files name phrases and units by placeholder; `src/locale/placeholders.ts` fills them from the pack, and a placeholder a pack cannot fill fails the load. `UI_LANGUAGE` selects the message catalog in `src/i18n` for timeline entries, mails and admin pages; logs and job events stay English. Names are never compared across languages: the converter returns an `ingredientMapping` from each of its ingredients to a numbered source line, and the plausibility checks compare coverage and amounts along it (`src/convert/mapping.ts`).
+The Mealie recipe may be in any language. `MC_LOCALE` selects a locale pack in `knowledge/locales/<locale>/` (`mc.json`, `units.json`, `phrases.json`, `technique-aliases.json`, `ingredient-catalog.json`, `prompt-rules.md`), which sets the language of the Monsieur Cuisine recipe and everything the site needs per language. The neutral knowledge files name phrases and units by placeholder; `src/locale/placeholders.ts` fills them from the pack, and a placeholder a pack cannot fill fails the load. `UI_LANGUAGE` selects the message catalog in `src/i18n` for timeline entries, mails, admin pages and the job events they show; logs stay English. Names are never compared across languages: the converter returns an `ingredientMapping` from each of its ingredients to a numbered source line, and the plausibility checks compare coverage and amounts along it (`src/convert/mapping.ts`).
 
 ## Modules
 
@@ -130,5 +130,5 @@ ConversionRequest -> system prompt (once) + user message
 
 ## Data stores
 
-- **SQLite** (`/data/bridge.db`): `jobs` (status, attempts, error, recipe id and link, provider, model, usage, cost, timestamps, force flag, `conversion_json`, `create_started_at`, `ingredients_json`), `job_events` (log per job), `mc_recipes` (Mealie recipe, scale, fingerprint, Monsieur Cuisine id and link; this table, not the Mealie extras, decides whether a recipe was sent), `settings` (encrypted cookie, session state, category cache), `ingredient_cache` (normalized name, id or null, source, time).
+- **SQLite** (`/data/bridge.db`): `jobs` (status, attempts, error, recipe id and link, provider, model, usage, cost, timestamps, force flag, `conversion_json`, `create_started_at`, `ingredients_json`), `job_events` (log per job: level, code, parameters as JSON, English message), `mc_recipes` (Mealie recipe, scale, fingerprint, Monsieur Cuisine id and link; this table, not the Mealie extras, decides whether a recipe was sent), `settings` (encrypted cookie, session state, category cache), `ingredient_cache` (normalized name, id or null, source, time).
 - **Knowledge base** (`knowledge/`, in the repository): tables and rules derived from published recipes, written in our own words.

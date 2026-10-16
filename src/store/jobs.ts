@@ -6,7 +6,14 @@
 // event, which the admin page shows as the job's log.
 
 import { randomUUID } from "node:crypto";
+import { jobEventMessage } from "../i18n/index.js";
 import type { Db } from "./db.js";
+import {
+  isJobEventCode,
+  storedParams,
+  type JobEventCode,
+  type JobEventInput,
+} from "./job-events.js";
 import { JOB_STATUSES } from "./migrations.js";
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -83,7 +90,11 @@ export interface JobEvent {
   jobId: string;
   ts: string;
   level: EventLevel;
+  // English; the only text of rows written before event codes existed.
   message: string;
+  // Null on older rows and on codes this release does not know.
+  code: JobEventCode | null;
+  params: Record<string, unknown> | null;
 }
 
 export interface EnqueueInput {
@@ -178,6 +189,8 @@ interface EventRow {
   ts: string;
   level: EventLevel;
   message: string;
+  code: string | null;
+  params_json: string | null;
 }
 
 const COLUMNS: Readonly<Record<keyof JobPatch, string>> = {
@@ -247,7 +260,10 @@ export class JobStore {
             ts,
             input.force ? 1 : 0,
           );
-        this.#event(id, "info", `Queued with scale ${input.scale}${input.force ? ", forced" : ""}`);
+        this.#event(id, "info", {
+          code: "queued",
+          params: { scale: input.scale, force: input.force === true },
+        });
         return { job: this.#require(id), created: true };
       })
       .immediate();
@@ -317,6 +333,8 @@ export class JobStore {
         ts: row.ts,
         level: row.level,
         message: row.message,
+        code: isJobEventCode(row.code) ? row.code : null,
+        params: isJobEventCode(row.code) ? parseParams(row.params_json) : null,
       }));
   }
 
@@ -344,8 +362,9 @@ export class JobStore {
     return this.update(id, { ...patch, status, finishedAt });
   }
 
-  appendEvent(jobId: string, level: EventLevel, message: string): void {
-    this.#event(jobId, level, message);
+  // An event with a code; a plain string is stored as a message without one.
+  appendEvent(jobId: string, level: EventLevel, event: JobEventInput | string): void {
+    this.#event(jobId, level, event);
   }
 
   listRecent(options: ListJobsOptions = {}): Job[] {
@@ -407,7 +426,7 @@ export class JobStore {
           createStartedAt: null,
           ...(force ? { conversion: null } : {}),
         });
-        this.#event(id, "info", force ? "Queued again, forced" : "Queued again");
+        this.#event(id, "info", { code: "requeued", params: { force } });
         return updated;
       })
       .immediate();
@@ -423,7 +442,7 @@ export class JobStore {
           throw new JobConflictError(`A ${job.status} job cannot be cancelled`);
         }
         const updated = this.finish(id, "cancelled");
-        this.#event(id, "info", "Cancelled");
+        this.#event(id, "info", { code: "cancelled" });
         return updated;
       })
       .immediate();
@@ -431,12 +450,12 @@ export class JobStore {
 
   // The session is gone: queued jobs wait for a new one. Returns the number of jobs.
   pauseQueued(): number {
-    return this.#move("queued", "session_expired", "Waiting for a valid Monsieur Cuisine session");
+    return this.#move("queued", "session_expired", { code: "paused" });
   }
 
   // A new session is in place: waiting jobs run again.
   resumePaused(): number {
-    return this.#move("session_expired", "queued", "Session renewed, queued again");
+    return this.#move("session_expired", "queued", { code: "resumed" });
   }
 
   // Jobs left running by a crash or a hard stop, handled on start. Most go back to the
@@ -455,17 +474,13 @@ export class JobStore {
         for (const row of rows) {
           if (row.mc_recipe_id !== null) {
             this.finish(row.id, "done");
-            this.#event(
-              row.id,
-              "warn",
-              "Interrupted by a restart after the draft was created; the Mealie write-back may be incomplete",
-            );
+            this.#event(row.id, "warn", { code: "recovered_done" });
           } else if (row.create_started_at !== null) {
             this.finish(row.id, "failed", { error: INTERRUPTED_CREATE });
-            this.#event(row.id, "error", INTERRUPTED_CREATE);
+            this.#event(row.id, "error", { code: "recovered_failed" });
           } else {
             this.update(row.id, { status: "queued", startedAt: null });
-            this.#event(row.id, "info", "Interrupted by a restart, queued again");
+            this.#event(row.id, "info", { code: "recovered_queued" });
           }
         }
         return rows.length;
@@ -473,7 +488,7 @@ export class JobStore {
       .immediate();
   }
 
-  #move(from: JobStatus, to: JobStatus, message: string): number {
+  #move(from: JobStatus, to: JobStatus, event: JobEventInput): number {
     return this.#db
       .transaction((): number => {
         const ids = this.#db
@@ -484,19 +499,31 @@ export class JobStore {
         const update = this.#db.prepare("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?");
         for (const id of ids) {
           update.run(to, ts, id);
-          this.#event(id, "info", message);
+          this.#event(id, "info", event);
         }
         return ids.length;
       })
       .immediate();
   }
 
-  #event(jobId: string, level: EventLevel, message: string): void {
+  #event(jobId: string, level: EventLevel, event: JobEventInput | string): void {
+    const coded = typeof event === "string" ? null : event;
+    const params = coded ? storedParams(coded.params) : null;
+    const message = coded ? jobEventMessage(coded.code, params ?? {}) : (event as string);
     const text =
       message.length > MAX_EVENT_LENGTH ? `${message.slice(0, MAX_EVENT_LENGTH)}...` : message;
     this.#db
-      .prepare("INSERT INTO job_events (job_id, ts, level, message) VALUES (?, ?, ?, ?)")
-      .run(jobId, this.#ts(), level, text);
+      .prepare(
+        "INSERT INTO job_events (job_id, ts, level, message, code, params_json) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        jobId,
+        this.#ts(),
+        level,
+        text,
+        coded?.code ?? null,
+        params ? JSON.stringify(params) : null,
+      );
   }
 
   #require(id: string): Job {
@@ -546,6 +573,13 @@ function toJob(row: JobRow): Job {
     createStartedAt: row.create_started_at,
     ingredients: parseJson<JobIngredientStats>(row.ingredients_json),
   };
+}
+
+function parseParams(json: string | null): Record<string, unknown> {
+  const value = parseJson<unknown>(json);
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function parseJson<T>(json: string | null): T | null {

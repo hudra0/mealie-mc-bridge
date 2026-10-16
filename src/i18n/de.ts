@@ -81,8 +81,77 @@ export const de: Messages = {
     failureReasons: FAILURE_REASONS,
   },
   jobEvents: {
-    converting: "Konvertierung gestartet",
-    stillConverting: (seconds) => `Konvertierung läuft noch, ${seconds} s`,
+    queued: ({ scale, force }) =>
+      `In die Warteschlange gestellt, Faktor ${formatNumber(scale, INTL)}${force ? ", erzwungen" : ""}`,
+    requeued: ({ force }) =>
+      force
+        ? "Erneut in die Warteschlange gestellt, erzwungen"
+        : "Erneut in die Warteschlange gestellt",
+    cancelled: () => "Abgebrochen",
+    paused: () => "Wartet auf eine gültige Monsieur-Cuisine-Sitzung",
+    resumed: () => "Sitzung erneuert, wieder in der Warteschlange",
+    recovered_done: () =>
+      "Durch einen Neustart unterbrochen, nachdem das Rezept angelegt war; der Eintrag in Mealie ist vielleicht unvollständig",
+    recovered_failed: () =>
+      "Unterbrochen, während das Rezept angelegt wurde. Es kann auf monsieur-cuisine.com existieren: Prüfe deine Entwürfe, bevor du den Auftrag wiederholst.",
+    recovered_queued: () => "Durch einen Neustart unterbrochen, wieder in der Warteschlange",
+    attempt_started: ({ attempt }) => `Versuch ${attempt} gestartet`,
+    recipe_loaded: ({ name }) => `Rezept „${name}“ aus Mealie geladen`,
+    prepared: ({ ingredients, unparsed, servings, estimated, scale }) =>
+      `${ingredients} Zutaten aufbereitet (${unparsed} nicht erkannt) für ${servings}${estimated ? " (im Rezept nicht angegeben; das Modell darf schätzen)" : ""}, Faktor ${formatNumber(scale, INTL)}`,
+    forced_unchanged: () =>
+      "Erzwungen: wird erneut gesendet, obwohl sich das Rezept nicht geändert hat",
+    skip_exists: ({ since, recipeId }) =>
+      `Unverändert seit ${formatDate(since, INTL)}; Rezept ${recipeId} gibt es noch bei Monsieur Cuisine, übersprungen`,
+    skip_gone: ({ since, recipeId }) =>
+      `Unverändert seit ${formatDate(since, INTL)}, aber Rezept ${recipeId} gibt es bei Monsieur Cuisine nicht mehr; wird neu umgewandelt`,
+    skip_unchecked: ({ since, recipeId }) =>
+      `Unverändert seit ${formatDate(since, INTL)}; Rezept ${recipeId} ließ sich bei Monsieur Cuisine nicht prüfen, übersprungen`,
+    image_loaded: ({ kb }) => `Bild geladen (${kb} KB)`,
+    image_none: () => "Das Rezept hat kein Bild",
+    image_load_failed: () => "Bild nicht geladen, es geht ohne weiter",
+    categories: ({ count, matched }) =>
+      `${count} Kategorien verfügbar; passend: ${matched.length > 0 ? matched.join(", ") : "keine"}`,
+    conversion_reused: ({ provider, model }) =>
+      `Umwandlung aus einem früheren Versuch wiederverwendet (${provider}/${model}); kein neuer Modellaufruf`,
+    converting: () => "Umwandlung gestartet",
+    still_converting: ({ seconds }) => `Umwandlung läuft noch, ${seconds} s`,
+    converted: ({ provider, model, attempts, inputTokens, outputTokens, costUsd }) =>
+      `Umgewandelt mit ${provider}/${model} in ${attempts} ${attempts === 1 ? "Versuch" : "Versuchen"} (${inputTokens} Eingabe-, ${outputTokens} Ausgabe-Tokens${costUsd === null ? "" : `, ${costUsd.toFixed(4)} $`})`,
+    converter_warning: ({ text }) => `Konverter: ${text}`,
+    categories_dropped: ({ ids }) => `Unbekannte Kategorie-IDs entfernt: ${ids.join(", ")}`,
+    servings_estimated: ({ servings }) => `Das Modell hat die Portionen geschätzt: ${servings}`,
+    servings_changed: ({ requested, converted }) =>
+      `Das Modell hat ${converted} statt ${requested} gesetzt`,
+    validation_passed: () => "Prüfung bestanden",
+    ingredients_resolved: ({ catalog, relaxed, cache, search, unresolved }) =>
+      `Zutaten-IDs: ${catalog} aus dem Katalog${relaxed > 0 ? ` (${relaxed} ohne Zusätze)` : ""}, ${cache} aus dem Cache, ${search} aus der Suche, ${unresolved} ohne ID`,
+    ingredients_off: ({ unresolved }) =>
+      `Zutaten-IDs nicht zugeordnet (MC_RESOLVE_INGREDIENTS=off): ${unresolved} ohne ID`,
+    image_skipped: () => "Bild übersprungen",
+    image_uploaded: () => "Bild hochgeladen",
+    draft_created: ({ recipeId }) => `Rezept ${recipeId} bei Monsieur Cuisine angelegt`,
+    status_private: () => "Nur auf dem Gerät gespeichert",
+    status_failed: () =>
+      "Statuswechsel fehlgeschlagen; das Rezept bleibt ein Entwurf und erscheint nicht am Gerät",
+    tag_unavailable: ({ tag }) => `Schlagwort „${tag}“ nicht verfügbar`,
+    writeback_done: ({ tagged }) =>
+      tagged ? "Mealie-Rezept verschlagwortet und Link gespeichert" : "Link in Mealie gespeichert",
+    writeback_forbidden: () =>
+      "Mealie hat die Änderung abgelehnt (403): Der Benutzer der Bridge braucht Schreibrechte auf das Rezept",
+    writeback_failed: () => "Mealie-Rezept ließ sich nicht aktualisieren",
+    timeline_posted: () => "Eintrag in der Mealie-Zeitleiste angelegt",
+    timeline_failed: () => "Eintrag in der Mealie-Zeitleiste fehlgeschlagen",
+    done: () => "Fertig",
+    interrupted: () =>
+      "Beim Herunterfahren unterbrochen; der Auftrag läuft nach dem Neustart weiter",
+    session_unusable: ({ kind }) =>
+      `Monsieur-Cuisine-Sitzung nicht nutzbar (${kind}); wartet auf eine neue`,
+    temporary_failure: ({ stage }) => `Vorübergehender Fehler: ${FAILURE_REASONS[stage]}`,
+    failed: ({ stage }) => FAILURE_REASONS[stage],
+    crashed: () => "Abgestürzt",
+    retry_scheduled: ({ retry, max, seconds }) =>
+      `Wiederholung ${retry} von ${max} in ${seconds} s`,
   },
   email: {
     subjectPrefix: "Monsieur-Cuisine-Bridge",

@@ -7,7 +7,7 @@
 // - an automatic attempt at most once per hour, and at most three in 24 hours;
 // - after a failure the next automatic attempt waits 1 hour, after two in a row 4 hours,
 //   after three or more 24 hours;
-// - a manual "Test login now" skips the waiting times, but never runs next to another
+// - a manual "Test login" skips the waiting times, but never runs next to another
 //   attempt and at most every 3 minutes; manual attempts count neither toward the daily
 //   limit nor toward the backoff;
 // - when the site throttles the login ("rate_limited": capacity exceeded, too many

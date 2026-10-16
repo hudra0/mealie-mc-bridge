@@ -1,11 +1,11 @@
-// Message catalogs for what people read: Mealie timeline entries, mails and the admin
-// pages, per UI_LANGUAGE, and the progress events of a running conversion. Logs, the other
-// job events and command line output stay English.
+// Message catalogs for what people read: Mealie timeline entries, mails, the admin pages
+// and the job events they show, per UI_LANGUAGE. Logs and command line output stay English.
 //
 // Each catalog implements Messages, so the compiler holds every language to the same keys;
 // a test compares them at run time as well. Texts that end up in Markdown or HTML are plain
 // here; the callers escape what they insert.
 
+import type { JobEventCode, JobEventParams } from "../store/job-events.js";
 import { de } from "./de.js";
 import { en } from "./en.js";
 
@@ -64,6 +64,26 @@ export type LoginStepName =
 
 export type SessionStateName = "valid" | "invalid" | "expired" | "unknown";
 
+// The programs of the device (MACHINE_STEP_KINDS in src/recipe/modes.ts).
+export type MachineStepKindName =
+  | "customized"
+  | "roasting"
+  | "steaming"
+  | "kneading_solid_dough"
+  | "kneading_soft_dough"
+  | "kneading_liquid_dough"
+  | "puree"
+  | "smoothie"
+  | "turbo"
+  | "scale"
+  | "slow_cooking"
+  | "sous_vide"
+  | "fermentation"
+  | "rice_cooking"
+  | "cooking_eggs"
+  | "precleaning"
+  | "food_processor";
+
 // How a recipe sits in the Monsieur Cuisine account: a draft, or saved on the device.
 export type SavedStatus = "draft" | "private-publish";
 
@@ -120,9 +140,12 @@ export interface EmailMessages {
   healthSubject: string;
   healthLead: string;
   healthOutro: string;
+  // The mail the settings page sends on request.
+  testSubject: string;
+  testText: string;
 }
 
-// The admin pages. Text in backticks is shown as code.
+// The admin pages. Plain text; the pages escape it.
 export interface AdminMessages {
   htmlLang: string;
   nav: {
@@ -134,30 +157,49 @@ export interface AdminMessages {
     // The accessible name of the navigation.
     label: string;
   };
-  header: { mcSession: string; signedIn(user: string): string; noPassword: string };
+  // The frame of the pages: sidebar, theme switch, notices, confirmation dialog.
+  shell: {
+    tagline: string;
+    openMenu: string;
+    closeMenu: string;
+    mcSession: string;
+    theme: string;
+    themes: Readonly<Record<"system" | "light" | "dark", string>>;
+    signedIn(user: string): string;
+    noPassword: string;
+    dismiss: string;
+    cancel: string;
+    confirm: string;
+  };
   authBanner: string;
   skipToContent: string;
+  copy: { copy: string; copied: string; reveal: string };
   login: {
     title: string;
-    intro: string;
+    subtitle: string;
     user: string;
     password: string;
     submit: string;
+    hint: string;
     wrongCredentials: string;
     tooMany(minutes: number): string;
   };
-  // Under the job list and a running job: the page reloads on its own.
+  // Under a running job: the page reloads on its own.
   autoRefresh: string;
+  // The Mealie check gave up waiting.
+  mealieTimeout(seconds: number): string;
   notices: Readonly<Record<string, string>>;
   plain: { unknownHost: string; authRequired: string; crossOrigin: string };
   titles: {
     dashboard: string;
     jobs: string;
     job: string;
+    dryRun: string;
     notFound: string;
     notPossible: string;
     formExpired: string;
-    dryRun: string;
+    error: string;
+    badRequest: string;
   };
   errors: {
     formExpired: string;
@@ -165,129 +207,146 @@ export interface AdminMessages {
     cookieRejected(reason: string): string;
     cookieUnchecked(reason: string): string;
     noSuchJob: string;
+    noSuchPage: string;
+    noSuchScreenshot: string;
     recipeNotLoaded(reason: string): string;
     conversionFailed(reason: string): string;
     credentialsInvalid(field: "email" | "password"): string;
+    testMailFailed(reason: string): string;
+    mailUnavailable: string;
+    server: string;
+    badRequest: string;
   };
-  links: { backToDashboard: string; backToJobs: string; allJobs: string };
+  links: {
+    backToDashboard: string;
+    backToJobs: string;
+    backToJob: string;
+    backToSettings: string;
+  };
   jobStatus: Readonly<Record<JobStatusName, string>>;
-  // One sentence per status for the legend under the job list.
-  jobStatusHelp: Readonly<Record<JobStatusName, string>>;
   sessionState: Readonly<Record<SessionStateName, string>>;
-  jobsTable: {
-    empty: string;
-    emptyHint: string;
-    created: string;
-    recipe: string;
-    scale: string;
-    status: string;
-    duration: string;
-    cost: string;
-    result: string;
-    recipeLink(id: number | string, status: SavedStatus): string;
-  };
-  // The "getting started" checklist on the overview.
-  setup: {
-    title: string;
-    lead: string;
-    stepState: Readonly<Record<"done" | "open" | "failed" | "unknown", string>>;
-    mealie: {
-      title: string;
-      ok(url: string): string;
-      failed(url: string): string;
-      unchecked(url: string): string;
-      fix: string;
-      timeout(seconds: number): string;
-    };
-    session: {
-      title: string;
-      valid: string;
-      validUntil(time: string, expired: boolean): string;
-      notValid(state: string): string;
-      fix: string;
-    };
-    autoLogin: {
-      title: string;
-      configured(email: string): string;
-      notConfigured: string;
-      fix: string;
-      unavailable: string;
-    };
-    action: {
-      title: string;
-      seen(jobs: number): string;
-      notSeen: string;
-      where: string;
-      reveal: string;
-      dockerLabel: string;
-      pageLabel: string;
-      secret: string;
-      noToken: string;
-      network: string;
-    };
-    firstJob: { title: string; done(count: number): string; notYet: string };
+  events: { details: string; code: string };
+  // A short summary of a job error; the raw text goes into a collapsed details element.
+  failures: {
+    stages: Readonly<Record<FailureStage, string>>;
+    session: string;
+    limits: string;
+    mealieUnreachable: string;
+    mealieRefused: string;
+    converterMissing: string;
+    modelRefused: string;
+    interrupted: string;
+    generic: string;
+    details: string;
   };
   dashboard: {
-    lead: string;
-    state: string;
-    lastCheck: string;
-    cookieAge: string;
-    noCookie: string;
-    // The age of the login (from "login") or of the stored cookie (from "stored").
-    age(hours: number, from: "login" | "stored"): string;
-    cookieExpires: string;
-    expiresAt(time: string, expired: boolean): string;
-    lastError: string;
-    checkNow: string;
-    // The help text under the cookie field on the settings page.
-    cookieLabel: string;
-    saveSession: string;
-    queue: string;
-    queueLead: string;
-    worker: string;
-    unknown: string;
-    paused: string;
-    running: string;
-    stopped: string;
-    workerError(time: string): string;
-    jobError(time: string): string;
-    noErrors: string;
+    subtitle: string;
+    workerPaused: string;
+    workerStopped: string;
+    health: {
+      connected: string;
+      asUser(user: string): string;
+      error: string;
+      unchecked: string;
+      sessionValid: string;
+      until: string;
+      checked(known: boolean): string;
+      renew: string;
+      autoLogin: string;
+      unavailable: string;
+      off: string;
+      setUp: string;
+      lastFailed: string;
+      active: string;
+      ai: string;
+    };
+    kpi: {
+      sent: string;
+      sentHint(total: number, skipped: number): string;
+      successRate: string;
+      noFinished: string;
+      failed(count: number): string;
+      duration: string;
+      durationHint: string;
+      cost: string;
+      costToday(today: string, limit: string): string;
+      costTodayNoLimit(today: string): string;
+      costMeter: string;
+    };
+    setup: {
+      title: string;
+      progress(done: number, total: number): string;
+      dismiss: string;
+      fix: string;
+      done: string;
+      open: string;
+      mealie: string;
+      session: string;
+      autoLogin: string;
+      action: string;
+      firstRecipe: string;
+      firstRecipeHint: string;
+    };
+    workerError: string;
+    jobError: string;
+    openJob: string;
     recentJobs: string;
+    allJobs: string;
   };
-  jobList: {
-    lead: string;
-    status: string;
-    all: string;
+  jobs: {
+    subtitle: string;
+    scale(value: string): string;
+    // "8 Portionen"; the unit is null on jobs from before it was stored.
+    servings(amount: number, unit: string | null): string;
+    recipeLink(id: number | string, status: SavedStatus): string;
+    image: string;
     recipe: string;
+    status: string;
+    created: string;
+    duration: string;
+    cost: string;
+    actions: string;
+    open: string;
+    openEditor: string;
+    retry: string;
+    forceRebuild: string;
+    forceConfirm: string;
+    cancel: string;
+    cancelConfirm: string;
+    filterLabel: string;
+    filters: Readonly<
+      Record<"all" | "active" | "done" | "skipped" | "failed" | "cancelled", string>
+    >;
+    search: string;
     searchPlaceholder: string;
-    filter: string;
-    reset: string;
+    empty: string;
+    emptyHint: string;
     noMatch: string;
     noMore: string;
+    reset: string;
+    range(from: number, to: number): string;
     newer: string;
     older: string;
-    legend: string;
   };
   jobDetail: {
-    lead: string;
-    facts: string;
-    job: string;
-    mealieRecipe: string;
-    monsieurCuisine: string;
-    openRecipe(id: number | string, status: SavedStatus): string;
+    tabsLabel: string;
+    tabs: Readonly<Record<"overview" | "steps" | "ingredients" | "events", string>>;
+    openEditor(status: SavedStatus): string;
     openInMealie: string;
+    facts: string;
+    conversion: string;
+    status: string;
+    servings: string;
     scale: string;
-    // " (10 Scheiben)"; the unit is null on jobs from before it was stored.
-    servingSize(amount: number, unit: string | null): string;
+    model: string;
+    tokens: string;
+    tokenCounts(input: string, cached: string | null, output: string): string;
+    cost: string;
+    duration: string;
     attempts: string;
     forced: string;
     created: string;
-    started: string;
     finished: string;
-    duration: string;
-    model: string;
-    usage: string;
-    tokens(input: number, cached: number | null, output: number): string;
     ingredientIds: string;
     resolutionOff(unresolved: number): string;
     resolution(
@@ -297,93 +356,236 @@ export interface AdminMessages {
       search: number,
       unresolved: number,
     ): string;
+    jobId: string;
+    error: string;
     checkTitle: string;
     checkLead: string;
+    reviewHints: string;
     noHints: string;
+    warnings: string;
+    noSteps: string;
+    noEvents: string;
+    noIngredients: string;
+    ingredientsTitle: string;
+    ingredientsOff: string;
+    ingredientCounts(withId: number, without: number): string;
+    ingredientsHint: string;
+    ingredient: string;
+    amount: string;
+    catalogId: string;
+    withId: string;
+    withoutId: string;
+  };
+  // The converted recipe as the device shows it.
+  steps: {
+    modes: Readonly<Record<MachineStepKindName, string>>;
+    temperature: string;
+    time: string;
+    speed(value: number): string;
+    speedTitle: string;
+    forward: string;
+    reverse: string;
+    rotation: string;
+    whisk: string;
+    accessory: string;
+    weight: string;
+    eggSize: Readonly<Record<"small" | "medium" | "large", string>>;
+    eggSizeTitle: string;
+    eggTexture: Readonly<Record<"soft" | "waxy_soft" | "hard", string>>;
+    eggTextureTitle: string;
+    cleaning: Readonly<Record<"short" | "long", string>>;
+    servings(amount: number, unit: string): string;
+    preparation(minutes: number): string;
+    ready(minutes: number): string;
+    ingredients: string;
+    optional: string;
+    none: string;
+  };
+  dryRun: {
+    subtitle: string;
+    formTitle: string;
+    recipe: string;
+    recipeHint: string;
+    recipePlaceholder: string;
+    scale: string;
+    scaleHint: string;
+    convertNow: string;
+    convertNowHint: string;
+    preview: string;
+    working: string;
+    sourceTitle: string;
+    servings: string;
+    estimated: string;
+    estimatedHelp: string;
+    sourceHash: string;
+    alreadySent: string;
+    wouldSkip: string;
+    notSent: string;
+    convert: string;
+    loadFailed: string;
+    matches: string;
+    emptyTitle: string;
+    empty: string;
+    tabsLabel: string;
+    tabs: Readonly<Record<"preview" | "input" | "ingredients" | "checks", string>>;
+    notConverted: string;
+    notConvertedHint: string;
+    conversionFailed: string;
+    noIngredients: string;
+    amount: string;
+    food: string;
+    note: string;
+    source: string;
+    optional: string;
+    unparsed: string;
+    passed: string;
+    errors(count: number): string;
     reviewHints: string;
     warnings: string;
-    error: string;
-    actions: string;
-    runningLocked: string;
-    retry: string;
-    retryHelp: string;
-    forceRebuild: string;
-    forceRebuildHelp: string;
-    cancel: string;
-    cancelHelp: string;
-    events: string;
-    noEvents: string;
-    ingredients: string;
-    ingredientsLead: string;
-    ingredientsOff: string;
-    resolved(count: number): string;
-    withoutId(count: number): string;
-    noneResolved: string;
-    noneUnresolved: string;
+    conversion: string;
+    model: string;
+    attempts: string;
+    tokens: string;
+    tokenCounts(input: number, output: number): string;
+    cost: string;
+    categories: string;
+    droppedIds(ids: string): string;
   };
   settings: {
     title: string;
-    lead: string;
-    session: {
+    subtitle: string;
+    tabsLabel: string;
+    tabs: Readonly<Record<"mc" | "lidl" | "mealie" | "ai" | "notify" | "system", string>>;
+    mc: {
       title: string;
-      lead: string;
-      checkHelp: string;
+      checkNow: string;
+      checkHint: string;
+      state: string;
+      expires: string;
+      lastCheck: string;
+      age: string;
+      noCookie: string;
+      // The age of the login (from "login") or of the stored cookie (from "stored").
+      ageValue(hours: number, from: "login" | "stored"): string;
+      lastError: string;
       renewTitle: string;
-      renewWays: readonly string[];
+      ways: {
+        auto: string;
+        autoHint: string;
+        autoLink: string;
+        helper: string;
+        helperHint: string;
+        cookie: string;
+      };
       cookieLabel: string;
+      cookieHint: string;
+      saveCookie: string;
     };
-    account: string;
-    intro: string;
-    // How the automatic login behaves, one point per line.
-    facts: readonly string[];
-    unavailable: string;
-    accountState: string;
-    storeAccount: string;
-    changeAccount: string;
-    email: string;
-    emailHelp: string;
-    password: string;
-    passwordHelp: string;
-    passwordStored: string;
-    save: string;
-    testNow: string;
-    testHelp: string;
-    remove: string;
-    removeHelp: string;
-    notConfigured: string;
-    configuredAs(email: string): string;
-    browser: string;
-    browserReady: string;
-    browserMissing(reason: string): string;
-    lastAttempt: string;
-    never: string;
-    attempt(time: string, ok: boolean, manual: boolean): string;
-    failure: Readonly<Record<AutoLoginFailureName, string>>;
-    consentDismissed: string;
-    termsAccepted: string;
-    deviceChosen: string;
-    // The steps an attempt reached, as a short list; the dismissed dialogs with their count.
-    progressTitle: string;
-    steps: Readonly<Record<LoginStepName, string>>;
-    consentSteps(count: number): string;
-    // The browser of an attempt: "Chrome 141" (or null when unknown) and how it ran.
-    browserUsed(name: string | null, mode: "new" | "shell" | "window"): string;
-    screenshot: string;
-    nextAttempt: string;
-    running: string;
-    manualCooldown(time: string): string;
-    locale: {
+    lidl: {
       title: string;
-      lead: string;
-      unverified: string;
-      mcLocale: string;
-      uiLanguage: string;
-      recipeStatus: Readonly<Record<SavedStatus, string>>;
-    };
-    config: {
-      title: string;
-      lead: string;
       unavailable: string;
+      account: string;
+      notConfigured: string;
+      browser: string;
+      browserReady: string;
+      browserMissing(reason: string): string;
+      state: string;
+      running: string;
+      nextAttempt: string;
+      nextTest: string;
+      testNow: string;
+      howItWorks: string;
+      // How the automatic login behaves, one point per line.
+      facts: readonly string[];
+      storeAccount: string;
+      changeAccount: string;
+      email: string;
+      emailHint: string;
+      password: string;
+      passwordHint: string;
+      passwordStored: string;
+      save: string;
+      dangerZone: string;
+      remove: string;
+      removeHint: string;
+      removeConfirm: string;
+      lastAttempt: string;
+      succeeded: string;
+      failed: string;
+      manual: string;
+      screenshot: string;
+      failure: Readonly<Record<AutoLoginFailureName, string>>;
+      progressTitle: string;
+      steps: Readonly<Record<LoginStepName, string>>;
+      consentSteps(count: number): string;
+      consentDismissed: string;
+      termsAccepted: string;
+      deviceChosen: string;
+      // The browser of an attempt: "Chrome 141" (or null when unknown) and how it ran.
+      browserUsed(name: string | null, mode: "new" | "shell" | "window"): string;
+    };
+    mealie: {
+      title: string;
+      url: string;
+      state: string;
+      connected: string;
+      failed: string;
+      unchecked: string;
+      user: string;
+      error: string;
+      lastCheck: string;
+      fix: string;
+      actionTitle: string;
+      actionSubtitle: string;
+      dockerUrl: string;
+      pageUrl: string;
+      reveal: string;
+      allowList: string;
+      secret: string;
+      noToken: string;
+    };
+    ai: {
+      title: string;
+      provider: string;
+      providers: Readonly<Record<string, string>>;
+      model: string;
+      effort: string;
+      corrections: string;
+      readOnly: string;
+      limits: string;
+      jobsToday: string;
+      costToday: string;
+      monthJobs: string;
+      monthCost: string;
+      monthTokens: string;
+      tokens(input: string, output: string): string;
+      limitsHint: string;
+    };
+    notify: {
+      title: string;
+      state: string;
+      on: string;
+      off: string;
+      recipient: string;
+      test: string;
+      sending: string;
+      what: string;
+      setUp: string;
+    };
+    system: {
+      title: string;
+      readme: string;
+      version: string;
+      uptime: string;
+      dataDir: string;
+      mcLocale: string;
+      unverified: string;
+      uiLanguage: string;
+      recipeStatus: string;
+      recipeStatusHint: Readonly<Record<SavedStatus, string>>;
+      envHint: string;
+      advanced: string;
+      configHint: string;
       name: string;
       value: string;
       description: string;
@@ -395,79 +597,20 @@ export interface AdminMessages {
       valuesLabel: string;
     };
   };
-  dryRun: {
-    lead: string;
-    formTitle: string;
-    recipe: string;
-    recipePlaceholder: string;
-    recipeHelp: string;
-    scale: string;
-    scaleHelp: string;
-    preview: string;
-    alsoConvert: string;
-    alsoConvertHelp: string;
-    servings: string;
-    servingsEstimated: string;
-    sourceHash: string;
-    alreadySent: string;
-    sentAt(time: string): string;
-    wouldSkip: string;
-    no: string;
-    convert: string;
-    costsMoney: string;
-    ingredients: string;
-    ingredientsLead: string;
-    noIngredients: string;
-    section: string;
-    amount: string;
-    unit: string;
-    food: string;
-    note: string;
-    source: string;
-    original: string;
-    optional: string;
-    converterInput: string;
-    converterInputLead: string;
-    conversion: string;
-    conversionLead: string;
-    model: string;
-    attempts(count: number): string;
-    usage: string;
-    tokens(input: number, output: number): string;
-    title: string;
-    times: string;
-    timesValue(preparation: number, ready: number): string;
-    categories: string;
-    none: string;
-    droppedIds(ids: string): string;
-    validation: string;
-    passed: string;
-    errors(count: number): string;
-    field: string;
-    problem: string;
-    reviewHints: string;
-    noHints: string;
-    warnings: string;
-    steps: string;
-    kind: string;
-    settings: string;
-    text: string;
-    ingredientGroups: string;
-  };
 }
 
-// Job events while the language model works, so the job page shows progress.
-export interface JobEventMessages {
-  converting: string;
-  stillConverting(seconds: number): string;
-}
+// One sentence per job event code (src/store/job-events.ts). The raw error text of a
+// failure is not part of it: the pages show the `error` parameter below the sentence.
+export type JobEventTexts = {
+  readonly [C in JobEventCode]: (params: JobEventParams[C]) => string;
+};
 
 export interface Messages {
   language: UiLanguage;
   // The Intl locale for dates.
   intlLocale: string;
   timeline: TimelineMessages;
-  jobEvents: JobEventMessages;
+  jobEvents: JobEventTexts;
   email: EmailMessages;
   admin: AdminMessages;
 }
@@ -487,6 +630,31 @@ export function messages(language: UiLanguage): Messages {
 export function defaultUiLanguage(locale: string): UiLanguage {
   const language = locale.split("-")[0]?.toLowerCase() ?? "";
   return isUiLanguage(language) ? language : "en";
+}
+
+// The sentence of a job event in a catalog's language. Null when the stored parameters do
+// not fit the code (a row edited by hand, or written by a release with other parameters).
+export function jobEventText(
+  catalog: Messages,
+  code: JobEventCode,
+  params: Readonly<Record<string, unknown>>,
+): string | null {
+  try {
+    const render = catalog.jobEvents[code] as (params: unknown) => string;
+    const text = render(params);
+    return typeof text === "string" && !/\bundefined\b|\bNaN\b/.test(text) ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+// The English line of an event as the message column, the log and GET /jobs/:id keep it:
+// the sentence, then the raw error when there is one.
+export function jobEventMessage(code: JobEventCode, params: Readonly<Record<string, unknown>>) {
+  const text = jobEventText(en, code, params) ?? code;
+  return typeof params.error === "string" && params.error !== ""
+    ? `${text}: ${params.error}`
+    : text;
 }
 
 // A date and time in the catalog's style, for timeline entries and mails.

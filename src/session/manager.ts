@@ -264,7 +264,7 @@ export class SessionManager implements SessionProvider {
     }
   }
 
-  // "Test login now" on the settings page: one login with the stored account, whatever the
+  // "Test login" on the settings page: one login with the stored account, whatever the
   // state of the session, but never next to a running one.
   loginNow(): Promise<AutoLoginRun> {
     if (!this.#autoLogin) return Promise.resolve({ status: "skipped", reason: "no_credentials" });

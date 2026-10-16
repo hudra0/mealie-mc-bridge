@@ -6,7 +6,14 @@
 // event, which the admin page shows as the job's log.
 
 import { randomUUID } from "node:crypto";
+import { jobEventMessage } from "../i18n/index.js";
 import type { Db } from "./db.js";
+import {
+  isJobEventCode,
+  storedParams,
+  type JobEventCode,
+  type JobEventInput,
+} from "./job-events.js";
 import { JOB_STATUSES } from "./migrations.js";
 
 export type JobStatus = (typeof JOB_STATUSES)[number];
@@ -83,7 +90,11 @@ export interface JobEvent {
   jobId: string;
   ts: string;
   level: EventLevel;
+  // English; the only text of rows written before event codes existed.
   message: string;
+  // Null on older rows and on codes this release does not know.
+  code: JobEventCode | null;
+  params: Record<string, unknown> | null;
 }
 
 export interface EnqueueInput {
@@ -126,12 +137,26 @@ export interface JobPatch {
 export interface ListJobsOptions {
   limit?: number;
   offset?: number;
-  status?: JobStatus;
+  // One status, or any of several.
+  status?: JobStatus | readonly JobStatus[];
   // Matches the recipe id or slug exactly, or the title in part.
   search?: string;
 }
 
 export type JobStats = Record<JobStatus, number>;
+
+// What the jobs created since a point in time came to, for the overview.
+export interface JobSummary {
+  total: number;
+  done: number;
+  failed: number;
+  skipped: number;
+  // Mean run time of the done jobs; null without one.
+  avgDurationMs: number | null;
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
 
 export class JobConflictError extends Error {
   constructor(message: string) {
@@ -178,6 +203,8 @@ interface EventRow {
   ts: string;
   level: EventLevel;
   message: string;
+  code: string | null;
+  params_json: string | null;
 }
 
 const COLUMNS: Readonly<Record<keyof JobPatch, string>> = {
@@ -247,7 +274,10 @@ export class JobStore {
             ts,
             input.force ? 1 : 0,
           );
-        this.#event(id, "info", `Queued with scale ${input.scale}${input.force ? ", forced" : ""}`);
+        this.#event(id, "info", {
+          code: "queued",
+          params: { scale: input.scale, force: input.force === true },
+        });
         return { job: this.#require(id), created: true };
       })
       .immediate();
@@ -317,6 +347,8 @@ export class JobStore {
         ts: row.ts,
         level: row.level,
         message: row.message,
+        code: isJobEventCode(row.code) ? row.code : null,
+        params: isJobEventCode(row.code) ? parseParams(row.params_json) : null,
       }));
   }
 
@@ -344,25 +376,15 @@ export class JobStore {
     return this.update(id, { ...patch, status, finishedAt });
   }
 
-  appendEvent(jobId: string, level: EventLevel, message: string): void {
-    this.#event(jobId, level, message);
+  // An event with a code; a plain string is stored as a message without one.
+  appendEvent(jobId: string, level: EventLevel, event: JobEventInput | string): void {
+    this.#event(jobId, level, event);
   }
 
   listRecent(options: ListJobsOptions = {}): Job[] {
     const limit = clamp(options.limit ?? 20, 1, MAX_LIST);
     const offset = Math.max(0, Math.trunc(options.offset ?? 0));
-    const where: string[] = [];
-    const values: unknown[] = [];
-    if (options.status) {
-      where.push("status = ?");
-      values.push(options.status);
-    }
-    const search = options.search?.trim();
-    if (search) {
-      where.push("(mealie_recipe_id = ? OR mealie_slug = ? OR title LIKE ? ESCAPE '\\')");
-      values.push(search, search, `%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
-    }
-    const clause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    const { clause, values } = filter(options);
     return this.#db
       .prepare<unknown[], JobRow>(
         `SELECT * FROM jobs ${clause} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`,
@@ -371,15 +393,62 @@ export class JobStore {
       .map(toJob);
   }
 
-  stats(): JobStats {
+  // Jobs per status: all of them, or those a search matches as in listRecent.
+  stats(options: Pick<ListJobsOptions, "search"> = {}): JobStats {
     const stats = Object.fromEntries(JOB_STATUSES.map((status) => [status, 0])) as JobStats;
+    const { clause, values } = filter({ ...(options.search ? { search: options.search } : {}) });
     const rows = this.#db
-      .prepare<[], { status: JobStatus; count: number }>(
-        "SELECT status, COUNT(*) AS count FROM jobs GROUP BY status",
+      .prepare<unknown[], { status: JobStatus; count: number }>(
+        `SELECT status, COUNT(*) AS count FROM jobs ${clause} GROUP BY status`,
       )
-      .all();
+      .all(...values);
     for (const row of rows) stats[row.status] = row.count;
     return stats;
+  }
+
+  // The stage of the last failure event of each job (code "failed" or "temporary_failure"),
+  // for a summary of the error in the language of the pages. Jobs without one are left out.
+  failureStages(jobIds: readonly string[]): Map<string, string> {
+    const stages = new Map<string, string>();
+    if (jobIds.length === 0) return stages;
+    const rows = this.#db
+      .prepare<unknown[], { job_id: string; stage: unknown }>(
+        `SELECT job_id, json_extract(params_json, '$.stage') AS stage FROM job_events
+         WHERE code IN ('failed', 'temporary_failure') AND json_valid(params_json)
+           AND job_id IN (${jobIds.map(() => "?").join(", ")})
+         ORDER BY id`,
+      )
+      .all(...jobIds);
+    for (const row of rows) if (typeof row.stage === "string") stages.set(row.job_id, row.stage);
+    return stages;
+  }
+
+  // Counts, mean run time, cost and tokens of the jobs created since the given time.
+  summarySince(since: Date): JobSummary {
+    const row = this.#db
+      .prepare<[string], SummaryRow>(
+        `SELECT COUNT(*) AS total,
+           COALESCE(SUM(status = 'done'), 0) AS done,
+           COALESCE(SUM(status = 'failed'), 0) AS failed,
+           COALESCE(SUM(status = 'skipped'), 0) AS skipped,
+           AVG(CASE WHEN status = 'done' AND started_at IS NOT NULL AND finished_at IS NOT NULL
+               THEN (julianday(finished_at) - julianday(started_at)) * 86400000 END) AS avg_ms,
+           COALESCE(SUM(cost_usd), 0) AS cost,
+           COALESCE(SUM(json_extract(usage_json, '$.inputTokens')), 0) AS input,
+           COALESCE(SUM(json_extract(usage_json, '$.outputTokens')), 0) AS output
+         FROM jobs WHERE created_at >= ?`,
+      )
+      .get(since.toISOString());
+    return {
+      total: row?.total ?? 0,
+      done: row?.done ?? 0,
+      failed: row?.failed ?? 0,
+      skipped: row?.skipped ?? 0,
+      avgDurationMs: typeof row?.avg_ms === "number" ? Math.round(row.avg_ms) : null,
+      costUsd: row?.cost ?? 0,
+      inputTokens: row?.input ?? 0,
+      outputTokens: row?.output ?? 0,
+    };
   }
 
   // Puts a finished or waiting job back into the queue. A plain retry reuses a stored
@@ -407,7 +476,7 @@ export class JobStore {
           createStartedAt: null,
           ...(force ? { conversion: null } : {}),
         });
-        this.#event(id, "info", force ? "Queued again, forced" : "Queued again");
+        this.#event(id, "info", { code: "requeued", params: { force } });
         return updated;
       })
       .immediate();
@@ -423,7 +492,7 @@ export class JobStore {
           throw new JobConflictError(`A ${job.status} job cannot be cancelled`);
         }
         const updated = this.finish(id, "cancelled");
-        this.#event(id, "info", "Cancelled");
+        this.#event(id, "info", { code: "cancelled" });
         return updated;
       })
       .immediate();
@@ -431,12 +500,12 @@ export class JobStore {
 
   // The session is gone: queued jobs wait for a new one. Returns the number of jobs.
   pauseQueued(): number {
-    return this.#move("queued", "session_expired", "Waiting for a valid Monsieur Cuisine session");
+    return this.#move("queued", "session_expired", { code: "paused" });
   }
 
   // A new session is in place: waiting jobs run again.
   resumePaused(): number {
-    return this.#move("session_expired", "queued", "Session renewed, queued again");
+    return this.#move("session_expired", "queued", { code: "resumed" });
   }
 
   // Jobs left running by a crash or a hard stop, handled on start. Most go back to the
@@ -455,17 +524,13 @@ export class JobStore {
         for (const row of rows) {
           if (row.mc_recipe_id !== null) {
             this.finish(row.id, "done");
-            this.#event(
-              row.id,
-              "warn",
-              "Interrupted by a restart after the draft was created; the Mealie write-back may be incomplete",
-            );
+            this.#event(row.id, "warn", { code: "recovered_done" });
           } else if (row.create_started_at !== null) {
             this.finish(row.id, "failed", { error: INTERRUPTED_CREATE });
-            this.#event(row.id, "error", INTERRUPTED_CREATE);
+            this.#event(row.id, "error", { code: "recovered_failed" });
           } else {
             this.update(row.id, { status: "queued", startedAt: null });
-            this.#event(row.id, "info", "Interrupted by a restart, queued again");
+            this.#event(row.id, "info", { code: "recovered_queued" });
           }
         }
         return rows.length;
@@ -473,7 +538,7 @@ export class JobStore {
       .immediate();
   }
 
-  #move(from: JobStatus, to: JobStatus, message: string): number {
+  #move(from: JobStatus, to: JobStatus, event: JobEventInput): number {
     return this.#db
       .transaction((): number => {
         const ids = this.#db
@@ -484,19 +549,31 @@ export class JobStore {
         const update = this.#db.prepare("UPDATE jobs SET status = ?, updated_at = ? WHERE id = ?");
         for (const id of ids) {
           update.run(to, ts, id);
-          this.#event(id, "info", message);
+          this.#event(id, "info", event);
         }
         return ids.length;
       })
       .immediate();
   }
 
-  #event(jobId: string, level: EventLevel, message: string): void {
+  #event(jobId: string, level: EventLevel, event: JobEventInput | string): void {
+    const coded = typeof event === "string" ? null : event;
+    const params = coded ? storedParams(coded.params) : null;
+    const message = coded ? jobEventMessage(coded.code, params ?? {}) : (event as string);
     const text =
       message.length > MAX_EVENT_LENGTH ? `${message.slice(0, MAX_EVENT_LENGTH)}...` : message;
     this.#db
-      .prepare("INSERT INTO job_events (job_id, ts, level, message) VALUES (?, ?, ?, ?)")
-      .run(jobId, this.#ts(), level, text);
+      .prepare(
+        "INSERT INTO job_events (job_id, ts, level, message, code, params_json) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        jobId,
+        this.#ts(),
+        level,
+        text,
+        coded?.code ?? null,
+        params ? JSON.stringify(params) : null,
+      );
   }
 
   #require(id: string): Job {
@@ -548,6 +625,13 @@ function toJob(row: JobRow): Job {
   };
 }
 
+function parseParams(json: string | null): Record<string, unknown> {
+  const value = parseJson<unknown>(json);
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 function parseJson<T>(json: string | null): T | null {
   if (json === null) return null;
   try {
@@ -555,6 +639,38 @@ function parseJson<T>(json: string | null): T | null {
   } catch {
     return null;
   }
+}
+
+interface SummaryRow {
+  total: number;
+  done: number;
+  failed: number;
+  skipped: number;
+  avg_ms: number | null;
+  cost: number;
+  input: number;
+  output: number;
+}
+
+// The WHERE clause of a list or a count: a status, and a search that matches the recipe id
+// or slug exactly or the title in part.
+function filter(options: Pick<ListJobsOptions, "status" | "search">): {
+  clause: string;
+  values: unknown[];
+} {
+  const where: string[] = [];
+  const values: unknown[] = [];
+  const statuses = typeof options.status === "string" ? [options.status] : (options.status ?? []);
+  if (statuses.length > 0) {
+    where.push(`status IN (${statuses.map(() => "?").join(", ")})`);
+    values.push(...statuses);
+  }
+  const search = options.search?.trim();
+  if (search) {
+    where.push("(mealie_recipe_id = ? OR mealie_slug = ? OR title LIKE ? ESCAPE '\\')");
+    values.push(search, search, `%${search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
+  }
+  return { clause: where.length > 0 ? `WHERE ${where.join(" AND ")}` : "", values };
 }
 
 function clamp(value: number, min: number, max: number): number {

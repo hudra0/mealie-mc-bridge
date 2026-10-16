@@ -62,6 +62,12 @@ describe("scrubSecrets and errorMessage", () => {
       "POST /hooks/mealie/[redacted] failed",
     );
     expect(scrubSecrets("nothing secret here")).toBe("nothing secret here");
+    expect(scrubSecrets("connect smtps://mailer:s3cr3t@mail.example.com:465 failed")).toBe(
+      "connect smtps://[redacted]@mail.example.com:465 failed",
+    );
+    expect(scrubSecrets("see https://mealie.example.com/g/home and http://u:@h/x")).toBe(
+      "see https://mealie.example.com/g/home and http://[redacted]@h/x",
+    );
   });
 
   it("drops Playwright call logs and the values of fill()", () => {

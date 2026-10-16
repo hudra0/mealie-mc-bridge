@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ImageTooLargeError,
   MAX_IMAGE_BYTES,
+  MAX_SEARCH_RESULTS,
+  MAX_THUMBNAIL_BYTES,
   MealieApiError,
   MealieClient,
   slugify,
@@ -133,6 +135,44 @@ describe("MealieClient reads", () => {
     await expect(mealie.getRecipeImage(RECIPE_ID)).resolves.toBeNull();
     const error = await caught(mealie.getRecipeImage(RECIPE_ID));
     expect(error).toMatchObject({ status: 500, kind: "server", detail: "boom" });
+  });
+
+  it("gets the small image for the admin pages, or null when there is none", async () => {
+    const path = `/api/media/recipes/${RECIPE_ID}/images/tiny-original.webp`;
+    const { client: mealie } = client({
+      [`GET ${path}`]: [
+        () => new Response(new Uint8Array([82, 73, 70, 70]), { status: 200 }),
+        () => json(404, { detail: "Not Found" }),
+        () =>
+          new Response(new Uint8Array(8), {
+            status: 200,
+            headers: { "content-length": String(MAX_THUMBNAIL_BYTES + 1) },
+          }),
+      ],
+    });
+    expect(await mealie.getRecipeThumbnail(RECIPE_ID)).toEqual(Buffer.from("RIFF"));
+    await expect(mealie.getRecipeThumbnail(RECIPE_ID)).resolves.toBeNull();
+    await expect(mealie.getRecipeThumbnail(RECIPE_ID)).rejects.toBeInstanceOf(ImageTooLargeError);
+  });
+
+  it("searches recipes by name and keeps id, slug and name", async () => {
+    const { client: mealie, calls } = client({
+      "GET /api/recipes": () =>
+        json(200, {
+          page: 1,
+          per_page: 20,
+          items: [
+            { id: "r1", slug: "kuerbissuppe", name: "Kürbissuppe", image: "x", rating: 5 },
+            { id: "r2", slug: "brot", name: "Brot" },
+          ],
+        }),
+    });
+    await expect(mealie.searchRecipes(" kürbis ", 50)).resolves.toEqual([
+      { id: "r1", slug: "kuerbissuppe", name: "Kürbissuppe" },
+      { id: "r2", slug: "brot", name: "Brot" },
+    ]);
+    expect(calls[0]?.query.get("search")).toBe("kürbis");
+    expect(calls[0]?.query.get("perPage")).toBe(String(MAX_SEARCH_RESULTS));
   });
 
   it("refuses an image above the size limit, by its header or while reading", async () => {

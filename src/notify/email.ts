@@ -22,6 +22,9 @@ export interface Notifier {
   sessionExpired(status: SessionStatus, details?: SessionMailDetails): Promise<void>;
   jobFailed(job: Job, error: string): Promise<void>;
   healthFailed(error: string): Promise<void>;
+  // Sends a test mail and throws when it does not go out. Only notifiers that send mail
+  // have it.
+  testMail?(): Promise<void>;
 }
 
 export class NullNotifier implements Notifier {
@@ -139,13 +142,28 @@ export class EmailNotifier implements Notifier {
     await this.#send(t.healthSubject, [t.healthLead, "", t.error(message), "", t.healthOutro]);
   }
 
-  async #send(subject: string, lines: string[]): Promise<void> {
-    const message: MailMessage = {
+  // Unlike the other mails, a failure reaches the caller, with secrets scrubbed.
+  async testMail(): Promise<void> {
+    const t = this.#messages.email;
+    try {
+      await this.#transport.sendMail(this.#message(t.testSubject, [t.testText]));
+    } catch (error) {
+      throw new Error(errorMessage(error));
+    }
+    this.#logger.info({}, "test mail sent");
+  }
+
+  #message(subject: string, lines: string[]): MailMessage {
+    return {
       from: this.#from,
       to: this.#to,
       subject: scrubSecrets(`${this.#messages.email.subjectPrefix}: ${subject}`),
       text: scrubSecrets(`${lines.join("\n")}\n`),
     };
+  }
+
+  async #send(subject: string, lines: string[]): Promise<void> {
+    const message = this.#message(subject, lines);
     try {
       await this.#transport.sendMail(message);
       this.#logger.info({ subject: message.subject }, "notification sent");

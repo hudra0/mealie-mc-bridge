@@ -12,6 +12,17 @@ The bridge is a small service that runs next to Mealie. Mealie hands it a recipe
 4. The recipe is saved privately in your Monsieur Cuisine account, so it appears on the machine.
 5. Mealie gets a tag on the recipe and a timeline entry with the link and the points you should check before you cook.
 
+![Overview of the admin pages: connections, figures of the last 30 days and recent jobs](docs/images/admin-overview-light.png)
+
+<table>
+  <tr>
+    <td><img src="docs/images/admin-job-steps-dark.png" alt="A converted recipe as the machine shows it, dark theme"></td>
+    <td><img src="docs/images/admin-dry-run-light.png" alt="Dry run with the converted steps beside the form"></td>
+  </tr>
+</table>
+
+The screenshots show synthetic data.
+
 Status: 0.x releases, listed in [CHANGELOG.md](CHANGELOG.md). It runs end to end and is used with German recipes on a real machine. English output exists but has not been checked on a device yet. Every converted recipe is written by a language model, so check times and temperatures before you cook it.
 
 ## Requirements
@@ -82,7 +93,7 @@ curl http://127.0.0.1:3000/health
 
 Open the admin pages at `http://127.0.0.1:3000/admin` and log in with `ADMIN_USER` and `ADMIN_PASSWORD`. The example compose file publishes the port on localhost only. To reach the pages from another machine, put a reverse proxy with TLS in front, as described under [Security](#security): over plain HTTP the admin password, the session cookie and the Lidl password cross the network readable. Keep it off the internet.
 
-Open Settings ("Einstellungen"), enter the e-mail address and password of your Lidl account for monsieur-cuisine.com and press "Test login now" ("Anmeldung jetzt testen"). The bridge logs in in a headless browser, checks the session against your account and stores it; the session state turns `valid`. If that does not work, use the login helper or paste the cookie, as described under [Monsieur Cuisine session](#monsieur-cuisine-session).
+Open Settings ("Einstellungen"), tab "Lidl account" ("Lidl-Konto"), enter the e-mail address and password of your Lidl account for monsieur-cuisine.com and press "Test login" ("Anmeldung testen"). The bridge logs in in a headless browser, checks the session against your account and stores it; the session state turns `valid`. If that does not work, use the login helper or paste the cookie, as described under [Monsieur Cuisine session](#monsieur-cuisine-session).
 
 ### 7. Create the recipe action in Mealie
 
@@ -90,7 +101,7 @@ In Mealie, open Settings, Data Management, pick "Recipe Actions" and add one:
 
 - Title: for example "Send to Monsieur Cuisine"
 - Type: `post`
-- URL: `http://mc-bridge:3000/hooks/mealie/<WEBHOOK_TOKEN>`
+- URL: `http://mc-bridge:3000/hooks/mealie/<WEBHOOK_TOKEN>`; Settings ("Einstellungen"), tab Mealie, shows it with a copy button
 
 The host is the bridge's service name on the Docker network, not `localhost` and not the published port. Actions belong to a household; every household that wants the button needs its own. Every member of the household can see the action's URL, with the token, and use it; the daily limits (`JOB_DAILY_LIMIT`, `JOB_DAILY_COST_LIMIT_USD`) cap what that can cost. See [Security](#security).
 
@@ -196,7 +207,7 @@ When Monsieur Cuisine rejects the session, the bridge opens the site's login in 
 
 On the first login with an account, monsieur-cuisine.com may ask you to accept its terms of use and to choose your device before it starts a session. The automatic login then ticks the terms checkbox and confirms it on your behalf, and picks MC Smart. The settings page says so under the last attempt ("The terms of use were confirmed on your behalf"). To read and accept them yourself, log in once on monsieur-cuisine.com before you store the account.
 
-A login on a third-party site should stay rare, so the bridge limits it: one at a time, an automatic attempt at most once per hour and three times in 24 hours, and after a failure it waits 1 hour, after two failures in a row 4 hours, after three 24 hours. When the session breaks while the automatic login has to wait, you get the session mail with the time of the next attempt. "Test login now" skips these waiting times, but not a login that is already running, and it runs at most every 3 minutes; manual tests count neither toward the daily limit nor toward the waiting times after failures.
+A login on a third-party site should stay rare, so the bridge limits it: one at a time, an automatic attempt at most once per hour and three times in 24 hours, and after a failure it waits 1 hour, after two failures in a row 4 hours, after three 24 hours. When the session breaks while the automatic login has to wait, you get the session mail with the time of the next attempt. "Test login" ("Anmeldung testen") skips these waiting times, but not a login that is already running, and it runs at most every 3 minutes; manual tests count neither toward the daily limit nor toward the waiting times after failures.
 
 A wrong password, an unknown e-mail address, a captcha, a second factor or a changed page stops the login. When the site names a wrong password or an unknown address, or asks for a captcha or a code, the reason says so; the bridge never types the password into a page that offers to create a new account. The settings page then shows the time, the reason with the last step the login reached ("stuck after: e-mail entered"), the list of steps it reached and a screenshot of the page (the last five stay in `login-screenshots/` in the data directory), and the session mail says that a manual login is needed: use the login helper or paste the cookie. A screenshot can show the Lidl account page with your e-mail address; it is served to the logged-in admin only. The reason never contains the browser's own error text, which can carry the typed password.
 
@@ -228,7 +239,7 @@ ADMIN_PASSWORD='...' npm run mc:login -- --bridge http://<bridge address>:3000 -
 1. Log in on www.monsieur-cuisine.com and open "Create recipe".
 2. Open the browser's developer tools (F12), Network tab, and reload the page.
 3. Pick any request whose URL contains `proxy-api` and copy the value of its `Cookie` request header. In Chrome and Edge it is under Headers, Request Headers; in Firefox under Headers, Request Headers with "Raw" switched on.
-4. Paste it into the form under Settings ("Einstellungen"), Monsieur Cuisine session, and press "Save session" ("Sitzung speichern").
+4. On Settings ("Einstellungen"), tab Monsieur Cuisine, open "Set the cookie by hand" ("Cookie manuell setzen"), paste it and press "Check and save" ("Prüfen und speichern").
 
 Instead of the form you can set `MC_COOKIE` in `.env`. The bridge stores it on the next start, and again whenever that value changes; a cookie pasted on the admin page later wins until you change `MC_COOKIE`. Wrap the value in single quotes in `.env`, so Compose leaves characters like `$` alone.
 
@@ -295,11 +306,11 @@ The job flow, the job states and the modules are described in [docs/ARCHITECTURE
 
 ### Admin pages
 
-Overview ("Übersicht") has a getting-started checklist (Mealie reachable, session valid, automatic login, the recipe action URL to paste into Mealie, first recipe sent), the queue, the last ten jobs and the last error. Jobs ("Aufträge") lists every job with duration and cost; a job page shows its timeline, the points to check before cooking, and which ingredients got a Monsieur Cuisine id. Dry run ("Probelauf") converts a recipe without uploading it. Settings ("Einstellungen") holds the session, the automatic login and a read-only view of the effective configuration, secrets hidden. A failed job can be retried; "Force rebuild" sends the recipe again even if it has not changed; queued jobs can be cancelled. Temporary failures (network, server errors) are retried three times with a pause of 2, 4 and 8 seconds. Validation and conversion failures are not retried automatically, and neither is creating the recipe on Monsieur Cuisine, so a timeout never leaves two copies behind.
+Overview ("Übersicht") shows the state of Mealie, the Monsieur Cuisine session, the automatic login and the language model, the figures of the last 30 days (recipes sent, success rate, mean duration, cost against the daily limit), the recent jobs, and the last error of the past week. While the setup is incomplete, a card lists the missing steps; it disappears once they are done, or when you hide it. Jobs ("Aufträge") lists every job with picture, status, age, duration and cost, filtered by status or searched by title; each row has a menu with the actions. A job page has four tabs: the overview with the points to check before cooking, the converted steps as the machine shows them (programs with temperature, time, speed, direction and weight, and the ingredient groups), the ingredients with or without a Monsieur Cuisine id, and the log in the language of the pages. Dry run ("Probelauf") converts a recipe without uploading it; the recipe field searches Mealie by name. Settings ("Einstellungen") has tabs for the Monsieur Cuisine session, the Lidl account, the Mealie connection with the recipe action URL, the language model and its usage, notifications with a test mail, and the system with the effective configuration, secrets hidden. The pages follow the light or dark setting of the system, or the theme picked in the sidebar. A failed job can be retried; "Force rebuild" sends the recipe again even if it has not changed; queued jobs can be cancelled. Temporary failures (network, server errors) are retried three times with a pause of 2, 4 and 8 seconds. Validation and conversion failures are not retried automatically, and neither is creating the recipe on Monsieur Cuisine, so a timeout never leaves two copies behind.
 
 "Dry run" ("Probelauf") shows what the converter would get for a Mealie recipe and, on request, runs the conversion without uploading anything. That conversion is a paid model call; it is a form submission (POST), never a link.
 
-The pages need a login with `ADMIN_USER` and `ADMIN_PASSWORD`. A correct login sets a session cookie for 12 hours (HttpOnly, SameSite=Lax, signed with a key derived from `SETTINGS_KEY`); "Log out" ("Abmelden") on every page ends every session issued until then, on every device, and a new `ADMIN_PASSWORD` does the same. Five failed logins from one address within 15 minutes, on the form or with Basic Auth on the API, lock that address out for the rest of those 15 minutes. Behind a reverse proxy every client shares the proxy's address, so set `TRUST_PROXY` to the proxy's address: the throttle then counts per client, and over HTTPS the cookie gets the `Secure` flag and the pages send `Strict-Transport-Security`. The job list and a job page reload every 5 seconds while a job is queued or running.
+The pages need a login with `ADMIN_USER` and `ADMIN_PASSWORD`. A correct login sets a session cookie for 12 hours (HttpOnly, SameSite=Lax, signed with a key derived from `SETTINGS_KEY`); "Log out" ("Abmelden") on every page ends every session issued until then, on every device, and a new `ADMIN_PASSWORD` does the same. Five failed logins from one address within 15 minutes, on the form or with Basic Auth on the API, lock that address out for the rest of those 15 minutes. Behind a reverse proxy every client shares the proxy's address, so set `TRUST_PROXY` to the proxy's address: the throttle then counts per client, and over HTTPS the cookie gets the `Secure` flag and the pages send `Strict-Transport-Security`. The job list, a job page and the overview reload every 5 seconds while a job is queued or running. The pages load their stylesheet, script, font and icons from the bridge itself, under a content security policy that allows nothing else; recipe pictures come from Mealie through the bridge, for a logged-in admin only. Every page works without JavaScript; the script adds copying, live times, confirmation dialogs and the recipe search.
 
 With `ADMIN_AUTH=off` and no credentials the admin pages are open to anyone who reaches the port, and they answer only to an IP address, `localhost` or a host name listed in `ADMIN_HOSTS`.
 
@@ -472,13 +483,14 @@ cp .env.example .env     # fill in WEBHOOK_TOKEN, MEALIE_URL, MEALIE_API_TOKEN, 
 npm run dev              # tsx watch; reads .env, keeps bridge.db in ./data
 npm run check            # format, lint, typecheck, tests with coverage
 npm test                 # tests only
-npm run build            # compiles to dist/; npm start runs it
+npm run build            # compiles to dist/ and builds the admin assets; npm start runs it
+npm run ui:watch         # rebuilds the admin assets on every change, next to npm run dev
 npm run format           # Prettier over every file git knows about
 npm run docs:config      # rewrite the configuration table in README.md
 npm run hooks:install    # secret scan before every commit, needs gitleaks 8.19 or newer
 ```
 
-`npm run dev` and `npm start` read `.env` from the working directory when `NODE_ENV` is not `production`. `npm run test:coverage` enforces 85 % line coverage per module directory under `src/`. The tests never call a provider; `src/convert/providers/live.test.ts` converts a fixture with the real API when `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set, is skipped otherwise and in CI, and costs money.
+`npm run dev` and `npm start` read `.env` from the working directory when `NODE_ENV` is not `production`. The admin pages need the assets in `dist/assets` (`npm run build:assets` once, or `npm run ui:watch`): a stylesheet compiled with Tailwind CSS from `src/service/ui/app.css`, the script `src/service/ui/client/app.js`, the Inter font and the app icons, each with a hash of its content in its name. Icons come from Lucide; to add one, put its name into `scripts/ui-icons.ts` and run `npm run ui:icons`. `npm run test:coverage` enforces 85 % line coverage per module directory under `src/`. The tests never call a provider; `src/convert/providers/live.test.ts` converts a fixture with the real API when `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is set, is skipped otherwise and in CI, and costs money.
 
 Image conversion uses [sharp](https://sharp.pixelplumbing.com) and the database [better-sqlite3](https://github.com/WiseLibs/better-sqlite3). Both ship prebuilt native binaries per platform. The Docker image installs them on linux during the build; do not copy a `node_modules` folder from Windows or macOS into an image. To build the image yourself, clone the repository (`git clone https://github.com/hudra0/mealie-mc-bridge`), replace the `image:` line in `compose.yml` with `build: <path of the clone>` (or `build: .` when `compose.yml` sits in the clone) and run `docker compose up -d --build`.
 

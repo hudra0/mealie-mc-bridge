@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createIngredientCatalog } from "../ingredients/catalog.js";
 import { McApiError, McSessionError, type McIngredientSuggestion } from "../mc/index.js";
 import type { CachedIngredient, IngredientCacheSource } from "../store/ingredient-cache.js";
+import { jobEventMessage } from "../i18n/index.js";
 import { silentLogger } from "../testing/fakes.js";
 import {
   IngredientResolver,
@@ -9,7 +10,7 @@ import {
   NEGATIVE_TTL_MS,
   TokenBucket,
   cacheKey,
-  describeResolution,
+  resolutionEvent,
   type IngredientResolverOptions,
 } from "./ingredient-resolver.js";
 
@@ -372,14 +373,20 @@ describe("TokenBucket", () => {
   });
 });
 
-describe("describeResolution", () => {
+// The English job log line of a resolution.
+function line(resolution: Parameters<typeof resolutionEvent>[0]): string {
+  const event = resolutionEvent(resolution);
+  return jobEventMessage(event.code, event.params ?? {});
+}
+
+describe("resolutionEvent", () => {
   it("writes one line for the job log", () => {
     const stats = { catalog: 5, catalogRelaxed: 0, cache: 1, search: 2, unresolved: 3 };
-    expect(describeResolution({ ids: new Map(), stats, unresolvedNames: [], enabled: true })).toBe(
+    expect(line({ ids: new Map(), stats, unresolvedNames: [], enabled: true })).toBe(
       "Ingredients resolved: 5 catalog, 1 cache, 2 search, 3 without id",
     );
     expect(
-      describeResolution({
+      line({
         ids: new Map(),
         stats: { catalog: 0, catalogRelaxed: 0, cache: 0, search: 0, unresolved: 4 },
         unresolvedNames: [],
@@ -545,7 +552,7 @@ describe("IngredientResolver relaxed catalog lookup and suggestions", () => {
 
   it("names the relaxed hits in the job log line", () => {
     const stats = { catalog: 5, catalogRelaxed: 2, cache: 0, search: 0, unresolved: 1 };
-    expect(describeResolution({ ids: new Map(), stats, unresolvedNames: [], enabled: true })).toBe(
+    expect(line({ ids: new Map(), stats, unresolvedNames: [], enabled: true })).toBe(
       "Ingredients resolved: 5 catalog (2 relaxed), 0 cache, 0 search, 1 without id",
     );
   });

@@ -9,7 +9,9 @@ import { mcEditorUrl, type McCategory, type McRecipeSink } from "../mc/index.js"
 import type { McRecipePayload } from "../mc/types.js";
 import {
   mealieRecipeSchema,
+  type MealieClient,
   type MealieRecipe,
+  type MealieRecipeSummary,
   type MealieTagRef,
   type MealieTimelineEvent,
   type RecipePatch,
@@ -133,7 +135,8 @@ export function fakeConverter(
 // Records every call in order as "<client>.<method>".
 export type CallLog = string[];
 
-export interface FakeMealie extends MealiePort {
+export interface FakeMealie
+  extends MealiePort, Pick<MealieClient, "getRecipeThumbnail" | "searchRecipes"> {
   calls: CallLog;
   patches: Array<{ id: string; patch: RecipePatch }>;
   timeline: Array<{ recipeId: string; event: TimelineEventInput }>;
@@ -148,7 +151,18 @@ export interface FakeMealieOptions {
   patch?: Error;
   timeline?: Error;
   calls?: CallLog;
+  // The small image the admin pages show; a WebP header by default.
+  thumbnail?: Buffer | null | Error;
+  // What the recipe search answers; the fixture recipe by default.
+  search?: MealieRecipeSummary[] | Error;
 }
+
+// The first bytes of a WebP file, enough for the admin pages to pass the image on.
+export const WEBP = Buffer.concat([
+  Buffer.from("RIFF"),
+  Buffer.alloc(4),
+  Buffer.from("WEBPVP8 fake"),
+]);
 
 export const TAG: MealieTagRef = {
   id: "tag-1",
@@ -180,6 +194,16 @@ export function fakeMealie(options: FakeMealieOptions = {}): FakeMealie {
       return idOrSlug === recipe.id || idOrSlug === recipe.slug
         ? Promise.resolve(recipe)
         : Promise.reject(new Error(`no recipe ${idOrSlug}`));
+    }),
+    getRecipeThumbnail: vi.fn(() => {
+      calls.push("mealie.getRecipeThumbnail");
+      const image = options.thumbnail === undefined ? WEBP : options.thumbnail;
+      return image instanceof Error ? Promise.reject(image) : Promise.resolve(image);
+    }),
+    searchRecipes: vi.fn(() => {
+      calls.push("mealie.searchRecipes");
+      const found = options.search ?? [{ id: recipe.id, slug: recipe.slug, name: recipe.name }];
+      return found instanceof Error ? Promise.reject(found) : Promise.resolve(found);
     }),
     getRecipeImage: vi.fn(() => {
       calls.push("mealie.getRecipeImage");
@@ -289,10 +313,14 @@ export interface FakeNotifier extends Notifier {
   sent: Array<{ kind: string; detail: unknown; extra?: unknown }>;
 }
 
-export function fakeNotifier(): FakeNotifier {
+export function fakeNotifier(options: { testMail?: Error } = {}): FakeNotifier {
   const sent: FakeNotifier["sent"] = [];
   return {
     sent,
+    testMail: vi.fn(() => {
+      sent.push({ kind: "test", detail: null });
+      return options.testMail ? Promise.reject(options.testMail) : Promise.resolve();
+    }),
     sessionExpired: vi.fn((status: SessionStatus, extra?: SessionMailDetails) => {
       sent.push({ kind: "session", detail: status, ...(extra ? { extra } : {}) });
       return Promise.resolve();

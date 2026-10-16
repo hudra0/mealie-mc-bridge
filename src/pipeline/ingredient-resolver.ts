@@ -27,6 +27,7 @@
 // ingredient, so the model can write a name the catalog knows in the first place.
 
 import { errorMessage, type AppLogger } from "../app-logger.js";
+import type { JobEventInput } from "../store/job-events.js";
 import {
   lookupCatalog,
   normalizeIngredientName,
@@ -311,12 +312,18 @@ export class IngredientResolver implements IngredientResolverPort {
   }
 }
 
-// One line for the job log.
-export function describeResolution(resolution: IngredientResolution): string {
-  if (!resolution.enabled) {
-    return `Ingredient ids not resolved (MC_RESOLVE_INGREDIENTS=off): ${resolution.stats.unresolved} without id`;
-  }
+// The job event of a resolution.
+export function resolutionEvent(resolution: IngredientResolution): JobEventInput {
   const s = resolution.stats;
-  const relaxed = s.catalogRelaxed > 0 ? ` (${s.catalogRelaxed} relaxed)` : "";
-  return `Ingredients resolved: ${s.catalog} catalog${relaxed}, ${s.cache} cache, ${s.search} search, ${s.unresolved} without id`;
+  if (!resolution.enabled) return { code: "ingredients_off", params: { unresolved: s.unresolved } };
+  return {
+    code: "ingredients_resolved",
+    params: {
+      catalog: s.catalog,
+      relaxed: s.catalogRelaxed,
+      cache: s.cache,
+      search: s.search,
+      unresolved: s.unresolved,
+    },
+  };
 }

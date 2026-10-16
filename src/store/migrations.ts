@@ -127,6 +127,16 @@ export const MIGRATIONS: readonly Migration[] = [
        WHERE key = 'autologin.last_attempt' AND NOT json_valid(value);
     `,
   },
+  {
+    // Events become a code with parameters (src/store/job-events.ts), rendered in the
+    // language of the pages. Older rows keep only their English message.
+    version: 6,
+    name: "job event codes and parameters",
+    sql: `
+      ALTER TABLE job_events ADD COLUMN code TEXT;
+      ALTER TABLE job_events ADD COLUMN params_json TEXT;
+    `,
+  },
 ];
 
 export interface MigrationResult {

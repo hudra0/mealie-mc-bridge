@@ -21,6 +21,9 @@ const SECRET_PATTERNS: ReadonlyArray<[RegExp, string]> = [
     "$1$2[redacted]",
   ],
   [/(\/hooks\/mealie\/)[^/?#\s]+/g, "$1[redacted]"],
+  // User and password in a URL, such as smtps://user:password@mail.example.com from a
+  // mail server's error.
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@:]+:[^\s/?#@]*@/gi, "$1[redacted]@"],
 ];
 
 export function scrubSecrets(text: string): string {

@@ -34,16 +34,16 @@ import {
   type MealieRecipe,
   type MealieTagRef,
 } from "../mealie/index.js";
-import { messages, type JobEventMessages } from "../i18n/index.js";
 import type { Notifier } from "../notify/email.js";
 import { buildMcPayload } from "../recipe/payload.js";
 import type { DeviceLimits } from "../recipe/limits.js";
 import type { RecipeInput } from "../recipe/schema.js";
+import type { JobEventInput } from "../store/job-events.js";
 import { INTERRUPTED_CREATE, type Job, type JobStore, type EventLevel } from "../store/jobs.js";
 import type { McRecipeStore, SentRecipe } from "../store/mc-recipes.js";
 import type { SettingsStore } from "../store/settings.js";
 import type { ConversionResult, Converter } from "./converter-port.js";
-import { describeResolution, type IngredientResolverPort } from "./ingredient-resolver.js";
+import { resolutionEvent, type IngredientResolverPort } from "./ingredient-resolver.js";
 import { formatServingSize } from "./serving-size.js";
 import type { PipelineLocale } from "./locale.js";
 import {
@@ -169,7 +169,6 @@ class JobRun {
   readonly #deps: RunJobDeps;
   readonly #options: RunJobOptions;
   readonly #texts: TimelineTexts;
-  readonly #progress: JobEventMessages;
   #recipe: MealieRecipe | null = null;
   // True from the moment the draft creation request may have reached the server.
   #creating = false;
@@ -179,7 +178,6 @@ class JobRun {
     this.#deps = deps;
     this.#options = options;
     this.#texts = timelineTexts(deps.config.UI_LANGUAGE);
-    this.#progress = messages(deps.config.UI_LANGUAGE).jobEvents;
   }
 
   get #jobs(): JobStore {
@@ -189,13 +187,16 @@ class JobRun {
   async execute(): Promise<RunJobOutcome> {
     const deps = this.#deps;
     const job = this.#job;
-    this.#event("info", `Attempt ${job.attempts} started`);
+    this.#event("info", { code: "attempt_started", params: { attempt: job.attempts } });
 
     this.#checkAbort();
     const recipe = await this.#stage("load", () => deps.mealie.getRecipe(job.mealieRecipeId));
     this.#recipe = recipe;
     this.#jobs.update(job.id, { title: recipe.name || null, mealieSlug: recipe.slug });
-    this.#event("info", `Loaded recipe "${recipe.name}" (${recipe.slug})`);
+    this.#event("info", {
+      code: "recipe_loaded",
+      params: { name: recipe.name, slug: recipe.slug },
+    });
 
     const prepared = await this.#stage("prepare", () =>
       prepareRecipe(recipe, job.scale, deps.limits, deps.locale, {
@@ -208,10 +209,17 @@ class JobRun {
     });
     const unparsed = prepared.normalized.filter((item) => item.source === "unparsed").length;
     const estimated = prepared.servingSize.source === "estimate";
-    this.#event(
-      "info",
-      `Prepared ${prepared.normalized.length} ingredients (${unparsed} unparsed) for ${formatServingSize(prepared.servingSize)}${estimated ? " (not stated in the recipe; the converter may estimate)" : ""} at scale ${job.scale}; source hash ${prepared.hash.slice(0, 12)}`,
-    );
+    this.#event("info", {
+      code: "prepared",
+      params: {
+        ingredients: prepared.normalized.length,
+        unparsed,
+        servings: formatServingSize(prepared.servingSize),
+        estimated,
+        scale: job.scale,
+        hash: prepared.hash.slice(0, 12),
+      },
+    });
 
     // The skip check comes before the image download, so a repeated click costs one
     // Monsieur Cuisine lookup and nothing else.
@@ -220,7 +228,7 @@ class JobRun {
       const skipped = await this.#skipIfStillThere(sent);
       if (skipped) return { status: "skipped", job: skipped };
     } else if (sent) {
-      this.#event("info", "Forced: sending again although the recipe is unchanged");
+      this.#event("info", { code: "forced_unchanged" });
     }
 
     this.#checkAbort();
@@ -233,24 +241,27 @@ class JobRun {
         isSessionError: (error) => error instanceof McSessionError,
       }),
     );
-    const matched = plan.matches.map((match) => match.category.name).join(", ") || "none";
-    this.#event(
-      "info",
-      `Categories: ${plan.catalog.categories.length} from ${plan.catalog.source}; matched: ${matched}`,
-    );
+    this.#event("info", {
+      code: "categories",
+      params: {
+        count: plan.catalog.categories.length,
+        source: plan.catalog.source,
+        matched: plan.matches.map((match) => match.category.name),
+      },
+    });
 
     this.#checkAbort();
     const stored = storedConversion(job, prepared.hash, deps.locale.pack.locale);
     let result: ConversionResult;
     if (stored) {
       result = stored;
-      this.#event(
-        "info",
-        `Reusing the conversion from an earlier attempt (${result.provider}/${result.model}); no new LLM call`,
-      );
+      this.#event("info", {
+        code: "conversion_reused",
+        params: { provider: result.provider, model: result.model },
+      });
     } else {
       const signal = this.#options.signal;
-      this.#event("info", this.#progress.converting);
+      this.#event("info", { code: "converting" });
       const stopHeartbeat = this.#startHeartbeat();
       try {
         result = await this.#stage(
@@ -274,20 +285,28 @@ class JobRun {
         costUsd: result.usage.costUsd ?? null,
       });
       const usage = result.usage;
-      const cost = usage.costUsd === undefined ? "" : `, $${usage.costUsd.toFixed(4)}`;
-      this.#event(
-        "info",
-        `Converted with ${result.provider}/${result.model} in ${plural(result.attempts, "attempt")} (${usage.inputTokens} input, ${usage.outputTokens} output tokens${cost})`,
-      );
-      for (const warning of result.warnings) this.#event("warn", `Converter: ${warning}`);
+      this.#event("info", {
+        code: "converted",
+        params: {
+          provider: result.provider,
+          model: result.model,
+          attempts: result.attempts,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          costUsd: usage.costUsd ?? null,
+        },
+      });
+      for (const warning of result.warnings) {
+        this.#event("warn", { code: "converter_warning", params: { text: warning } });
+      }
     }
 
     const checked = checkConverted(result, plan, deps.limits);
     if (checked.categories.dropped.length > 0) {
-      this.#event(
-        "warn",
-        `Dropped category ids the catalog does not know: ${checked.categories.dropped.join(", ")}`,
-      );
+      this.#event("warn", {
+        code: "categories_dropped",
+        params: { ids: checked.categories.dropped },
+      });
     }
     if (!checked.validation.ok) {
       if (stored) this.#jobs.update(job.id, { conversion: null });
@@ -299,14 +318,14 @@ class JobRun {
     }
     const converted = formatServingSize(checked.recipe.servingSize);
     if (estimated) {
-      this.#event("info", `The converter estimated the serving size: ${converted}`);
+      this.#event("info", { code: "servings_estimated", params: { servings: converted } });
     } else if (checked.recipe.servingSize.amount !== prepared.servings) {
-      this.#event(
-        "warn",
-        `The converter set ${converted} instead of ${formatServingSize(prepared.servingSize)}`,
-      );
+      this.#event("warn", {
+        code: "servings_changed",
+        params: { requested: formatServingSize(prepared.servingSize), converted },
+      });
     }
-    this.#event("info", "Validation passed");
+    this.#event("info", { code: "validation_passed" });
     if (!stored) this.#jobs.update(job.id, { conversion: { sourceHash: prepared.hash, result } });
 
     this.#checkAbort();
@@ -346,7 +365,10 @@ class JobRun {
       servingUnit,
       error: null,
     });
-    this.#event("info", `Created draft ${ref.id}: ${ref.editorUrl}`);
+    this.#event("info", {
+      code: "draft_created",
+      params: { recipeId: ref.id, url: ref.editorUrl },
+    });
     deps.logger.info({ jobId: job.id, mcRecipeId: ref.id }, "draft created");
 
     // The draft exists. Nothing below fails the job.
@@ -367,7 +389,7 @@ class JobRun {
       }),
     );
     const done = this.#jobs.finish(job.id, "done", { error: null });
-    this.#event("info", "Done");
+    this.#event("info", { code: "done" });
     deps.logger.info(
       {
         jobId: job.id,
@@ -392,7 +414,7 @@ class JobRun {
     const interrupted = this.#options.signal?.aborted || reason instanceof InterruptedError;
     if (interrupted && !this.#creating) {
       const queued = this.#jobs.update(job.id, { status: "queued", startedAt: null });
-      this.#event("warn", "Interrupted by shutdown; the job runs again after the restart");
+      this.#event("warn", { code: "interrupted" });
       return { status: "interrupted", job: queued };
     }
 
@@ -402,10 +424,7 @@ class JobRun {
     }
     if (reason instanceof McSessionError) {
       const waiting = this.#jobs.finish(job.id, "session_expired", { error: message });
-      this.#event(
-        "warn",
-        `Monsieur Cuisine session not usable (${reason.kind}); waiting for a new one`,
-      );
+      this.#event("warn", { code: "session_unusable", params: { kind: reason.kind } });
       await deps.session?.onSessionError(reason.kind);
       await this.#timeline(this.#texts.sessionSubject, this.#texts.session());
       return { status: "session_expired", job: waiting };
@@ -414,12 +433,12 @@ class JobRun {
     const retryable = error instanceof StageError && error.retryable && !this.#creating;
     if (retryable && this.#options.finalAttempt === false) {
       const pending = this.#jobs.update(job.id, { error: message });
-      this.#event("warn", `Temporary failure at ${stage}: ${message}`);
+      this.#event("warn", { code: "temporary_failure", params: { stage, error: message } });
       return { status: "retry", job: pending, error: message, stage };
     }
 
     const failed = this.#jobs.finish(job.id, "failed", { error: message });
-    this.#event("error", `Failed at ${stage}: ${message}`);
+    this.#event("error", { code: "failed", params: { stage, error: message } });
     deps.logger.warn({ jobId: job.id, stage, err: message }, "job failed");
     await this.#timeline(
       this.#texts.failedSubject(stage),
@@ -440,27 +459,25 @@ class JobRun {
     const deps = this.#deps;
     const job = this.#job;
     let status = deps.config.MC_RECIPE_STATUS;
-    const since = `Unchanged since ${sent.createdAt}`;
+    const since = sent.createdAt;
+    const recipeId = sent.mcRecipeId;
     this.#checkAbort();
     try {
       const record = await deps.mc.getRecipe(sent.mcRecipeId);
       status = record.status === "draft" ? "draft" : "private-publish";
-      this.#event(
-        "info",
-        `${since}; recipe ${sent.mcRecipeId} still exists on Monsieur Cuisine (${record.status}), skipping`,
-      );
+      this.#event("info", {
+        code: "skip_exists",
+        params: { since, recipeId, status: record.status },
+      });
     } catch (error) {
       if (isGone(error)) {
-        this.#event(
-          "warn",
-          `${since}, but recipe ${sent.mcRecipeId} no longer exists on Monsieur Cuisine; converting again`,
-        );
+        this.#event("warn", { code: "skip_gone", params: { since, recipeId } });
         return null;
       }
-      this.#event(
-        "warn",
-        `${since}; could not check recipe ${sent.mcRecipeId} on Monsieur Cuisine (${errorMessage(error)}), skipping`,
-      );
+      this.#event("warn", {
+        code: "skip_unchecked",
+        params: { since, recipeId, error: errorMessage(error) },
+      });
     }
     await this.#timeline(
       this.#texts.unchangedSubject,
@@ -499,7 +516,7 @@ class JobRun {
         enabled: resolution.enabled,
       },
     });
-    this.#event("info", describeResolution(resolution));
+    this.#event("info", resolutionEvent(resolution));
     return resolution.ids;
   }
 
@@ -508,11 +525,13 @@ class JobRun {
       const image = await this.#deps.mealie.getRecipeImage(recipe.id);
       this.#event(
         "info",
-        image ? `Loaded image (${Math.ceil(image.length / 1024)} KB)` : "The recipe has no image",
+        image
+          ? { code: "image_loaded", params: { kb: Math.ceil(image.length / 1024) } }
+          : { code: "image_none" },
       );
       return image;
     } catch (error) {
-      this.#event("warn", `Image not loaded, continuing without: ${errorMessage(error)}`);
+      this.#event("warn", { code: "image_load_failed", params: { error: errorMessage(error) } });
       return null;
     }
   }
@@ -526,14 +545,14 @@ class JobRun {
     try {
       prepared = await prepare(image, this.#deps.limits.recipe.coverPhotoAspect);
     } catch (error) {
-      this.#event("warn", `Image skipped: ${errorMessage(error)}`);
+      this.#event("warn", { code: "image_skipped", params: { error: errorMessage(error) } });
       return { media: null, imageSkipped: true };
     }
     const media = await this.#stage("upload", () => this.#deps.mc.uploadImage(prepared));
-    this.#event(
-      "info",
-      `Uploaded image (media ${media.detailsMediaId} and ${media.thumbnailMediaId})`,
-    );
+    this.#event("info", {
+      code: "image_uploaded",
+      params: { details: String(media.detailsMediaId), thumbnail: String(media.thumbnailMediaId) },
+    });
     return { media, imageSkipped: false };
   }
 
@@ -542,13 +561,10 @@ class JobRun {
     if (this.#deps.config.MC_RECIPE_STATUS !== "private-publish") return false;
     try {
       await this.#deps.mc.setStatus(recipeId, "private-publish");
-      this.#event("info", "Saved on the device only (private-publish)");
+      this.#event("info", { code: "status_private" });
       return false;
     } catch (error) {
-      this.#event(
-        "warn",
-        `Status change failed, the recipe stays a draft and does not show up on the device: ${errorMessage(error)}`,
-      );
+      this.#event("warn", { code: "status_failed", params: { error: errorMessage(error) } });
       if (error instanceof McSessionError) await this.#deps.session?.onSessionError(error.kind);
       return true;
     }
@@ -566,7 +582,10 @@ class JobRun {
     try {
       tag = await deps.mealie.ensureTag(deps.config.TAG_NAME);
     } catch (error) {
-      this.#event("warn", `Tag "${deps.config.TAG_NAME}" not available: ${errorMessage(error)}`);
+      this.#event("warn", {
+        code: "tag_unavailable",
+        params: { tag: deps.config.TAG_NAME, error: errorMessage(error) },
+      });
     }
     const now = this.#now();
     try {
@@ -581,13 +600,14 @@ class JobRun {
         },
         ...(tag ? { addTags: [tag] } : {}),
       });
-      this.#event("info", tag ? "Tagged the Mealie recipe and stored the link" : "Stored the link");
+      this.#event("info", { code: "writeback_done", params: { tagged: tag !== null } });
     } catch (error) {
-      const message =
+      this.#event(
+        "warn",
         error instanceof MealieApiError && error.status === 403
-          ? "Mealie refused to update the recipe (403): the bridge user needs edit rights on it. The timeline entry is posted anyway."
-          : `Updating the Mealie recipe failed: ${errorMessage(error)}`;
-      this.#event("warn", message);
+          ? { code: "writeback_forbidden" }
+          : { code: "writeback_failed", params: { error: errorMessage(error) } },
+      );
       deps.logger.warn(
         { jobId: this.#job.id, err: errorMessage(error) },
         "Mealie write-back failed",
@@ -603,9 +623,9 @@ class JobRun {
         eventMessage: message,
         eventType: "info",
       });
-      this.#event("info", `Timeline entry posted: ${subject}`);
+      this.#event("info", { code: "timeline_posted", params: { subject } });
     } catch (error) {
-      this.#event("warn", `Timeline entry failed: ${errorMessage(error)}`);
+      this.#event("warn", { code: "timeline_failed", params: { error: errorMessage(error) } });
       this.#deps.logger.warn(
         { jobId: this.#job.id, err: errorMessage(error) },
         "Mealie timeline entry failed",
@@ -632,7 +652,10 @@ class JobRun {
     let beats = 0;
     const timer = setInterval(() => {
       beats++;
-      this.#event("info", this.#progress.stillConverting(Math.round((beats * every) / 1000)));
+      this.#event("info", {
+        code: "still_converting",
+        params: { seconds: Math.round((beats * every) / 1000) },
+      });
     }, every);
     timer.unref();
     return () => clearInterval(timer);
@@ -651,14 +674,9 @@ class JobRun {
     if (this.#options.signal?.aborted) throw new InterruptedError();
   }
 
-  #event(level: EventLevel, message: string): void {
-    this.#jobs.appendEvent(this.#job.id, level, message);
+  #event(level: EventLevel, event: JobEventInput): void {
+    this.#jobs.appendEvent(this.#job.id, level, event);
   }
-}
-
-// "1 attempt", "3 attempts".
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 // Monsieur Cuisine says the recipe does not exist (any more).

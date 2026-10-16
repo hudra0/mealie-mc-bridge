@@ -126,6 +126,9 @@ function setup(
 }
 
 const messages = (s: Setup, job: Job) => s.store.jobs.events(job.id).map((event) => event.message);
+const codes = (s: Setup, job: Job) => s.store.jobs.events(job.id).map((event) => event.code);
+const eventOf = (s: Setup, job: Job, code: string) =>
+  s.store.jobs.events(job.id).find((event) => event.code === code);
 
 describe("runJob happy path", () => {
   it("converts, uploads, sets the status and writes back in this order", async () => {
@@ -221,13 +224,18 @@ describe("runJob happy path", () => {
     expect(messages(s, job)).toEqual(
       expect.arrayContaining([
         "Attempt 1 started",
-        'Loaded recipe "Kürbis-Linsen-Suppe" (kurbis-linsen-suppe)',
-        "Validation passed",
-        `Created draft 4242: ${url}`,
-        "Saved on the device only (private-publish)",
+        'Loaded recipe "Kürbis-Linsen-Suppe" from Mealie',
+        "Checks passed",
+        "Created recipe 4242 on Monsieur Cuisine",
+        "Saved on the device only",
         "Done",
       ]),
     );
+    expect(eventOf(s, job, "draft_created")?.params).toEqual({ recipeId: 4242, url });
+    expect(eventOf(s, job, "recipe_loaded")?.params).toEqual({
+      name: "Kürbis-Linsen-Suppe",
+      slug: "kurbis-linsen-suppe",
+    });
     expect(s.notifier.sent).toEqual([]);
   });
 
@@ -393,14 +401,15 @@ describe("runJob progress and logs", () => {
     const job = s.claim();
     const running = runJob(job, s.deps);
     await vi.waitFor(() => {
-      expect(messages(s, job)).toContain("Konvertierung läuft noch, 0 s");
+      expect(messages(s, job)).toContain("Still converting, 0 s");
     });
     finish();
     expect((await running).status).toBe("done");
-    const lines = messages(s, job);
-    const started = lines.indexOf("Konvertierung gestartet");
-    expect(started).toBeGreaterThan(lines.findIndex((line) => line.startsWith("Categories:")));
-    expect(lines[started + 1]).toBe("Konvertierung läuft noch, 0 s");
+    const lines = codes(s, job);
+    const started = lines.indexOf("converting");
+    expect(started).toBeGreaterThan(lines.indexOf("categories"));
+    expect(lines[started + 1]).toBe("still_converting");
+    expect(s.store.jobs.events(job.id)[started + 1]?.params).toEqual({ seconds: 0 });
     // The heartbeat stops with the conversion.
     const count = lines.length;
     await new Promise((resolve) => setTimeout(resolve, 60));
@@ -508,8 +517,17 @@ describe("runJob idempotency", () => {
     expect(outcome.status).toBe("skipped");
     // No image download: the skip check comes first and only asks Monsieur Cuisine.
     expect(s.calls).toEqual(["mealie.getRecipe", "mc.getRecipe", "mealie.addTimelineEvent"]);
-    expect(messages(s, second)).toContain(
-      `Unchanged since ${s.store.mcRecipes.find(RECIPE_ID, 1, s.mealie.patches[0]?.patch.extras?.mc_source_hash ?? "")?.createdAt}; recipe 4242 still exists on Monsieur Cuisine (private-publish), skipping`,
+    expect(eventOf(s, second, "skip_exists")?.params).toEqual({
+      since: s.store.mcRecipes.find(
+        RECIPE_ID,
+        1,
+        s.mealie.patches[0]?.patch.extras?.mc_source_hash ?? "",
+      )?.createdAt,
+      recipeId: 4242,
+      status: "private-publish",
+    });
+    expect(eventOf(s, second, "skip_exists")?.message).toMatch(
+      /^Unchanged since .+; recipe 4242 still exists on Monsieur Cuisine, skipped$/,
     );
     expect(s.converter.requests).toHaveLength(1);
     const entry = s.mealie.timeline.at(-1)?.event;
@@ -554,9 +572,9 @@ describe("runJob idempotency", () => {
     await runJob(s.claim(), s.deps);
     const second = s.claim();
     expect((await runJob(second, s.deps)).status).toBe("skipped");
-    expect(messages(s, second).some((line) => line.includes("could not check recipe 4242"))).toBe(
-      true,
-    );
+    expect(
+      messages(s, second).some((line) => line.includes("recipe 4242 could not be checked")),
+    ).toBe(true);
     expect(s.converter.requests).toHaveLength(1);
   });
 
@@ -774,9 +792,11 @@ describe("runJob failures", () => {
     });
     const job = s.claim();
     expect((await runJob(job, s.deps)).status).toBe("done");
-    expect(messages(s, job)).toContain(
-      "Categories: 4 from stale-cache; matched: Suppen & Eintöpfe, Vegetarisch",
-    );
+    expect(eventOf(s, job, "categories")?.params).toEqual({
+      count: 4,
+      source: "stale-cache",
+      matched: ["Suppen & Eintöpfe", "Vegetarisch"],
+    });
   });
 
   it("marks an unexpected error as such", async () => {
@@ -801,7 +821,7 @@ describe("runJob failures", () => {
     const job = s.claim();
     const outcome = await runJob(job, s.deps);
     expect(outcome.status).toBe("failed");
-    expect(messages(s, job)).toContain("Timeline entry failed: Mealie down");
+    expect(messages(s, job)).toContain("Timeline entry in Mealie failed: Mealie down");
   });
 
   it("scrubs secrets from error texts", async () => {
@@ -832,7 +852,7 @@ describe("runJob after the draft exists", () => {
     expect(outcome.status).toBe("done");
     expect(s.mealie.timeline[0]?.event.subject).toBe("Monsieur Cuisine: Rezept privat gespeichert");
     expect(messages(s, job)).toContain(
-      "Mealie refused to update the recipe (403): the bridge user needs edit rights on it. The timeline entry is posted anyway.",
+      "Mealie refused to update the recipe (403): the bridge user needs edit rights on it",
     );
   });
 
@@ -848,7 +868,7 @@ describe("runJob after the draft exists", () => {
     expect((await runJob(job, s.deps)).status).toBe("done");
     expect(s.mealie.patches[0]?.patch.addTags).toBeUndefined();
     expect(s.mealie.patches[0]?.patch.extras?.mc_recipe_id).toBe("4242");
-    expect(messages(s, job)).toContain("Stored the link");
+    expect(messages(s, job)).toContain("Stored the link in Mealie");
   });
 
   it("reports other write-back failures as warnings", async () => {

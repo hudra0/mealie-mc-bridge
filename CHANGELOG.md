@@ -2,6 +2,24 @@
 
 The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` builds and publishes the image `ghcr.io/hudra0/mealie-mc-bridge` with the tags `X.Y.Z` and `X.Y`. Every push to `main` publishes `latest` and `sha-<commit>`. Until 1.0, a minor version may change settings or behaviour; such changes are listed here under "Changed" with what to do.
 
+## Unreleased
+
+### What to do
+
+- **Back up `bridge.db` before the upgrade** if you might want to go back. Database migration 6 runs on start, and 0.3.x refuses to start on the migrated database; rolling back to 0.3.x means restoring the backup taken before the upgrade (jobs and settings changed since then are lost).
+
+### Changed
+
+- The admin pages are rebuilt: a sidebar with the navigation, the session state, a theme switch (system, light, dark) and the version, a drawer on narrow screens, and a calmer layout with a warm orange accent. The stylesheet is compiled with Tailwind CSS at build time; stylesheet, script, the Inter font and the icons are served by the bridge itself from `/admin/assets/` with long cache headers. The content security policy allows scripts, styles, fonts, images and fetches from the bridge only, and still no inline script, style or event handler. Every page works without JavaScript.
+- The overview shows four health chips (Mealie, Monsieur Cuisine session, automatic login, language model), the figures of the last 30 days (recipes sent, success rate, mean duration, cost against the daily limit), the recent jobs with pictures, and the last error only when it is from the past week. The setup steps show only while one is open, and can be hidden.
+- Jobs can be filtered by status groups with counts and searched; each row has a menu with open, retry, force rebuild and cancel. Force rebuild, cancel and deleting the Lidl account ask before they act.
+- A job page has tabs: overview, the converted steps as the machine shows them (programs with temperature, time, speed, direction and weight; the ingredient groups with amounts), the ingredients with or without a Monsieur Cuisine id, and the log.
+- The job log is written in the language of the pages. Events are stored as codes with parameters (database migration 6, runs on start); events written before the upgrade keep their text. The English line stays in the log and in `GET /jobs/:id`.
+- The dry run puts the form beside the result, searches Mealie recipes by name, and shows the converted steps, the converter input, the ingredients and the checks in tabs.
+- The settings page has tabs for the Monsieur Cuisine session, the Lidl account, Mealie (with the recipe action URL and a copy button), the language model with its usage this month, notifications with a "Send test mail" button, and the system with the effective configuration under "Advanced".
+- Recipe pictures on the admin pages come from Mealie through the bridge (`/admin/recipes/<id>/thumbnail`), for a logged-in admin only.
+- "Test login now" is now "Test login" ("Anmeldung testen").
+
 ## 0.3.2 (2026-10-16)
 
 ### Fixed

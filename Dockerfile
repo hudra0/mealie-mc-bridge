@@ -4,11 +4,15 @@
 FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
-# Only the compiler needs these modules; skip native install scripts, which would fetch
-# binaries for the build host that nothing here runs.
+# Only the compiler and the asset build need these modules; skip native install scripts,
+# which would fetch binaries for the build host that nothing here runs. The native parts the
+# asset build uses (Tailwind's scanner and CSS optimizer, sharp for the app icons) come as
+# prebuilt optional packages.
 RUN npm ci --ignore-scripts
 COPY tsconfig.json tsconfig.build.json ./
+COPY scripts/build-assets.ts ./scripts/
 COPY src ./src
+# The compiled code and the admin assets (stylesheet, script, font, icons) in dist/assets.
 RUN npm run build
 
 # Production dependencies are installed on the target platform, so npm ci picks the

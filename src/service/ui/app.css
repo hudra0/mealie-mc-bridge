@@ -1,0 +1,282 @@
+/*
+ * The stylesheet of the admin pages. scripts/build-assets.ts compiles it with Tailwind CSS,
+ * scanning the templates under src/service for class names, and serves the result as
+ * /admin/assets/app.<hash>.css.
+ *
+ * Colours are semantic tokens (canvas, surface, line, fg, accent, ok, warn, danger, info)
+ * defined once per theme below; templates never name a palette colour for text or
+ * backgrounds, so light and dark come out of the same markup. <html data-theme> is light,
+ * dark or system (the operating system decides). Text colours keep a contrast of at least
+ * 4.5:1 on the backgrounds they are used on, in both themes.
+ */
+
+@import "tailwindcss" source(none);
+@source "../";
+@source not "../**/*.test.ts";
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/admin/assets/inter-latin.woff2") format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329,
+    U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("/admin/assets/inter-latin-ext.woff2") format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+    U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@theme {
+  --font-sans:
+    "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --animate-toast: toast-out 300ms ease-in 7s forwards;
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+
+  @keyframes toast-out {
+    to {
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(8px);
+    }
+  }
+
+  @keyframes pulse-dot {
+    50% {
+      opacity: 0.35;
+    }
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--ui-canvas);
+  --color-surface: var(--ui-surface);
+  --color-subtle: var(--ui-subtle);
+  --color-line: var(--ui-line);
+  --color-line-strong: var(--ui-line-strong);
+  --color-fg: var(--ui-fg);
+  --color-fg-muted: var(--ui-fg-muted);
+  --color-fg-subtle: var(--ui-fg-subtle);
+  --color-accent: var(--ui-accent);
+  --color-accent-hover: var(--ui-accent-hover);
+  --color-on-accent: var(--ui-on-accent);
+  --color-accent-fg: var(--ui-accent-fg);
+  --color-accent-soft: var(--ui-accent-soft);
+  --color-brand: var(--ui-brand);
+  --color-ring: var(--ui-ring);
+  --color-ok: var(--ui-ok);
+  --color-ok-fg: var(--ui-ok-fg);
+  --color-ok-soft: var(--ui-ok-soft);
+  --color-warn: var(--ui-warn);
+  --color-warn-fg: var(--ui-warn-fg);
+  --color-warn-soft: var(--ui-warn-soft);
+  --color-danger: var(--ui-danger);
+  --color-danger-hover: var(--ui-danger-hover);
+  --color-danger-fg: var(--ui-danger-fg);
+  --color-danger-soft: var(--ui-danger-soft);
+  --color-info: var(--ui-info);
+  --color-info-fg: var(--ui-info-fg);
+  --color-info-soft: var(--ui-info-soft);
+  --color-neutral: var(--ui-neutral);
+  --color-backdrop: var(--ui-backdrop);
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --ui-canvas: #f6f6f7;
+  --ui-surface: #ffffff;
+  --ui-subtle: #f4f4f5;
+  --ui-line: #e4e4e7;
+  --ui-line-strong: #d4d4d8;
+  --ui-fg: #18181b;
+  --ui-fg-muted: #52525b;
+  --ui-fg-subtle: #71717a;
+  --ui-accent: #c2410c;
+  --ui-accent-hover: #9a3412;
+  --ui-on-accent: #ffffff;
+  --ui-accent-fg: #c2410c;
+  --ui-accent-soft: #fff1e8;
+  --ui-brand: #ea580c;
+  --ui-ring: #ea580c;
+  --ui-ok: #16a34a;
+  --ui-ok-fg: #15803d;
+  --ui-ok-soft: #effbf2;
+  --ui-warn: #f59e0b;
+  --ui-warn-fg: #a14a07;
+  --ui-warn-soft: #fff8e6;
+  --ui-danger: #dc2626;
+  --ui-danger-hover: #b91c1c;
+  --ui-danger-fg: #b91c1c;
+  --ui-danger-soft: #fef2f2;
+  --ui-info: #0284c7;
+  --ui-info-fg: #0369a1;
+  --ui-info-soft: #eff8ff;
+  --ui-neutral: #a1a1aa;
+  --ui-backdrop: rgb(9 9 11 / 0.45);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ui-canvas: #0c0c0e;
+  --ui-surface: #161618;
+  --ui-subtle: #1f1f23;
+  --ui-line: #2a2a2f;
+  --ui-line-strong: #3f3f46;
+  --ui-fg: #f4f4f5;
+  --ui-fg-muted: #a1a1aa;
+  --ui-fg-subtle: #8b8b94;
+  --ui-accent: #f97316;
+  --ui-accent-hover: #fb923c;
+  --ui-on-accent: #1a0b02;
+  --ui-accent-fg: #fb923c;
+  --ui-accent-soft: #2b1a0f;
+  --ui-brand: #f97316;
+  --ui-ring: #fb923c;
+  --ui-ok: #22c55e;
+  --ui-ok-fg: #4ade80;
+  --ui-ok-soft: #12261a;
+  --ui-warn: #f59e0b;
+  --ui-warn-fg: #fbbf24;
+  --ui-warn-soft: #2a2110;
+  --ui-danger: #dc2626;
+  --ui-danger-hover: #ef4444;
+  --ui-danger-fg: #f87171;
+  --ui-danger-soft: #2c1517;
+  --ui-info: #0ea5e9;
+  --ui-info-fg: #38bdf8;
+  --ui-info-soft: #0f2130;
+  --ui-neutral: #71717a;
+  --ui-backdrop: rgb(0 0 0 / 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    color-scheme: dark;
+    --ui-canvas: #0c0c0e;
+    --ui-surface: #161618;
+    --ui-subtle: #1f1f23;
+    --ui-line: #2a2a2f;
+    --ui-line-strong: #3f3f46;
+    --ui-fg: #f4f4f5;
+    --ui-fg-muted: #a1a1aa;
+    --ui-fg-subtle: #8b8b94;
+    --ui-accent: #f97316;
+    --ui-accent-hover: #fb923c;
+    --ui-on-accent: #1a0b02;
+    --ui-accent-fg: #fb923c;
+    --ui-accent-soft: #2b1a0f;
+    --ui-brand: #f97316;
+    --ui-ring: #fb923c;
+    --ui-ok: #22c55e;
+    --ui-ok-fg: #4ade80;
+    --ui-ok-soft: #12261a;
+    --ui-warn: #f59e0b;
+    --ui-warn-fg: #fbbf24;
+    --ui-warn-soft: #2a2110;
+    --ui-danger: #dc2626;
+    --ui-danger-hover: #ef4444;
+    --ui-danger-fg: #f87171;
+    --ui-danger-soft: #2c1517;
+    --ui-info: #0ea5e9;
+    --ui-info-fg: #38bdf8;
+    --ui-info-soft: #0f2130;
+    --ui-neutral: #71717a;
+    --ui-backdrop: rgb(0 0 0 / 0.6);
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    font-feature-settings: "cv11";
+  }
+
+  body {
+    @apply bg-canvas font-sans text-sm text-fg antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ui-ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--ui-brand) 25%, transparent);
+  }
+
+  summary {
+    cursor: pointer;
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  code,
+  pre,
+  kbd {
+    font-family: var(--font-mono);
+  }
+
+  /* Elements only the script can work, such as copy buttons, wait for it. */
+  html:not(.js) .js-only {
+    display: none !important;
+  }
+
+  html.js .no-js {
+    display: none !important;
+  }
+}
+
+@layer components {
+  /* A details element that opens a small panel (row menus, help popovers). */
+  .popover {
+    @apply absolute z-30 mt-1 rounded-lg border border-line bg-surface p-1 text-fg shadow-lg;
+  }
+
+  .skip-link {
+    @apply absolute -top-full left-2 z-[60] rounded-md bg-surface px-3 py-2 text-fg shadow-lg;
+  }
+
+  .skip-link:focus {
+    @apply top-2;
+  }
+
+  dialog.modal {
+    @apply m-auto w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-line bg-surface p-0 text-fg shadow-2xl;
+  }
+
+  dialog.modal::backdrop {
+    background: var(--ui-backdrop);
+  }
+
+  /* Rows of the jobs table turn into stacked cards on narrow screens. */
+  @media (max-width: 767px) {
+    .stack-table thead {
+      @apply sr-only;
+    }
+
+    .stack-table tbody tr {
+      @apply grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 px-4 py-3;
+    }
+  }
+
+  @media print {
+    .no-print {
+      display: none !important;
+    }
+  }
+}

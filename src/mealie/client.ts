@@ -8,6 +8,7 @@ import type { z } from "zod";
 import {
   mealieCommentSchema,
   mealieRecipeSchema,
+  mealieRecipeSummarySchema,
   mealieTagSchema,
   mealieTimelineEventSchema,
   mealieUserSchema,
@@ -15,6 +16,7 @@ import {
   type MealieComment,
   type MealieNote,
   type MealieRecipe,
+  type MealieRecipeSummary,
   type MealieTag,
   type MealieTagRef,
   type MealieTimelineEvent,
@@ -82,6 +84,10 @@ export interface MealieClientOptions {
 
 // Recipe images above this size are not read into memory.
 export const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+// The largest thumbnail the admin pages pass on; Mealie's small images are a few kB.
+export const MAX_THUMBNAIL_BYTES = 512 * 1024;
+// At most this many recipes per search.
+export const MAX_SEARCH_RESULTS = 20;
 
 export class ImageTooLargeError extends Error {
   constructor(limit: number) {
@@ -237,6 +243,29 @@ export class MealieClient {
     const response = await this.#request("GET", path, { allowNotFound: true });
     if (response.status === 404) return null;
     return await readCapped(response, this.#maxImageBytes);
+  }
+
+  // The small image Mealie keeps of a recipe (tiny-original.webp), for the admin pages; null
+  // when the recipe has none.
+  async getRecipeThumbnail(recipeId: string): Promise<Buffer | null> {
+    const path = `/api/media/recipes/${encodeURIComponent(recipeId)}/images/tiny-original.webp`;
+    const response = await this.#request("GET", path, { allowNotFound: true });
+    if (response.status === 404) return null;
+    return await readCapped(response, MAX_THUMBNAIL_BYTES);
+  }
+
+  // Recipes whose name, description or ingredients match, for the recipe picker of the dry
+  // run. Mealie decides what matches; the answer is cut to the limit.
+  async searchRecipes(query: string, limit = 10): Promise<MealieRecipeSummary[]> {
+    const perPage = Math.min(Math.max(1, Math.trunc(limit)), MAX_SEARCH_RESULTS);
+    const page = await this.#json("GET", "/api/recipes", paginated(mealieRecipeSummarySchema), {
+      query: { search: query.trim(), page: "1", perPage: String(perPage) },
+    });
+    return page.items.slice(0, perPage).map((item) => ({
+      id: item.id,
+      slug: item.slug,
+      name: item.name,
+    }));
   }
 
   // Returns the tag with this name, creating it when it does not exist yet.

@@ -137,26 +137,21 @@ export class Worker {
         this.#recordError(message);
         this.#logger.error({ jobId: job.id, err: message }, "job run crashed");
         this.#jobs.finish(job.id, "failed", { error: message });
-        this.#jobs.appendEvent(job.id, "error", `Crashed: ${message}`);
+        this.#jobs.appendEvent(job.id, "error", { code: "crashed", params: { error: message } });
         return;
       }
       if (outcome.status === "failed") this.#recordError(outcome.error);
       if (outcome.status !== "retry") return;
 
       const pause = this.#backoff(retry + 1);
-      this.#jobs.appendEvent(
-        job.id,
-        "info",
-        `Retry ${retry + 1} of ${this.#maxRetries} in ${Math.round(pause / 1000)} s`,
-      );
+      this.#jobs.appendEvent(job.id, "info", {
+        code: "retry_scheduled",
+        params: { retry: retry + 1, max: this.#maxRetries, seconds: Math.round(pause / 1000) },
+      });
       await this.#sleep(pause, signal, false);
       if (signal.aborted) {
         this.#jobs.update(job.id, { status: "queued", startedAt: null });
-        this.#jobs.appendEvent(
-          job.id,
-          "warn",
-          "Interrupted by shutdown; the job runs again after the restart",
-        );
+        this.#jobs.appendEvent(job.id, "warn", { code: "interrupted" });
         return;
       }
       job = this.#jobs.update(job.id, { attempts: outcome.job.attempts + 1 });

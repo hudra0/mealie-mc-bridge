@@ -5,4 +5,5 @@
 !tsconfig.json
 !tsconfig.build.json
 !src
+!scripts/build-assets.ts
 !knowledge

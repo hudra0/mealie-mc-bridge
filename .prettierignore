@@ -4,3 +4,4 @@ coverage
 package-lock.json
 local
 data
+src/service/ui/icons.generated.ts

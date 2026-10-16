@@ -20,4 +20,26 @@ export default defineConfig(
     files: ["**/*.js"],
     extends: [tseslint.configs.disableTypeChecked],
   },
+  {
+    // The script of the admin pages runs in the browser.
+    files: ["src/service/ui/client/**/*.js"],
+    languageOptions: {
+      sourceType: "script",
+      globals: Object.fromEntries(
+        [
+          "document",
+          "location",
+          "navigator",
+          "fetch",
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "getSelection",
+          "Element",
+          "HTMLFormElement",
+          "HTMLDetailsElement",
+        ].map((name) => [name, "readonly"]),
+      ),
+    },
+  },
 );

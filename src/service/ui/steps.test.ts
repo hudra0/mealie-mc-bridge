@@ -4,7 +4,14 @@ import { CATALOGS } from "../../i18n/index.js";
 import { MACHINE_STEP_KINDS } from "../../recipe/modes.js";
 import { convertedRecipe } from "../../testing/fakes.js";
 import { ICONS } from "./icons.generated.js";
-import { MODE_ICONS, programTime, readRecipe, recipeSteps, storedRecipe } from "./steps.js";
+import {
+  MODE_ICONS,
+  programTime,
+  readRecipe,
+  recipeSteps,
+  redundantTitle,
+  storedRecipe,
+} from "./steps.js";
 
 const t = CATALOGS.en.admin.steps;
 
@@ -84,6 +91,29 @@ describe("recipe steps", () => {
     expect(html).toContain("10 min preparation");
     expect(html).toContain("ready in 35 min");
     expect(html).toContain("4 Portionen");
+  });
+
+  it("leave out a title that only repeats the start of the description", () => {
+    const description = "800 g Kürbis in Stücken in den Mixbehälter geben.";
+    expect(redundantTitle("800 g Kürbis in Stücken in den", description)).toBe(true);
+    expect(redundantTitle("800 g Kürbis in…", description)).toBe(true);
+    expect(redundantTitle("Kürbis zerkleinern...", description)).toBe(true);
+    expect(redundantTitle("800 G KÜRBIS:", description)).toBe(true);
+    expect(redundantTitle("Kürbis einfüllen", description)).toBe(false);
+    expect(redundantTitle("Kürbis…", "")).toBe(false);
+    expect(redundantTitle("", description)).toBe(false);
+    const recipe = convertedRecipe();
+    recipe.servingSize.steps = [
+      { kind: "text", title: "800 g Kürbis in Stücken in…", description },
+      { kind: "scale", title: "Mehl abwiegen", description: "Mehl abwiegen und zugeben", grams: 5 },
+      { kind: "text", title: "Einfüllen", description },
+    ];
+    const html = recipeSteps(readRecipe(recipe), t).html;
+    expect(html).not.toContain("in Stücken in…");
+    expect(html.split(description)).toHaveLength(3);
+    expect(html).toContain("Einfüllen");
+    expect(html).not.toMatch(/>\s*Mehl abwiegen\s*</);
+    expect(html).toContain("Mehl abwiegen und zugeben");
   });
 
   it("read a stored conversion loosely and render unknown steps as text", () => {

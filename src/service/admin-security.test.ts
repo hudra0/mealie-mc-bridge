@@ -271,9 +271,9 @@ describe("admin assets", () => {
       expect(response.statusCode, url).toBe(response.statusCode === 404 ? 404 : 303);
       expect(response.body, url).not.toContain("Main navigation");
     }
-    // A POST to an asset path finds no route and shows nothing.
+    // A POST to an asset path needs the login like any other address under /admin.
     const posted = await post("/admin/assets/app.0123456789.css", {}, {});
-    expect(posted.statusCode).toBe(404);
+    expect(posted.statusCode).toBe(303);
     expect(posted.body).not.toContain("body{");
   });
 });
@@ -310,11 +310,87 @@ describe("recipe thumbnails", () => {
     }
   });
 
-  it("never asks Mealie for an id that is not one", async () => {
+  it("never asks Mealie for an id that is not a UUID", async () => {
     svc = testService();
-    const response = await get(`/admin/recipes/${encodeURIComponent("../users/self")}/thumbnail`);
-    expect(response.headers["content-type"]).toBe("image/svg+xml");
+    for (const id of ["../users/self", "abc-def", "00000000-0000-4000-8000-00000000000g"]) {
+      const response = await get(`/admin/recipes/${encodeURIComponent(id)}/thumbnail`);
+      expect(response.headers["content-type"], id).toBe("image/svg+xml");
+    }
     expect(svc.mealie.getRecipeThumbnail).not.toHaveBeenCalled();
+  });
+});
+
+describe("configuration privacy", () => {
+  it("answers a visitor without a login alike, whatever is configured", async () => {
+    const urls = [
+      "/admin/settings/notify/test",
+      "/admin/settings/credentials",
+      "/admin/settings/credentials/delete",
+      "/admin/settings/login",
+      "/admin/no-such-form",
+    ];
+    const answers: string[] = [];
+    for (const options of [
+      { noAutoLogin: true },
+      { config: { SMTP_URL: "smtps://u:p@mail.example.com", NOTIFY_EMAIL: "cook@example.com" } },
+    ]) {
+      svc = testService(options);
+      for (const url of urls) {
+        const response = await post(url, { _csrf: SESSION_CSRF }, {});
+        answers.push(`${url} ${response.statusCode} ${String(response.headers.location)}`);
+      }
+      for (const method of ["PUT", "DELETE"] as const) {
+        const response = await svc.app.inject({ method, url: "/admin/settings", headers: {} });
+        answers.push(`${method} ${response.statusCode}`);
+      }
+      const shot = await get("/admin/settings/screenshots/x.png", {});
+      answers.push(`shot ${shot.statusCode}`);
+      await svc.dispose();
+      svc = null;
+    }
+    expect(answers.slice(0, answers.length / 2)).toEqual(answers.slice(answers.length / 2));
+    expect(answers.every((answer) => / 303 /.test(`${answer} `))).toBe(true);
+  });
+
+  it("says after the login that mail or the automatic login is not set up", async () => {
+    svc = testService({ noAutoLogin: true });
+    const mail = await post("/admin/settings/notify/test", { _csrf: SESSION_CSRF });
+    expect(mail.statusCode).toBe(404);
+    expect(mail.body).toContain("Mail is not set up");
+    expect(svc.notifier.sent).toEqual([]);
+    for (const url of ["/admin/settings/credentials", "/admin/settings/login"]) {
+      const response = await post(url, { _csrf: SESSION_CSRF });
+      expect(response.statusCode, url).toBe(404);
+      expect(response.body, url).toContain("The automatic login is not available in this setup.");
+    }
+    expect((await get("/admin/settings/screenshots/x.png")).statusCode).toBe(404);
+    const unknown = await post("/admin/no-such-form", { _csrf: SESSION_CSRF });
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.body).toContain("There is no page at this address.");
+  });
+});
+
+describe("automatic reload", () => {
+  it("reloads a page that answers a GET to its own GET address, never a response to a POST", async () => {
+    svc = testService();
+    svc.autoLogin.saveCredentials("cook@example.com", "not-a-real-password");
+    const status = svc.autoLogin.status();
+    vi.spyOn(svc.autoLogin, "status").mockReturnValue({ ...status, running: true });
+    const page = await get("/admin/settings?tab=lidl&notice=login-started");
+    expect(page.body).toMatch(/data-refresh="5"\s+data-refresh-url="\/admin\/settings\?tab=lidl"/);
+    const invalid = await post("/admin/settings/credentials", {
+      _csrf: SESSION_CSRF,
+      email: "nope",
+      password: "x",
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.body).not.toContain("data-refresh");
+    expect(invalid.body).not.toContain('http-equiv="refresh"');
+    const job = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 }).job;
+    const list = await get("/admin/jobs?notice=job-queued&status=active");
+    expect(list.body).toContain('data-refresh-url="/admin/jobs?status=active"');
+    const detail = await get(`/admin/jobs/${job.id}?tab=events`);
+    expect(detail.body).toContain(`data-refresh-url="/admin/jobs/${job.id}?tab=events"`);
   });
 });
 

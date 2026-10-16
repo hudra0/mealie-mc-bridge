@@ -91,6 +91,7 @@ export const ICON_NAMES = [
   "triangle-alert",
   "user-round",
   "utensils",
+  "wallet",
   "waves",
   "wheat",
   "x",

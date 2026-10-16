@@ -167,7 +167,7 @@ const COMPOSE_SERVICE = "mc-bridge";
 const THUMBNAIL_TTL_MS = 60 * 60_000;
 const THUMBNAIL_MISS_TTL_MS = 5 * 60_000;
 const THUMBNAIL_CACHE_SIZE = 300;
-const RECIPE_ID = /^[A-Za-z0-9-]{1,64}$/;
+const RECIPE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY_MS = 24 * 60 * 60_000;
 // The setup card of the overview stays away once dismissed.
 export const SETUP_DISMISSED_KEY = "ui.setup_dismissed_at";
@@ -338,7 +338,8 @@ export function admin(
           notices,
           authDisabled,
           error: extra.error ?? null,
-          refresh: extra.refresh ?? null,
+          // A response to a POST never reloads: a reload would send the form again.
+          refresh: request.method === "GET" ? (extra.refresh ?? null) : null,
           nav: extra.bare
             ? null
             : {
@@ -661,6 +662,7 @@ export function admin(
     const at = ctx.now.getTime();
     const autoLogin = options.autoLogin?.status() ?? null;
     const recent = options.store.jobs.listRecent({ limit: 8 });
+    const lastFailedJob = options.store.jobs.listRecent({ limit: 1, status: "failed" })[0] ?? null;
     return render(
       reply,
       t.titles.dashboard,
@@ -682,7 +684,10 @@ export function admin(
               }
             : null,
           ai: options.ai ?? null,
-          lastFailedJob: options.store.jobs.listRecent({ limit: 1, status: "failed" })[0] ?? null,
+          lastFailedJob,
+          stages: options.store.jobs.failureStages(
+            [...recent, ...(lastFailedJob ? [lastFailedJob] : [])].map((job) => job.id),
+          ),
           setupDismissed: settings.get(SETUP_DISMISSED_KEY) !== null,
         },
         ctx,
@@ -792,6 +797,7 @@ export function admin(
           offset,
           limit,
           recipeStatus: options.recipeStatus,
+          stages: options.store.jobs.failureStages(jobs.map((job) => job.id)),
         },
         view(request),
       ),
@@ -1024,8 +1030,10 @@ export function admin(
 
   options.extend?.(context);
 
-  // Any other page under /admin, after the login: a 404 in the frame of the pages.
-  app.get("/admin/*", (_request, reply) => notFound(reply, t.errors.noSuchPage));
+  // Any other address under /admin, with any method, after the login: a 404 in the frame of
+  // the pages. Registered here, the login hook runs first, so an unknown address and a
+  // known one answer a visitor without a login alike.
+  app.all("/admin/*", (_request, reply) => notFound(reply, t.errors.noSuchPage));
 
   // An unexpected error answers with the error page; the message stays in the log. The JSON
   // endpoints keep the generic body of the server.

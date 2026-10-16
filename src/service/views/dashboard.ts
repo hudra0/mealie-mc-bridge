@@ -21,6 +21,7 @@ import {
 import { formatMs, formatPercent } from "../ui/format.js";
 import type { IconName } from "../ui/icons.generated.js";
 import { jobHref, jobTitle, money, timeTag, type ViewContext } from "./context.js";
+import { failureDetails, failureSummary } from "./failure.js";
 import { jobTable } from "./jobs.js";
 
 // The answer of Mealie to the API token: reached (as which user), failed, or not checked.
@@ -61,6 +62,8 @@ export interface DashboardData {
   } | null;
   ai: AiInfo | null;
   lastFailedJob: Job | null;
+  // The stage of the last failure of the listed jobs (JobStore.failureStages).
+  stages: ReadonlyMap<string, string>;
   setupDismissed: boolean;
 }
 
@@ -151,7 +154,7 @@ function healthChips(data: DashboardData, ctx: ViewContext): SafeHtml {
     label: h.ai,
     ...(data.ai
       ? {
-          tone: "accent" as const,
+          tone: "ok" as const,
           value: ctx.t.settings.ai.providers[data.ai.provider] ?? data.ai.provider,
           detail: data.ai.effort ? `${data.ai.model} · ${data.ai.effort}` : data.ai.model,
         }
@@ -189,7 +192,7 @@ function figures(data: DashboardData, ctx: ViewContext): SafeHtml {
     ${statCard({
       label: k.cost,
       value: money(summary.costUsd, ctx),
-      icon: "coins",
+      icon: "wallet",
       hint:
         costLimit > 0
           ? k.costToday(money(data.today.costUsd, ctx), money(costLimit, ctx))
@@ -255,7 +258,7 @@ function setupCard(data: DashboardData, ctx: ViewContext): SafeHtml | string {
                   }"
                   >${icon(step.done ? "check" : "circle-dot", "size-3")}</span
                 >
-                <span class="min-w-0 flex-1 ${step.done ? "text-fg-muted line-through" : ""}"
+                <span class="min-w-0 flex-1 ${step.done ? "text-fg-muted" : ""}"
                   >${step.title}</span
                 >
                 ${
@@ -291,7 +294,8 @@ function lastError(data: DashboardData, ctx: ViewContext): SafeHtml | string {
       ${callout({
         tone: "danger",
         title: html`${d.workerError} · ${timeTag(worker.at, ctx)}`,
-        body: html`<p class="line-clamp-2">${worker.message}</p>`,
+        body: html`<p class="font-medium">${failureSummary(worker.message, {}, ctx.t)}</p>
+          ${failureDetails(worker.message, ctx.t)}`,
       })}
     </div>`;
   }
@@ -301,7 +305,10 @@ function lastError(data: DashboardData, ctx: ViewContext): SafeHtml | string {
         tone: "danger",
         title: html`${d.jobError} · ${timeTag(jobAt, ctx)}`,
         body: html`<p class="font-medium">${jobTitle(job)}</p>
-          <p class="line-clamp-2 text-fg-muted">${job.error ?? ""}</p>`,
+          <p class="text-fg-muted">
+            ${failureSummary(job.error, { status: job.status, stage: data.stages.get(job.id) ?? null }, ctx.t)}
+          </p>
+          ${job.error ? failureDetails(job.error, ctx.t) : ""}`,
         actions: linkButton({ href: jobHref(job), label: d.openJob, size: "sm" }),
       })}
     </div>`;
@@ -336,6 +343,6 @@ export function dashboardView(data: DashboardData, ctx: ViewContext): SafeHtml {
     body:
       data.jobs.length === 0
         ? emptyState({ icon: "inbox", title: ctx.t.jobs.empty, text: ctx.t.jobs.emptyHint })
-        : jobTable(data.jobs, ctx),
+        : jobTable(data.jobs, ctx, data.stages),
   })}`;
 }

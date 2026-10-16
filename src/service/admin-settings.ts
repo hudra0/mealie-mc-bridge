@@ -120,32 +120,39 @@ export function registerSettings(
 
   app.get("/admin/settings", (request, reply) => show(request, reply, { notice: notice(request) }));
 
+  // The routes of mail and the automatic login exist in every setup, so a visitor without a
+  // login cannot tell from the answer whether they are configured; after the login they say
+  // so when they are not.
   const notifier = deps.notifier;
-  if (notifier?.testMail) {
-    const send = notifier.testMail.bind(notifier);
-    app.post("/admin/settings/notify/test", async (request, reply) => {
-      const at = context.now().getTime();
-      if (at - lastTestMail < TEST_MAIL_COOLDOWN_MS) {
-        return reply.redirect("/admin/settings?tab=notify&notice=test-mail-cooldown", 303);
-      }
-      lastTestMail = at;
-      try {
-        await send();
-      } catch (error) {
-        return show(
-          request,
-          reply,
-          { status: 502, error: t.errors.testMailFailed(errorMessage(error, 300)) },
-          "notify",
-        );
-      }
-      return reply.redirect("/admin/settings?tab=notify&notice=test-mail-sent", 303);
-    });
-  }
+  const sendTestMail =
+    notifier?.testMail && deps.notifyRecipient ? notifier.testMail.bind(notifier) : null;
+  app.post("/admin/settings/notify/test", async (request, reply) => {
+    if (sendTestMail === null) {
+      return show(request, reply, { status: 404, error: t.errors.mailUnavailable }, "notify");
+    }
+    const at = context.now().getTime();
+    if (at - lastTestMail < TEST_MAIL_COOLDOWN_MS) {
+      return reply.redirect("/admin/settings?tab=notify&notice=test-mail-cooldown", 303);
+    }
+    lastTestMail = at;
+    try {
+      await sendTestMail();
+    } catch (error) {
+      return show(
+        request,
+        reply,
+        { status: 502, error: t.errors.testMailFailed(errorMessage(error, 300)) },
+        "notify",
+      );
+    }
+    return reply.redirect("/admin/settings?tab=notify&notice=test-mail-sent", 303);
+  });
 
-  if (autoLogin === null) return show;
+  const unavailable = (request: FastifyRequest, reply: FastifyReply) =>
+    show(request, reply, { status: 404, error: t.settings.lidl.unavailable }, "lidl");
 
   app.post("/admin/settings/credentials", (request, reply) => {
+    if (autoLogin === null) return unavailable(request, reply);
     const body = (request.body ?? {}) as { email?: unknown; password?: unknown };
     try {
       autoLogin.saveCredentials(
@@ -166,13 +173,15 @@ export function registerSettings(
     return reply.redirect("/admin/settings?tab=lidl&notice=credentials-saved", 303);
   });
 
-  app.post("/admin/settings/credentials/delete", (_request, reply) => {
+  app.post("/admin/settings/credentials/delete", (request, reply) => {
+    if (autoLogin === null) return unavailable(request, reply);
     autoLogin.deleteCredentials();
     return reply.redirect("/admin/settings?tab=lidl&notice=credentials-deleted", 303);
   });
 
   // Starts the login in the background; the page reloads until it is done.
-  app.post("/admin/settings/login", (_request, reply) => {
+  app.post("/admin/settings/login", (request, reply) => {
+    if (autoLogin === null) return unavailable(request, reply);
     const back = (key: string) => reply.redirect(`/admin/settings?tab=lidl&notice=${key}`, 303);
     if (!autoLogin.hasCredentials()) return back("login-no-credentials");
     const status = autoLogin.status();
@@ -185,7 +194,7 @@ export function registerSettings(
   app.get<{ Params: { name: string } }>(
     "/admin/settings/screenshots/:name",
     async (request, reply) => {
-      const file = autoLogin.screenshotFile(request.params.name);
+      const file = autoLogin?.screenshotFile(request.params.name) ?? null;
       if (file === null) {
         return render(
           reply,

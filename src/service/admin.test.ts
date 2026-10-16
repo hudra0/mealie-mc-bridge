@@ -1542,3 +1542,55 @@ describe("settings page", () => {
     );
   });
 });
+
+describe("review polish", () => {
+  const VALIDATION =
+    "The converted recipe failed validation: servingSize.steps[4].temperature 130 is above the limit";
+
+  it("summarizes job errors in the language of the pages and folds the raw text away", async () => {
+    svc = testService({ config: { UI_LANGUAGE: "de" } });
+    const { job } = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1, title: "Brot" });
+    svc.store.jobs.appendEvent(job.id, "error", {
+      code: "failed",
+      params: { stage: "validate", error: VALIDATION },
+    });
+    svc.store.jobs.finish(job.id, "failed", { error: VALIDATION });
+    const other = svc.store.jobs.enqueue({ recipeId: "r-2", scale: 1, title: "Suppe" }).job;
+    svc.store.jobs.appendEvent(other.id, "error", {
+      code: "failed",
+      params: { stage: "upload", error: "HTTP 503" },
+    });
+    svc.store.jobs.finish(other.id, "failed", { error: "HTTP 503" });
+
+    const dashboard = (await get("/admin")).body;
+    expect(dashboard).toContain("Hochladen zu Monsieur Cuisine fehlgeschlagen");
+    expect(dashboard).toMatch(
+      /<details[^>]*>\s*<summary[^>]*>Technische Details<\/summary>\s*<p[^>]*>\s*HTTP 503/,
+    );
+
+    const list = (await get("/admin/jobs")).body;
+    expect(list).toContain("Die Umwandlung hat die Gerätegrenzen verletzt");
+    expect(list).toContain("Hochladen zu Monsieur Cuisine fehlgeschlagen");
+    expect(list).not.toContain("failed validation");
+
+    const detail = (await get(`/admin/jobs/${job.id}`)).body;
+    expect(detail).toContain("Die Umwandlung hat die Gerätegrenzen verletzt");
+    const folded = /<details class="mt-1">[\s\S]*?<\/details>/.exec(detail)?.[0] ?? "";
+    expect(folded).toContain("Technische Details");
+    expect(folded).toContain("failed validation");
+  });
+
+  it("shows the cost with a wallet, a configured model in the success colour and done setup steps plainly", async () => {
+    const { ICONS } = await import("./ui/icons.generated.js");
+    svc = testService({ config: { LLM_PROVIDER: "openai", OPENAI_MODEL: "gpt-test" } });
+    const done = svc.store.jobs.enqueue({ recipeId: RECIPE_ID, scale: 1 }).job;
+    svc.store.jobs.finish(done.id, "done");
+    const body = (await get("/admin")).body;
+    const cost = body.slice(body.indexOf("Cost (30 days)"), body.indexOf("Cost (30 days)") + 900);
+    expect(cost).toContain(ICONS.wallet);
+    expect(body).not.toContain(ICONS.coins);
+    expect(body).toMatch(/bg-ok\s*"\s*aria-hidden="true"\s*><\/span\s*><span[^>]*>OpenAI</);
+    expect(body).toContain("Finish the setup");
+    expect(body).not.toContain("line-through");
+  });
+});

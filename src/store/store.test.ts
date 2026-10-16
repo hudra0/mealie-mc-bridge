@@ -246,6 +246,23 @@ describe("JobStore", () => {
     expect(store.jobs.stats({ search: "bread" })).toMatchObject({ failed: 0, queued: 1 });
   });
 
+  it("names the stage of the last failure of each job", () => {
+    store = tempStore();
+    const a = store.jobs.enqueue({ recipeId: RECIPE, scale: 1 }).job;
+    const b = store.jobs.enqueue({ recipeId: OTHER, scale: 1 }).job;
+    store.jobs.appendEvent(a.id, "warn", {
+      code: "temporary_failure",
+      params: { stage: "upload", error: "503" },
+    });
+    store.jobs.appendEvent(a.id, "error", {
+      code: "failed",
+      params: { stage: "validate", error: "x" },
+    });
+    store.jobs.appendEvent(b.id, "error", "Failed at convert: old text");
+    expect(store.jobs.failureStages([a.id, b.id])).toEqual(new Map([[a.id, "validate"]]));
+    expect(store.jobs.failureStages([])).toEqual(new Map());
+  });
+
   it("sums up the jobs created since a point in time", () => {
     const clock = steppingClock("2026-10-01T10:00:00.000Z");
     store = tempStore({ now: clock.now });

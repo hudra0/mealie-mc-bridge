@@ -272,7 +272,12 @@ export function renderPage(options: PageOptions): string {
       ${head(options)}
       <body
         class="min-h-dvh"
-        ${options.refresh ? html`data-refresh="${options.refresh.seconds}"` : ""}
+        ${
+          options.refresh
+            ? html`data-refresh="${options.refresh.seconds}"
+              data-refresh-url="${options.refresh.url}"`
+            : ""
+        }
       >
         <a class="skip-link" href="#main">${t.skipToContent}</a>
         ${nav ? shell(options, nav, main) : main} ${toasts(options.notices ?? [], t.shell.dismiss)}

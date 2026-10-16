@@ -27,6 +27,7 @@ import {
   timeTag,
   type ViewContext,
 } from "./context.js";
+import { failureSummary } from "./failure.js";
 
 // The filter groups of the list. "active" is every job that has not finished.
 export const JOB_FILTERS = ["all", "active", "done", "skipped", "failed", "cancelled"] as const;
@@ -106,7 +107,13 @@ export function jobActions(job: Job, ctx: ViewContext, options: { open: boolean 
   return items;
 }
 
-export function jobTable(jobs: readonly Job[], ctx: ViewContext): SafeHtml {
+// Failed and waiting jobs name their error in a short summary under the title; stages
+// holds the stage of their last failure event.
+export function jobTable(
+  jobs: readonly Job[],
+  ctx: ViewContext,
+  stages: ReadonlyMap<string, string> = new Map(),
+): SafeHtml {
   const l = ctx.t.jobs;
   const now = ctx.now;
   return html`<table class="stack-table w-full text-left text-sm">
@@ -137,6 +144,15 @@ export function jobTable(jobs: readonly Job[], ctx: ViewContext): SafeHtml {
               >${jobTitle(job)}</a
             >
             <p class="truncate text-xs text-fg-muted">${jobSubline(job, ctx)}</p>
+            ${
+              job.status === "failed" || job.status === "session_expired"
+                ? html`<p
+                    class="truncate text-xs max-md:whitespace-normal ${job.status === "failed" ? "text-danger-fg" : "text-warn-fg"}"
+                  >
+                    ${failureSummary(job.error, { status: job.status, stage: stages.get(job.id) ?? null }, ctx.t)}
+                  </p>`
+                : ""
+            }
             <p
               class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-fg-muted md:hidden"
             >
@@ -178,6 +194,8 @@ export interface JobListData {
   offset: number;
   limit: number;
   recipeStatus: SavedStatus;
+  // The stage of the last failure of the listed jobs.
+  stages: ReadonlyMap<string, string>;
 }
 
 export function jobListView(data: JobListData, ctx: ViewContext): SafeHtml {
@@ -231,7 +249,7 @@ export function jobListView(data: JobListData, ctx: ViewContext): SafeHtml {
 
   let body: SafeHtml;
   if (data.jobs.length > 0) {
-    body = jobTable(data.jobs, ctx);
+    body = jobTable(data.jobs, ctx, data.stages);
   } else if (data.offset > 0) {
     body = emptyState({ icon: "inbox", text: l.noMore });
   } else if (filtered) {

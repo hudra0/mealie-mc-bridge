@@ -320,10 +320,14 @@
     });
   }
 
-  // Pages that follow a running job reload, unless the person is busy on the page.
+  // Pages that follow a running job load their own address again, unless the person is busy
+  // on the page. Always a GET of the address the server named, never a reload, which would
+  // send a form again.
   function setupRefresh() {
     const seconds = Number(document.body.dataset.refresh);
+    const url = document.body.dataset.refreshUrl || "";
     if (!Number.isFinite(seconds) || seconds <= 0) return;
+    if (!url.startsWith("/admin") || url.startsWith("//")) return;
     const busy = () =>
       document.hidden ||
       document.querySelector("details[data-menu][open], dialog[open]") !== null ||
@@ -331,7 +335,7 @@
       String(getSelection()).trim() !== "";
     const tick = () => {
       if (busy()) setTimeout(tick, 2000);
-      else location.reload();
+      else location.replace(url);
     };
     setTimeout(tick, seconds * 1000);
   }

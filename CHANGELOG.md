@@ -4,6 +4,10 @@ The project follows [semantic versioning](https://semver.org). A tag `vX.Y.Z` bu
 
 ## Unreleased
 
+### What to do
+
+- **Back up `bridge.db` before the upgrade** if you might want to go back. Database migration 6 runs on start, and 0.3.x refuses to start on the migrated database; rolling back to 0.3.x means restoring the backup taken before the upgrade (jobs and settings changed since then are lost).
+
 ### Changed
 
 - The admin pages are rebuilt: a sidebar with the navigation, the session state, a theme switch (system, light, dark) and the version, a drawer on narrow screens, and a calmer layout with a warm orange accent. The stylesheet is compiled with Tailwind CSS at build time; stylesheet, script, the Inter font and the icons are served by the bridge itself from `/admin/assets/` with long cache headers. The content security policy allows scripts, styles, fonts, images and fetches from the bridge only, and still no inline script, style or event handler. Every page works without JavaScript.

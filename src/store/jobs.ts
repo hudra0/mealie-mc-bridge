@@ -406,6 +406,23 @@ export class JobStore {
     return stats;
   }
 
+  // The stage of the last failure event of each job (code "failed" or "temporary_failure"),
+  // for a summary of the error in the language of the pages. Jobs without one are left out.
+  failureStages(jobIds: readonly string[]): Map<string, string> {
+    const stages = new Map<string, string>();
+    if (jobIds.length === 0) return stages;
+    const rows = this.#db
+      .prepare<unknown[], { job_id: string; stage: unknown }>(
+        `SELECT job_id, json_extract(params_json, '$.stage') AS stage FROM job_events
+         WHERE code IN ('failed', 'temporary_failure') AND json_valid(params_json)
+           AND job_id IN (${jobIds.map(() => "?").join(", ")})
+         ORDER BY id`,
+      )
+      .all(...jobIds);
+    for (const row of rows) if (typeof row.stage === "string") stages.set(row.job_id, row.stage);
+    return stages;
+  }
+
   // Counts, mean run time, cost and tokens of the jobs created since the given time.
   summarySince(since: Date): JobSummary {
     const row = this.#db

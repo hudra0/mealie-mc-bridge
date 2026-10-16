@@ -213,6 +213,7 @@ export interface AdminMessages {
     conversionFailed(reason: string): string;
     credentialsInvalid(field: "email" | "password"): string;
     testMailFailed(reason: string): string;
+    mailUnavailable: string;
     server: string;
     badRequest: string;
   };
@@ -225,6 +226,19 @@ export interface AdminMessages {
   jobStatus: Readonly<Record<JobStatusName, string>>;
   sessionState: Readonly<Record<SessionStateName, string>>;
   events: { details: string; code: string };
+  // A short summary of a job error; the raw text goes into a collapsed details element.
+  failures: {
+    stages: Readonly<Record<FailureStage, string>>;
+    session: string;
+    limits: string;
+    mealieUnreachable: string;
+    mealieRefused: string;
+    converterMissing: string;
+    modelRefused: string;
+    interrupted: string;
+    generic: string;
+    details: string;
+  };
   dashboard: {
     subtitle: string;
     workerPaused: string;

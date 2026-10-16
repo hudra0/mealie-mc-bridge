@@ -36,6 +36,7 @@ import {
   type ViewContext,
 } from "./context.js";
 import { eventTimeline } from "./events.js";
+import { failureDetails, failureSummary } from "./failure.js";
 import { jobActions, jobSubline } from "./jobs.js";
 
 export const JOB_TABS = ["overview", "steps", "ingredients", "events"] as const;
@@ -128,6 +129,17 @@ function checkCallout(job: Job, ctx: ViewContext): SafeHtml | string {
   });
 }
 
+// The stage of the last failure event of a job, if any.
+function lastStage(events: readonly JobEvent[]): string | null {
+  for (let index = events.length - 1; index >= 0; index--) {
+    const event = events[index];
+    if (event?.code !== "failed" && event?.code !== "temporary_failure") continue;
+    const stage = event.params?.stage;
+    if (typeof stage === "string") return stage;
+  }
+  return null;
+}
+
 function resolution(job: Job, ctx: ViewContext): string {
   const stats = job.ingredients;
   const l = ctx.t.jobDetail;
@@ -201,9 +213,13 @@ function overview(data: JobDetailData, ctx: ViewContext): SafeHtml {
   const error =
     job.error && retryable
       ? callout({
-          tone: "danger",
-          title: l.error,
-          body: job.error,
+          tone: job.status === "failed" ? "danger" : "warn",
+          title: failureSummary(
+            job.error,
+            { status: job.status, stage: lastStage(data.events) },
+            ctx.t,
+          ),
+          body: failureDetails(job.error, ctx.t),
           actions: html`<form method="post" action="${jobHref(job)}/retry">
             ${csrfField(ctx.csrf)}
             ${button({ label: ctx.t.jobs.retry, icon: "rotate-ccw", size: "sm" })}

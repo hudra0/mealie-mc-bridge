@@ -132,10 +132,22 @@ function chips(kind: MachineStepKind, step: Loose, t: AdminMessages["steps"]): S
   return out;
 }
 
+const ELLIPSIS = /(…|\.{3})\s*$/;
+const fold = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+
+// Whether a step title only repeats its description: older conversions cut titles from the
+// start of the text, often mid-sentence and with an ellipsis. Such a title is left out.
+export function redundantTitle(title: string, description: string): boolean {
+  if (title.trim() === "" || description.trim() === "") return false;
+  if (ELLIPSIS.test(title)) return true;
+  const head = fold(title.replace(ELLIPSIS, "")).replace(/[\s.,:;!?-]+$/, "");
+  return head === "" || fold(description).startsWith(head);
+}
+
 function stepItem(step: Loose, index: number, t: AdminMessages["steps"]): SafeHtml {
   const kind = str(step.kind);
-  const title = str(step.title);
   const description = str(step.description);
+  const title = redundantTitle(str(step.title), description) ? "" : str(step.title);
   const number = html`<span
     class="grid size-7 shrink-0 place-items-center rounded-full bg-subtle text-xs font-semibold text-fg-muted tabular-nums"
     >${index + 1}</span
@@ -147,7 +159,9 @@ function stepItem(step: Loose, index: number, t: AdminMessages["steps"]): SafeHt
         ${title ? html`<p class="font-medium [overflow-wrap:anywhere]">${title}</p>` : ""}
         ${
           description
-            ? html`<p class="text-fg-muted [overflow-wrap:anywhere]">${description}</p>`
+            ? html`<p class="${title ? "text-fg-muted" : ""} [overflow-wrap:anywhere]">
+                ${description}
+              </p>`
             : ""
         }
       </div>

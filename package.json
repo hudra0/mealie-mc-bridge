@@ -44,14 +44,14 @@
     "docs:config": "tsx scripts/config-reference.ts --write"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.133.0",
+    "@anthropic-ai/sdk": "^0.137.0",
     "@fastify/formbody": "^9.0.1",
-    "better-sqlite3": "~12.9.0",
-    "fastify": "^5.12.5",
-    "nodemailer": "^10.1.0",
-    "openai": "^7.32.0",
+    "better-sqlite3": "~12.11.1",
+    "fastify": "^5.12.7",
+    "nodemailer": "^10.2.1",
+    "openai": "^7.43.0",
     "pino": "^10.4.0",
-    "playwright": "^1.63.0",
+    "playwright": "^1.64.1",
     "sharp": "^0.35.5",
     "zod": "^4.6.7"
   },
@@ -63,14 +63,14 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.2",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "eslint": "^9.39.5",
-    "lucide-static": "^1.49.0",
+    "lucide-static": "^1.61.0",
     "prettier": "^3.9.10",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.71.2",
+    "typescript-eslint": "^8.72.0",
     "vitest": "^4.1.11"
   }
 }
